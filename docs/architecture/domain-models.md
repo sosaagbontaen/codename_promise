@@ -2,7 +2,7 @@
 
 The `EntryDraft` is the central aggregate root in Codename Promise. All other entities exist to enrich or track the state of this aggregate.
 
-**Note:** These domain models are shared between React Native frontend (TypeScript) and Python backend (Pydantic/SQLAlchemy). Both implementations follow the same schema and invariants.
+**Note:** These diagrams and model examples are expressed in Python-style naming. The frontend and backend share the same schema and invariants.
 
 ## Core Domain Model
 
@@ -12,61 +12,61 @@ classDiagram
         <<Aggregate Root>>
 
         +UUID id
-        +DateTime createdAt
-        +DateTime updatedAt
+        +DateTime created_at
+        +DateTime updated_at
 
         +EntryContent content
         +Media[] media
-        +SyncState syncState
+        +SyncState sync_state
 
         --Methods--
-        +updateContent(text): void
-        +attachMedia(file): Media
-        +removeMedia(mediaId): void
-        +format(formattedText): void
+        +update_content(text): void
+        +attach_media(file): Media
+        +remove_media(media_id): void
+        +format(formatted_text): void
         +sync(destination): SyncState
     }
 
     class EntryContent {
         +String title
-        +String rawText
-        +String formattedText
+        +String raw_text
+        +String formatted_text
 
         --Methods--
-        +updateRaw(text): void
-        +updateFormatted(text): void
-        +isEmpty(): boolean
+        +update_raw(text): void
+        +update_formatted(text): void
+        +is_empty(): boolean
     }
 
     class Media {
         +UUID id
         +MediaType type
-        +String originalPath
-        +String compressedPath
-        +long originalSizeBytes
-        +long compressedSizeBytes
-        +CompressionLevel compressionLevel
-        +UploadStatus uploadStatus
-        +String uploadError
+        +String original_path
+        +String compressed_path
+        +long original_size_bytes
+        +long compressed_size_bytes
+        +CompressionLevel compression_level
+        +UploadStatus upload_status
+        +String upload_error
 
         --Methods--
         +compress(level): void
         +upload(): void
-        +getLocalPath(): String
+        +get_local_path(): String
     }
 
     class SyncState {
         +SyncTarget target
-        +String externalId
+        +String external_id
         +SyncStatus status
-        +DateTime lastSyncedAt
-        +String lastSyncError
+        +DateTime last_synced_at
+        +String last_sync_error
 
         --Methods--
-        +markSyncing(): void
-        +markSynced(externalId): void
-        +markFailed(error): void
-        +isReady(): boolean
+        +mark_syncing(): void
+        +mark_synced(external_id): void
+        +mark_failed(error): void
+        +is_ready(): boolean
     }
 
     EntryDraft "1" *-- "1" EntryContent : contains
@@ -83,11 +83,11 @@ classDiagram
 
 ```mermaid
 graph TD
-    A["<b>1. Create</b><br/>→ id, createdAt"]:::step1
-    B["<b>2. Capture</b><br/>→ content.rawText"]:::step2
+    A["<b>1. Create</b><br/>→ id, created_at"]:::step1
+    B["<b>2. Capture</b><br/>→ content.raw_text"]:::step2
     C["<b>3. Media</b><br/>→ media[]"]:::step3
-    D["<b>4. Format</b><br/>→ content.formattedText"]:::step4
-    E["<b>5. Sync</b><br/>→ syncState"]:::step5
+    D["<b>4. Format</b><br/>→ content.formatted_text"]:::step4
+    E["<b>5. Sync</b><br/>→ sync_state"]:::step5
     F["<b>At Rest</b><br/>Complete ✓"]:::complete
 
     A -->|User types/dictates| B
@@ -120,46 +120,45 @@ The `EntryDraft` is the single source of truth for a journal entry. It is never 
 
 ### Structure
 
-```typescript
-{
-  // Identity
-  id: UUID,
+```python
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import List, Optional
 
-  // Lifecycle
-  createdAt: DateTime,
-  updatedAt: DateTime,
+@dataclass
+class EntryContent:
+    title: Optional[str] = None
+    raw_text: str = ""                         # User's original input (typed or dictated)
+    formatted_text: Optional[str] = None        # AI-formatted version
 
-  // Content (composition)
-  content: {
-    title?: String,
-    rawText: String,           // User's original input (typed or dictated)
-    formattedText?: String     // AI-formatted version
-  },
+@dataclass
+class MediaItem:
+    id: str
+    type: str                                  # 'photo' | 'video'
+    original_path: str
+    compressed_path: Optional[str] = None
+    original_size_bytes: int
+    compressed_size_bytes: Optional[int] = None
+    compression_level: str = "none"           # 'none' | 'low' | 'medium' | 'high'
+    upload_status: str = "pending"            # 'pending' | 'uploading' | 'uploaded' | 'failed'
+    upload_error: Optional[str] = None
 
-  // Attachments (composition)
-  media: [
-    {
-      id: UUID,
-      type: MediaType,          // PHOTO | VIDEO
-      originalPath: String,
-      compressedPath?: String,
-      originalSizeBytes: Long,
-      compressedSizeBytes?: Long,
-      compressionLevel: NONE | LOW | MEDIUM | HIGH,
-      uploadStatus: PENDING | UPLOADING | UPLOADED | FAILED,
-      uploadError?: String
-    }
-  ],
+@dataclass
+class SyncState:
+    target: str                                # 'notion' | 'evernote' | 'obsidian'
+    external_id: Optional[str] = None          # e.g. Notion page ID
+    status: str = "pending"                   # 'pending' | 'syncing' | 'synced' | 'failed'
+    last_synced_at: Optional[datetime] = None
+    last_sync_error: Optional[str] = None
 
-  // Sync tracking (composition)
-  syncState: {
-    target: NOTION | EVERNOTE | OBSIDIAN,
-    externalId?: String,       // e.g., Notion page ID
-    status: PENDING | SYNCING | SYNCED | FAILED,
-    lastSyncedAt?: DateTime,
-    lastSyncError?: String
-  }
-}
+@dataclass
+class EntryDraft:
+    id: str
+    created_at: datetime
+    updated_at: datetime
+    content: EntryContent = field(default_factory=EntryContent)
+    media: List[MediaItem] = field(default_factory=list)
+    sync_state: SyncState = field(default_factory=SyncState)
 ```
 
 ### Invariants (Business Rules)
@@ -167,13 +166,13 @@ The `EntryDraft` is the single source of truth for a journal entry. It is never 
 These invariants are always maintained:
 
 1. **id is immutable** - Never changes after creation
-2. **createdAt is immutable** - Set only on creation
-3. **updatedAt changes on every mutation** - Always reflects last change
-4. **rawText persists unchanged** - Never modified by formatting
-5. **formattedText is optional** - Can be empty or None
+2. **created_at is immutable** - Set only on creation
+3. **updated_at changes on every mutation** - Always reflects last change
+4. **raw_text persists unchanged** - Never modified by formatting
+5. **formatted_text is optional** - Can be empty or None
 6. **Media is additive** - Can only add/remove, not modify individual files
-7. **Only one syncState per target** - Can have multiple sync states for different destinations
-8. **syncState tracks external IDs** - Links back to synced destinations
+7. **Only one sync_state per target** - Can have multiple sync states for different destinations
+8. **sync_state tracks external IDs** - Links back to synced destinations
 
 ---
 
@@ -183,11 +182,11 @@ Represents the textual content of an entry at different stages of enrichment.
 
 ### Composition
 
-```typescript
-{
-  title?: String,              // Optional: user-provided title
-  rawText: String,             // Required: user's direct input (typed or dictated)
-  formattedText?: String       // Optional: AI-structured version
+```python
+content = {
+    "title": Optional[str],           # Optional: user-provided title
+    "raw_text": str,                  # Required: user's direct input (typed or dictated)
+    "formatted_text": Optional[str],  # Optional: AI-structured version
 }
 ```
 
@@ -196,24 +195,22 @@ Represents the textual content of an entry at different stages of enrichment.
 | Field             | Purpose                       | Source           | Mutability                                |
 | :---------------- | :---------------------------- | :--------------- | :---------------------------------------- |
 | **title**         | User-provided heading         | Manual entry     | Mutable                                   |
-| **rawText**       | User's unaltered capture      | Typing/Dictation | Mutable (only appended or edited by user) |
-| **formattedText** | Structured & polished version | GPT API          | Mutable (can reformat)                    |
+| **raw_text**       | User's unaltered capture      | Typing/Dictation | Mutable (only appended or edited by user) |
+| **formatted_text** | Structured & polished version | GPT API          | Mutable (can reformat)                    |
 
 ### Methods
 
-```typescript
-updateRaw(text: String): void
-  // Appends or overwrites rawText
-  // Called after typing/dictation capture
-  // Preserves exact user input
+```python
+def update_raw(self, text: str) -> None:
+    """Append or overwrite raw_text after typing/dictation capture."""
 
-updateFormatted(text: String): void
-  // Sets formattedText from GPT response
-  // Called after formatting request
-  // Can be called multiple times (reformatting)
 
-isEmpty(): boolean
-  // Returns true if both raw and formatted are empty
+def update_formatted(self, text: str) -> None:
+    """Set formatted_text from GPT response; can be re-run to reformat."""
+
+
+def is_empty(self) -> bool:
+    """Return True when both raw_text and formatted_text are empty."""
 ```
 
 ---
@@ -224,23 +221,23 @@ Represents a single piece of media (photo or video) attached to an entry.
 
 ### Composition
 
-```typescript
-{
-  id: UUID,                          // Unique identifier
-  type: MediaType,                   // PHOTO | VIDEO
+```python
+media_item = {
+    "id": "uuid",                        # Unique identifier
+    "type": "photo" or "video",        # MediaType
 
-  // Local storage paths
-  originalPath: String,              // Local filesystem path to original file
-  compressedPath?: String,           // Local filesystem path to compressed version
+    # Local storage paths
+    "original_path": str,                  # Local filesystem path to original file
+    "compressed_path": Optional[str],      # Local filesystem path to compressed version
 
-  // Size tracking
-  originalSizeBytes: Long,           // Original file size in bytes
-  compressedSizeBytes?: Long,        // Compressed file size in bytes
-  compressionLevel: CompressionLevel,// NONE | LOW | MEDIUM | HIGH
+    # Size tracking
+    "original_size_bytes": int,            # Original file size in bytes
+    "compressed_size_bytes": Optional[int],
+    "compression_level": "none" | "low" | "medium" | "high",
 
-  // Upload tracking
-  uploadStatus: UploadStatus,        // PENDING | UPLOADING | UPLOADED | FAILED
-  uploadError?: String               // Error message if upload failed
+    # Upload tracking
+    "upload_status": "pending" | "uploading" | "uploaded" | "failed",
+    "upload_error": Optional[str],         # Error message if upload failed
 }
 ```
 
@@ -288,13 +285,13 @@ Tracks the synchronization status of an entry with external destinations.
 
 ### Composition
 
-```typescript
-{
-  target: SyncTarget,         // Destination service (NOTION, EVERNOTE, OBSIDIAN, etc.)
-  externalId?: String,        // ID of synced resource (e.g., Notion page UUID)
-  status: SyncStatus,         // State of sync
-  lastSyncedAt?: DateTime,    // When last successful sync occurred
-  lastSyncError?: String      // Error message from last failed sync
+```python
+sync_state = {
+    "target": "notion" | "evernote" | "obsidian",   # Destination service
+    "external_id": Optional[str],                        # ID of synced resource (e.g. Notion page UUID)
+    "status": "pending" | "syncing" | "synced" | "failed",
+    "last_synced_at": Optional[datetime],                # When last successful sync occurred
+    "last_sync_error": Optional[str],                    # Error message from last failed sync
 }
 ```
 
@@ -304,7 +301,7 @@ Tracks the synchronization status of an entry with external destinations.
 graph TD
     Init["🟡 PENDING<br/>Ready to sync<br/>Not yet attempted"]:::pending
     Syncing["🔄 SYNCING<br/>Upload in progress<br/>Don't retry yet"]:::syncing
-    Success["✅ SYNCED<br/>Successfully synced<br/>externalId set"]:::success
+    Success["✅ SYNCED<br/>Successfully synced<br/>external_id set"]:::success
     Failed["❌ FAILED<br/>Last attempt failed<br/>Ready to retry"]:::failed
 
     Init -->|User triggers sync| Syncing
@@ -325,32 +322,29 @@ graph TD
 
 ### Multiple Sync Targets
 
-An `EntryDraft` can be synced to multiple destinations independently:
+An `EntryDraft` can have multiple `sync_state` entries, one per destination:
 
-```typescript
-{
-  // EntryDraft can have multiple SyncStates
-  syncStates: [
+```python
+sync_states = [
     {
-      target: NOTION,
-      externalId: "notion-page-uuid-123",
-      status: SYNCED,
-      lastSyncedAt: 2024-01-15T10:30:00Z
+        "target": "notion",
+        "external_id": "notion-page-uuid-123",
+        "status": "synced",
+        "last_synced_at": datetime.fromisoformat("2024-01-15T10:30:00Z"),
     },
     {
-      target: EVERNOTE,
-      externalId: "evernote-note-456",
-      status: SYNCED,
-      lastSyncedAt: 2024-01-15T10:32:00Z
+        "target": "evernote",
+        "external_id": "evernote-note-456",
+        "status": "synced",
+        "last_synced_at": datetime.fromisoformat("2024-01-15T10:32:00Z"),
     },
     {
-      target: OBSIDIAN,
-      status: FAILED,
-      lastSyncError: "Connection timeout",
-      lastSyncedAt: 2024-01-15T10:20:00Z
-    }
-  ]
-}
+        "target": "obsidian",
+        "status": "failed",
+        "last_sync_error": "Connection timeout",
+        "last_synced_at": datetime.fromisoformat("2024-01-15T10:20:00Z"),
+    },
+]
 ```
 
 ---
@@ -409,72 +403,14 @@ The `EntryDraft` is progressively hydrated throughout the journaling workflow. E
 
 | User Action       | Fields Updated                        | Before         | After                  |
 | :---------------- | :------------------------------------ | :------------- | :--------------------- |
-| **Create Draft**  | `id`, `createdAt`                     | ∅              | Minimal aggregate      |
-| **Type**          | `content.rawText`, `updatedAt`        | Empty          | Has raw text           |
-| **Dictate**       | `content.rawText`, `updatedAt`        | Empty          | Has transcribed text   |
-| **Edit Text**     | `content.rawText`, `updatedAt`        | Outdated       | Refined input          |
-| **Upload Media**  | `media[]`, `updatedAt`                | No attachments | Media attached         |
-| **Format Entry**  | `content.formattedText`, `updatedAt`  | Only raw text  | Raw + formatted        |
-| **Publish Entry** | `syncState.*`, `updatedAt`            | Not synced     | Synced with externalId |
-| **Retry Sync**    | `syncState.status`, `syncState.error` | Failed         | Retry initiated        |
-
-### Example: Complete Hydration Sequence
-
-```
-1. Initial State (after create)
-   {
-     id: "abc-123",
-     createdAt: 2024-01-15T09:00:00Z,
-     content: { rawText: "", formattedText: undefined },
-     media: [],
-     syncState: { target: NOTION, status: PENDING }
-   }
-
-2. After typing (after capture)
-   {
-     ...
-     updatedAt: 2024-01-15T09:05:00Z,
-     content: {
-       rawText: "Today was a good day...",
-       formattedText: undefined
-     }
-   }
-
-3. After attaching photo (after media)
-   {
-     ...
-     updatedAt: 2024-01-15T09:10:00Z,
-     media: [{
-       id: "media-456",
-       type: PHOTO,
-       originalPath: "/storage/photos/photo_001.jpg",
-       compressedPath: "/storage/photos/photo_001_compressed.jpg",
-       uploadStatus: UPLOADED
-     }]
-   }
-
-4. After formatting (after GPT)
-   {
-     ...
-     updatedAt: 2024-01-15T09:15:00Z,
-     content: {
-       rawText: "Today was a good day...",
-       formattedText: "### Today's Reflection\n- Good day overall\n- Key moments: ..."
-     }
-   }
-
-5. After sync (after Notion publish)
-   {
-     ...
-     updatedAt: 2024-01-15T09:20:00Z,
-     syncState: {
-       target: NOTION,
-       externalId: "notion-page-789",
-       status: SYNCED,
-       lastSyncedAt: 2024-01-15T09:20:00Z
-     }
-   }
-```
+| **Create Draft**  | `id`, `created_at`                     | ∅              | Minimal aggregate      |
+| **Type**          | `content.raw_text`, `updated_at`        | Empty          | Has raw text           |
+| **Dictate**       | `content.raw_text`, `updated_at`        | Empty          | Has transcribed text   |
+| **Edit Text**     | `content.raw_text`, `updated_at`        | Outdated       | Refined input          |
+| **Upload Media**  | `media`, `updated_at`                   | No attachments | Media attached         |
+| **Format Entry**  | `content.formatted_text`, `updated_at`  | Only raw text  | Raw + formatted        |
+| **Publish Entry** | `sync_state.*`, `updated_at`            | Not synced     | Synced with external_id |
+| **Retry Sync**    | `sync_state.status`, `sync_state.error` | Failed         | Retry initiated        |
 
 ---
 
@@ -506,7 +442,7 @@ The `EntryDraft` is progressively hydrated throughout the journaling workflow. E
 
 ### 👤 User's Voice Always Wins
 
-- `rawText` preserves exact user input
+- `raw_text` preserves exact user input
 - Formatting never changes user's voice
 - AI assists, never authors
 
