@@ -1,0 +1,36 @@
+# macOS
+.DS_Store
+
+# Xcode
+build/
+DerivedData/
+DerivedDataDevice/
+*.xcuserstate
+*.xcscmblueprint
+xcuserdata/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Secrets — the backend API key belongs in Keychain, never in the repo (ADR-022)
+Secrets.xcconfig
+*.env
+.env
+backend/.state/
+
+# Superseded docs kept locally, not tracked
+docs (old-ignore)/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
