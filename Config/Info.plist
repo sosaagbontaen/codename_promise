@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Custom Info.plist keys only. Apple's own keys stay in build settings as
+	  INFOPLIST_KEY_* and are merged into this file at build time
+	  (GENERATE_INFOPLIST_FILE is still YES).
+
+	  This file exists because INFOPLIST_KEY_* silently ignores key names Xcode
+	  doesn't recognise — a custom one produces no warning and no key, which is a
+	  quiet way to end up with an app that can never reach its backend.
+
+	  Lives outside CodenamePromise/ so the target's file-system synchronized group
+	  doesn't also copy it in as a bundle resource.
+	-->
+	<key>BackendBaseURL</key>
+	<string>$(BACKEND_BASE_URL)</string>
+
+	<!--
+	  Permits cleartext HTTP to local hostnames only (localhost, .local, link-local) so a
+	  backend running on the dev machine is reachable from the simulator. It does NOT relax
+	  App Transport Security for the internet at large — a real deployment must be HTTPS,
+	  since this carries the user's journal.
+	-->
+	<!--
+	  The scheme the Notion OAuth callback returns to. ASWebAuthenticationSession matches on
+	  it to close the sign-in sheet; registering it here also lets the system hand the app
+	  back the foreground.
+	-->
+	<!--
+	  Required for `canOpenURL` to answer truthfully about the Notion app. Without this iOS
+	  returns false regardless of whether it's installed, and every "Open in Notion" would
+	  fall back to the browser.
+	-->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>notion</string>
+	</array>
+
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.codenamepromise.journal</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>codenamepromise</string>
+			</array>
+		</dict>
+	</array>
+
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+</dict>
+</plist>
