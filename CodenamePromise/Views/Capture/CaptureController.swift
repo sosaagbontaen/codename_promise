@@ -106,7 +106,7 @@ final class CaptureController {
 
     /// Whether the structured text has been hand-edited, so re-running formatting can ask
     /// before replacing it.
-    var formattedTextWasEdited: Bool { draft.content.formattedTextEditedByUser }
+    var formattedTextWasEdited: Bool { draft.formattedTextEditedByUser }
 
     /// The structured text, editable. Same debounce-and-commit discipline as `text` — it's
     /// the user's writing once they've touched it, so it gets the same durability (ADR-001).

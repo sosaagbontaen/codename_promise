@@ -355,10 +355,10 @@ struct EditableFormattedTextTests {
         let draft = EntryDraft()
         draft.updateRawText("something")
         draft.applyFormatting("- something", formatterVersion: "wwwt-1")
-        #expect(draft.content.formattedTextEditedByUser == false)
+        #expect(draft.formattedTextEditedByUser == false)
 
         draft.updateFormattedText("- something, edited")
-        #expect(draft.content.formattedTextEditedByUser)
+        #expect(draft.formattedTextEditedByUser)
     }
 
     @Test("re-running formatting clears the edited flag")
@@ -366,10 +366,10 @@ struct EditableFormattedTextTests {
         let draft = EntryDraft()
         draft.updateRawText("something")
         draft.updateFormattedText("- hand written")
-        #expect(draft.content.formattedTextEditedByUser)
+        #expect(draft.formattedTextEditedByUser)
 
         draft.applyFormatting("- regenerated", formatterVersion: "wwwt-2")
-        #expect(draft.content.formattedTextEditedByUser == false)
+        #expect(draft.formattedTextEditedByUser == false)
     }
 
     @Test("editing the structured text makes the entry dirty for sync")
@@ -387,12 +387,12 @@ struct EditableFormattedTextTests {
         #expect(draft.needsSync(to: .notion), "the destination holds the old version")
     }
 
-    @Test("older stored content decodes without the new field")
+    @Test("older stored content decodes without a field it never had")
     func decodesLegacyContent() throws {
         let json = #"{"rawText":"hello","formattedText":"- hello"}"#
         let content = try JSONDecoder().decode(EntryContent.self, from: Data(json.utf8))
-        #expect(content.formattedTextEditedByUser == false)
         #expect(content.rawText == "hello")
+        #expect(content.formatterVersion == nil)
     }
 }
 
@@ -409,7 +409,7 @@ struct EntryContentDecodingTests {
 
         #expect(content.rawText == "three things")
         #expect(content.formattedText == "- three things")
-        #expect(content.formattedTextEditedByUser == false)
+        #expect(content.formatterVersion == nil)
     }
 
     @Test("the bare minimum decodes")
@@ -423,7 +423,7 @@ struct EntryContentDecodingTests {
     func roundTrips() throws {
         let original = EntryContent(
             title: "Tuesday", rawText: "raw", formattedText: "- raw",
-            formatterVersion: "wwwt-1", formattedTextEditedByUser: true
+            formatterVersion: "wwwt-1"
         )
         let decoded = try JSONDecoder().decode(
             EntryContent.self, from: JSONEncoder().encode(original)

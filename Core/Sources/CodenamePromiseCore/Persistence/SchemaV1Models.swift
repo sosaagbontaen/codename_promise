@@ -8,24 +8,51 @@ import SwiftData
 /// version that points at the live classes describes whatever those classes happen to say
 /// today — which is to say, nothing.
 ///
-/// That is not a theoretical objection. `SchemaV2` was added pointing at the same four
-/// classes as `SchemaV1`, so both versions hashed identically, and Core Data rejected the
-/// migration outright:
+/// That is not a theoretical objection; it was got wrong twice in a row on a device holding
+/// real entries:
 ///
-/// ```
-/// NSInvalidArgumentException: Duplicate version checksums detected.
-/// ```
+/// 1. Attributes were added to the live models while `SchemaV1` still claimed to describe
+///    them. A store written by the older build no longer matched, and SwiftData refused to
+///    open it — *"Couldn't open your journal"*.
+/// 2. `SchemaV2` was added, pointing at the same four classes as `SchemaV1`. Two versions
+///    describing an identical shape hash identically, and Core Data rejects that outright
+///    with `NSInvalidArgumentException: Duplicate version checksums detected`.
 ///
-/// A version bump with no shape behind it is not a migration, it is a rename. The store on
-/// disk still couldn't be opened; the failure just moved. See ADR-008a.
+/// **The shape below is not a guess.** It was read out of an actual store — its columns from
+/// `PRAGMA table_info`, its stamped version (`1.0.0`) and checksum from `Z_METADATA`. Writing
+/// down what v1 *ought* to have been is how this went wrong the first two times: SwiftData
+/// matches a store to a version by checksum, so a plausible-looking shape that is off by one
+/// attribute fails exactly as loudly as no shape at all.
+///
+/// Relative to today's models, v1 is missing precisely two things:
+///
+/// - `SyncState.externalTitle`
+/// - `EntryContent.formattedTextEditedByUser`
+///
+/// That second one is the trap. `EntryContent` is a `Codable` value stored as one attribute,
+/// which reads like it should be opaque to the schema — it is not. SwiftData flattens a
+/// composite attribute into one column per property (`ZTITLE`, `ZRAWTEXT`, `ZFORMATTEDTEXT`,
+/// `ZFORMATTERVERSION`), so **adding a field to `EntryContent` is a schema change** exactly
+/// like adding one to a `@Model`. The tolerant `init(from:)` on `EntryContent` protects
+/// decoding; it does nothing for the store's checksum.
 ///
 /// The nesting is what keeps the entity names right — SwiftData names entities after the
 /// simple type name, so `SchemaV1.EntryDraft` is still the `EntryDraft` entity, which is what
 /// lets a lightweight stage map v1 rows onto v2 ones.
 ///
-/// **When you add a schema version:** copy the current models into a new
-/// `SchemaVN` namespace *before* changing them, and leave the older namespaces alone forever.
+/// **When you add a schema version:** copy the current models into a new `SchemaVN` namespace
+/// *before* changing them, and leave the older namespaces alone forever.
 extension SchemaV1 {
+
+    /// `EntryContent` as v1 stored it — without `formattedTextEditedByUser`.
+    public struct Content: Codable, Hashable, Sendable {
+        public var title: String?
+        public var rawText: String = ""
+        public var formattedText: String?
+        public var formatterVersion: String?
+
+        public init() {}
+    }
 
     @Model
     public final class EntryDraft {
@@ -33,7 +60,7 @@ extension SchemaV1 {
         public var createdAt: Date = Date()
         public var updatedAt: Date = Date()
         public var entryDateKey: String = CalendarDay.today().rawValue
-        public var content: EntryContent = EntryContent()
+        public var content: SchemaV1.Content = SchemaV1.Content()
 
         @Relationship(deleteRule: .cascade, inverse: \SchemaV1.MediaItem.draft)
         public var media: [SchemaV1.MediaItem] = []
@@ -71,16 +98,9 @@ extension SchemaV1 {
 
         @Relationship public var draft: SchemaV1.EntryDraft?
 
-        public init(
-            id: UUID = UUID(),
-            kindRaw: String = MediaKind.photo.rawValue,
-            relativePath: String,
-            originalSizeBytes: Int = 0
-        ) {
+        public init(id: UUID = UUID(), relativePath: String) {
             self.id = id
-            self.kindRaw = kindRaw
             self.relativePath = relativePath
-            self.originalSizeBytes = originalSizeBytes
         }
     }
 
@@ -97,22 +117,14 @@ extension SchemaV1 {
         public var transcriptionStartedAt: Date?
         public var transcriptionAttemptCount: Int = 0
         public var transcriptionError: String?
+        public var nextTranscriptionAttemptAt: Date?
         public var mergedIntoDraftAt: Date?
-
-        // Note: no `nextTranscriptionAttemptAt`. That is the point — it arrived in v2.
 
         @Relationship public var draft: SchemaV1.EntryDraft?
 
-        public init(
-            id: UUID = UUID(),
-            relativePath: String,
-            durationSeconds: Double = 0,
-            sizeBytes: Int = 0
-        ) {
+        public init(id: UUID = UUID(), relativePath: String) {
             self.id = id
             self.relativePath = relativePath
-            self.durationSeconds = durationSeconds
-            self.sizeBytes = sizeBytes
         }
     }
 
@@ -128,20 +140,19 @@ extension SchemaV1 {
         public var attemptContentHash: String?
         public var uploadedFileIds: [String: String] = [:]
         public var insertedBlockIds: [String] = []
+        public var destinationFingerprint: String?
+        public var appendsToExistingPage: Bool = false
         public var startedAt: Date?
         public var lastSyncedAt: Date?
         public var lastSyncError: String?
         public var attemptCount: Int = 0
 
-        // Note: no `destinationFingerprint`, `appendsToExistingPage` or `externalTitle`.
-        // All three arrived in v2, all three carry defaults, which is what keeps the
-        // migration lightweight.
+        // Note: no `externalTitle`. That is the one attribute v2 adds here.
 
         @Relationship public var draft: SchemaV1.EntryDraft?
 
-        public init(id: UUID = UUID(), targetRaw: String = SyncTarget.notion.rawValue) {
+        public init(id: UUID = UUID()) {
             self.id = id
-            self.targetRaw = targetRaw
         }
     }
 }

@@ -40,11 +40,11 @@ struct MigrationTests {
             let draft = SchemaV1.EntryDraft(
                 entryDateKey: "2026-08-0\(index + 1)"
             )
-            draft.content = EntryContent(
-                title: "Entry \(index)",
-                rawText: "Something that happened on day \(index).",
-                formattedText: index == 0 ? "- Something that happened" : nil
-            )
+            var content = SchemaV1.Content()
+            content.title = "Entry \(index)"
+            content.rawText = "Something that happened on day \(index)."
+            content.formattedText = index == 0 ? "- Something that happened" : nil
+            draft.content = content
             context.insert(draft)
 
             let media = SchemaV1.MediaItem(relativePath: "media/\(index)/original.jpg")
@@ -139,9 +139,37 @@ struct MigrationTests {
             #expect(state.destinationFingerprint == nil)
             #expect(state.externalTitle == nil)
         }
-        for capture in drafts.flatMap(\.audioCaptures) {
-            #expect(capture.nextTranscriptionAttemptAt == nil)
+        for draft in drafts {
+            #expect(draft.formattedTextEditedByUser == false)
         }
+    }
+
+    /// The trap that made this class of bug survive two attempts at fixing it.
+    ///
+    /// `EntryContent` is a `Codable` value stored as one attribute, which reads like it
+    /// should be opaque to the schema. It is not: SwiftData flattens it into one column per
+    /// property, so adding a field to it is a schema change exactly like adding one to a
+    /// `@Model`. A non-optional addition fails the migration outright —
+    ///
+    ///     entity=EntryDraft, attribute=formattedTextEditedByUser,
+    ///     reason=Validation error missing attribute values on mandatory destination attribute
+    ///
+    /// — because a default written in Swift on a property of a composite attribute never
+    /// reaches the entity description. `EntryContent.init(from:)` being tolerant does not
+    /// help; Core Data validates the column before any decoding happens.
+    ///
+    /// `SchemaV1.Content` is frozen at the four fields the shipped store actually has, so
+    /// this test fails the moment someone adds a fifth non-optional one — which is the only
+    /// reason it exists. If it fails, put the property on `EntryDraft` instead.
+    @Test("a field added to EntryContent does not make the store unopenable")
+    func compositeAttributeStaysMigratable() throws {
+        let url = try makeLegacyStore(entries: 1)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let drafts = try openThroughApp(url).allDrafts()
+        let draft = try #require(drafts.first)
+        #expect(draft.content.rawText == "Something that happened on day 0.")
+        #expect(draft.content.formattedText == "- Something that happened")
     }
 
     @Test("a page id recorded by the old build is still there afterwards")

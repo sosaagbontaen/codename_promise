@@ -28,6 +28,18 @@ public final class EntryDraft {
 
     public var content: EntryContent = EntryContent()
 
+    /// Whether the user has hand-edited the structured text.
+    ///
+    /// Provenance, and a guard: once someone has edited the AI's output it is partly their
+    /// writing, so re-running formatting would destroy work and the app warns instead of
+    /// quietly replacing it.
+    ///
+    /// Lives here rather than on `EntryContent` because a default on a property of a
+    /// composite attribute never reaches Core Data — it made the store unopenable. On a
+    /// `@Model` the default is part of the entity description, which is what lets a
+    /// lightweight migration fill it in. See ADR-008a.
+    public var formattedTextEditedByUser: Bool = false
+
     @Relationship(deleteRule: .cascade, inverse: \MediaItem.draft)
     public var media: [MediaItem] = []
 
@@ -105,7 +117,7 @@ public final class EntryDraft {
         content.formatterVersion = formatterVersion
         // A fresh pass replaces whatever was there, hand-edits included — callers are
         // expected to have asked first. See `formattedTextEditedByUser`.
-        content.formattedTextEditedByUser = false
+        formattedTextEditedByUser = false
         touch(now)
     }
 
@@ -116,7 +128,7 @@ public final class EntryDraft {
     /// own entry is not that.
     public func updateFormattedText(_ text: String, now: Date = Date()) {
         content.formattedText = text
-        content.formattedTextEditedByUser = true
+        formattedTextEditedByUser = true
         touch(now)
     }
 

@@ -146,11 +146,41 @@ entries:
    Objective-C exception thrown during store load, so the app does not show an error, it
    terminates. The store was still unopenable; the failure had only moved.
 
-So a fourth rule, and it is the one that has teeth: **a `VersionedSchema` owns frozen copies
-of its models, never the live classes.** Only the newest version may point at the types the
-app uses. Adding a v3 means copying today's models into `SchemaV2Models.swift` *first*, then
-changing them. Frozen copies live in `SchemaV1Models.swift`, nested inside the version's
-namespace so the SwiftData entity names still match.
+3. The frozen `SchemaV1` was then written from *this document* rather than read from a store.
+   It was wrong in both directions — it omitted three attributes the shipped store already
+   had, and it modelled a fourth the store didn't. SwiftData matches a store to a version by
+   **checksum**, so a plausible shape that is off by one attribute fails exactly as loudly as
+   no shape at all, with the same opaque `SwiftDataError error 1`.
+4. With the shape finally correct, the migration ran and failed on its last step:
+
+   ```
+   entity=EntryDraft, attribute=formattedTextEditedByUser,
+   reason=Validation error missing attribute values on mandatory destination attribute
+   ```
+
+   `EntryContent` is a `Codable` value stored as a *single attribute* (ADR-010), which reads
+   like it should be opaque to the schema. It is not: SwiftData flattens it into one column
+   per property — `ZTITLE`, `ZRAWTEXT`, `ZFORMATTEDTEXT`, `ZFORMATTERVERSION`. **Adding a
+   field to `EntryContent` is a schema change**, and a Swift default written on a property of
+   a composite attribute never reaches the entity description, so Core Data sees a mandatory
+   column it cannot fill. `EntryContent.init(from:)` being tolerant does not help; validation
+   happens before any decoding.
+
+So, two more rules:
+
+**A `VersionedSchema` owns frozen copies of its models, never the live classes.** Only the
+newest version may point at the types the app uses. Adding a v3 means copying today's models
+into `SchemaV2Models.swift` *first*, then changing them. Frozen copies live in
+`SchemaV1Models.swift`, nested inside the version's namespace so the entity names still match.
+
+**Write a frozen version from the store, not from memory.** The shape in `SchemaV1Models.swift`
+was read out of a real store — columns from `PRAGMA table_info`, version and checksum from
+`Z_METADATA`. That is the only source of truth about what shipped.
+
+And a corollary for `EntryContent`: **a property that needs a non-nil default belongs on
+`EntryDraft` as a `@Model` attribute**, where the default is part of the entity description
+and a lightweight migration can fill it. `formattedTextEditedByUser` moved there for exactly
+this reason. Optional fields on `EntryContent` remain fine.
 
 A version bump with no shape behind it is not a migration, it is a rename.
 

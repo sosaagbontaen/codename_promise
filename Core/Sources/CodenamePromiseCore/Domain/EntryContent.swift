@@ -24,26 +24,16 @@ public struct EntryContent: Codable, Hashable, Sendable {
     /// when the prompt changes. See ADR-017.
     public var formatterVersion: String?
 
-    /// Whether the user has hand-edited the structured text.
-    ///
-    /// Provenance, and a guard. Once someone has edited the AI's output it is partly their
-    /// writing, so re-running formatting would destroy work — the app warns instead of
-    /// quietly replacing it. Optional with a default so existing stored content decodes
-    /// unchanged (ADR-008a).
-    public var formattedTextEditedByUser: Bool = false
-
     public init(
         title: String? = nil,
         rawText: String = "",
         formattedText: String? = nil,
-        formatterVersion: String? = nil,
-        formattedTextEditedByUser: Bool = false
+        formatterVersion: String? = nil
     ) {
         self.title = title
         self.rawText = rawText
         self.formattedText = formattedText
         self.formatterVersion = formatterVersion
-        self.formattedTextEditedByUser = formattedTextEditedByUser
     }
 
     /// Decoding that tolerates content written before a field existed.
@@ -55,18 +45,24 @@ public struct EntryContent: Codable, Hashable, Sendable {
     ///
     /// Any field added here must be read with `decodeIfPresent` and a default, for the same
     /// reason new SwiftData attributes must carry defaults (ADR-008a).
+    ///
+    /// That is necessary and **not sufficient**. SwiftData flattens this struct into one
+    /// column per property, so adding a field here is a schema change, and Core Data
+    /// validates the new column long before any of this code runs: a non-optional addition
+    /// fails the migration outright with *"missing attribute values on mandatory destination
+    /// attribute"*, and the store won't open at all. A property that needs a non-nil default
+    /// belongs on `EntryDraft` as a `@Model` attribute, where a default actually reaches the
+    /// entity description. See ADR-008a.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         title = try container.decodeIfPresent(String.self, forKey: .title)
         rawText = try container.decodeIfPresent(String.self, forKey: .rawText) ?? ""
         formattedText = try container.decodeIfPresent(String.self, forKey: .formattedText)
         formatterVersion = try container.decodeIfPresent(String.self, forKey: .formatterVersion)
-        formattedTextEditedByUser =
-            try container.decodeIfPresent(Bool.self, forKey: .formattedTextEditedByUser) ?? false
     }
 
     private enum CodingKeys: String, CodingKey {
-        case title, rawText, formattedText, formatterVersion, formattedTextEditedByUser
+        case title, rawText, formattedText, formatterVersion
     }
 
     public var isEmpty: Bool {
