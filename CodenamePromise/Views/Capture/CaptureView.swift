@@ -25,6 +25,10 @@ struct CaptureView: View {
     @State private var showingDatePicker = false
     @State private var showingEntryPicker = false
     @State private var mode: Mode = .raw
+    @State private var selectedMedia = Set<UUID>()
+    @State private var selectingMedia = false
+    @State private var showingMoveSheet = false
+    @State private var moveNotice: String?
 
     /// Which version of the entry is on screen. `rawText` is always editable; the AI's
     /// structured pass is read-only, because it is a view of the user's words rather than a
@@ -32,10 +36,14 @@ struct CaptureView: View {
     enum Mode: String, CaseIterable { case raw = "Yours", formatted = "Structured" }
 
     private let fileStore: MediaFileStore
+    /// Kept so the move sheet can list the other entries. The controller deliberately owns
+    /// one draft, and picking a destination is a question about all of them.
+    private let store: DraftStore
 
     init(draft: EntryDraft, store: DraftStore, fileStore: MediaFileStore) {
         _controller = State(initialValue: CaptureController(draft: draft, store: store))
         self.fileStore = fileStore
+        self.store = store
     }
 
     var body: some View {
@@ -69,6 +77,16 @@ struct CaptureView: View {
             }
         } message: {
             Text("You've edited the structured text by hand. Formatting again will replace it. Your own words in \"Yours\" are untouched either way.")
+        }
+        .sheet(isPresented: $showingMoveSheet) {
+            MoveMediaSheet(
+                count: selectedMedia.count,
+                store: store,
+                fileStore: fileStore,
+                excluding: controller.draftId
+            ) { destination in
+                performMove(to: destination)
+            }
         }
         .sheet(item: $viewingMedia) { viewing in
             MediaViewer(
@@ -198,18 +216,107 @@ struct CaptureView: View {
     }
 
     private var mediaStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(controller.orderedMedia, id: \.id) { item in
-                    MediaThumbnail(item: item, fileStore: fileStore) {
-                        controller.removeMedia(id: item.id, fileStore: fileStore)
-                    } onOpen: {
-                        viewingMedia = ViewingMedia(id: item.id)
+        VStack(alignment: .leading, spacing: 6) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(controller.orderedMedia, id: \.id) { item in
+                        MediaThumbnail(
+                            item: item,
+                            fileStore: fileStore,
+                            selecting: selectingMedia,
+                            isSelected: selectedMedia.contains(item.id)
+                        ) {
+                            controller.removeMedia(id: item.id, fileStore: fileStore)
+                        } onOpen: {
+                            if selectingMedia {
+                                toggleSelection(item.id)
+                            } else {
+                                viewingMedia = ViewingMedia(id: item.id)
+                            }
+                        }
                     }
                 }
             }
+            .frame(height: 88)
+
+            mediaSelectionBar
         }
-        .frame(height: 88)
+    }
+
+    /// Selection lives under the strip rather than in the toolbar: the toolbar belongs to the
+    /// entry, and this acts on the photos.
+    @ViewBuilder
+    private var mediaSelectionBar: some View {
+        if selectingMedia {
+            HStack(spacing: 14) {
+                Button("Done") { endSelection() }
+
+                Button(selectedMedia.count == controller.orderedMedia.count ? "None" : "All") {
+                    if selectedMedia.count == controller.orderedMedia.count {
+                        selectedMedia.removeAll()
+                    } else {
+                        selectedMedia = Set(controller.orderedMedia.map(\.id))
+                    }
+                }
+
+                Spacer()
+
+                Button {
+                    showingMoveSheet = true
+                } label: {
+                    Label("Move \(selectedMedia.count)", systemImage: "arrow.right.doc.on.clipboard")
+                }
+                .disabled(selectedMedia.isEmpty)
+            }
+            .font(.footnote)
+        } else {
+            HStack(spacing: 14) {
+                Button {
+                    selectingMedia = true
+                } label: {
+                    Label("Select", systemImage: "checkmark.circle")
+                }
+                if let moveNotice {
+                    Text(moveNotice)
+                        .foregroundStyle(.secondary)
+                        .transition(.opacity)
+                }
+                Spacer()
+            }
+            .font(.footnote)
+        }
+    }
+
+    private func toggleSelection(_ id: UUID) {
+        if selectedMedia.contains(id) {
+            selectedMedia.remove(id)
+        } else {
+            selectedMedia.insert(id)
+        }
+    }
+
+    /// Confirms in place. The photos vanish from this entry, so saying nothing would look
+    /// exactly like having deleted them.
+    private func performMove(to destination: EntryDraft) {
+        let moved = controller.moveMedia(ids: selectedMedia, to: destination)
+        endSelection()
+        guard moved > 0 else { return }
+        let name = destinationName(destination)
+        withAnimation { moveNotice = "Moved \(moved) to \(name)" }
+        Task {
+            try? await Task.sleep(for: .seconds(4))
+            withAnimation { moveNotice = nil }
+        }
+    }
+
+    private func destinationName(_ draft: EntryDraft) -> String {
+        if let title = draft.content.title, !title.isEmpty { return title }
+        return draft.entryDate.representativeDate().formatted(.dateTime.month().day())
+    }
+
+    private func endSelection() {
+        selectingMedia = false
+        selectedMedia.removeAll()
     }
 
     /// Honest about the current state of the world: the recording is safe, and transcription
@@ -586,6 +693,8 @@ struct CaptureView: View {
 struct MediaThumbnail: View {
     let item: MediaItem
     let fileStore: MediaFileStore
+    var selecting: Bool = false
+    var isSelected: Bool = false
     let onRemove: () -> Void
     var onOpen: () -> Void = {}
 
@@ -595,14 +704,29 @@ struct MediaThumbnail: View {
                 thumbnail
                     .frame(width: 80, height: 80)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay {
+                        if selecting && isSelected {
+                            RoundedRectangle(cornerRadius: 8)
+                                .strokeBorder(Color.accentColor, lineWidth: 3)
+                        }
+                    }
+                    .opacity(selecting && !isSelected ? 0.55 : 1)
             }
             .buttonStyle(.plain)
 
-            Button(action: onRemove) {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.white, .black.opacity(0.6))
+            // While selecting, the corner control is the tick — offering delete in the same
+            // spot would put "remove for good" one slip away from "choose".
+            if selecting {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? Color.accentColor : .white, .black.opacity(0.6))
+                    .padding(2)
+            } else {
+                Button(action: onRemove) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.white, .black.opacity(0.6))
+                }
+                .padding(2)
             }
-            .padding(2)
         }
     }
 

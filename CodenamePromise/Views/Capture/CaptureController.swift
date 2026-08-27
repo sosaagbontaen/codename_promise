@@ -330,6 +330,23 @@ final class CaptureController {
         await compressionChain?.value
     }
 
+    /// Moves selected attachments onto another entry.
+    ///
+    /// Nothing is copied and nothing is deleted — see `DraftStore.moveMedia`. Returns how
+    /// many actually moved so the caller can say so.
+    @discardableResult
+    func moveMedia(ids: Set<UUID>, to destination: EntryDraft) -> Int {
+        commitNow()
+        do {
+            let moved = try store.moveMedia(ids: ids, from: draft, to: destination)
+            saveState = .saved
+            return moved
+        } catch {
+            saveState = .failed(error.localizedDescription)
+            return 0
+        }
+    }
+
     func removeMedia(id: UUID, fileStore: MediaFileStore) {
         do {
             try store.removeMedia(id: id, from: draft, fileStore: fileStore)

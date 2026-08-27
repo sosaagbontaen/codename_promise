@@ -211,6 +211,39 @@ public final class DraftStore {
         return copy
     }
 
+    /// Moves attachments from one entry to another.
+    ///
+    /// Filing photos under the wrong day is easy to do — especially importing a week of them
+    /// at once — and the only fix used to be deleting each one and picking it again from the
+    /// library. That is worse than tedious: `removeMedia` deletes the bytes (ADR-018a), so
+    /// the repair is a real data-loss window if the user doesn't finish it.
+    ///
+    /// Nothing is copied and nothing is deleted. `relativePath` is keyed by the item, not by
+    /// the entry that happens to own it (ADR-007), so a move is purely re-parenting the row —
+    /// which also means it cannot fail halfway and lose a photo.
+    ///
+    /// Both entries are marked as changed, so each re-syncs to its own destination.
+    @discardableResult
+    public func moveMedia(
+        ids: Set<UUID>,
+        from source: EntryDraft,
+        to destination: EntryDraft
+    ) throws -> Int {
+        guard source.id != destination.id, !ids.isEmpty else { return 0 }
+
+        // Ordered so the arrival order matches what the user saw when they selected.
+        let moving = source.orderedMedia.filter { ids.contains($0.id) }
+        guard !moving.isEmpty else { return 0 }
+
+        let now = clock()
+        for item in moving {
+            guard let detached = source.detachMedia(id: item.id, now: now) else { continue }
+            destination.attach(detached, now: now)
+        }
+        try flush()
+        return moving.count
+    }
+
     public func removeMedia(id: UUID, from draft: EntryDraft, fileStore: MediaFileStore?) throws {
         guard let removed = draft.detachMedia(id: id, now: clock()) else { return }
         let paths = removed.ownedRelativePaths

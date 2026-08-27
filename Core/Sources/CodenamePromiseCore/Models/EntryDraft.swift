@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import SwiftData
 
@@ -72,7 +73,27 @@ public final class EntryDraft {
         CalendarDay(rawValue: entryDateKey) ?? CalendarDay(date: createdAt)
     }
 
-    public var contentHash: String { content.contentHash }
+    /// Fingerprint of everything a destination would receive — the text *and* which
+    /// attachments, in what order.
+    ///
+    /// Media used to be left out, which meant attaching, removing or moving a photo never
+    /// marked the entry dirty: the change was saved locally and then silently never synced,
+    /// because `needsSync` compares this against the hash recorded at the last successful
+    /// push. An entry and its Notion page could disagree indefinitely with nothing on screen
+    /// saying so.
+    ///
+    /// Only identity and order go in — never `uploadStatus`, `uploadedFileIds` or
+    /// `compressedRelativePath`. Those are mutated *by* syncing and uploading, so folding
+    /// them in would make a successful sync dirty the entry it just cleaned, which is
+    /// ADR-016's infinite loop arriving by a different door.
+    public var contentHash: String {
+        var hasher = SHA256()
+        hasher.update(data: Data(content.contentHash.utf8))
+        for item in orderedMedia {
+            hasher.update(data: Data(item.id.uuidString.utf8))
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
 
     /// Media in a stable, user-meaningful order. SwiftData to-many relationships are
     /// set-backed, so array order is incidental and can change between launches — always
