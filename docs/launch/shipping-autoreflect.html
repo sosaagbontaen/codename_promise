@@ -748,33 +748,99 @@
   <section>
     <div class="phase-head">
       <span class="phase-num">05</span>
-      <h2>Branding, marketing, and the listing</h2>
+      <h2>Getting it in front of people</h2>
+    </div>
+
+    <h3>Is any of this actually necessary?</h3>
+    <p>Two piles, and they get confused with each other constantly. One is <em>required</em> &mdash; you cannot ship without it, and it has nothing to do with marketing. The other is <em>how anyone finds out</em>, which is optional in the sense that you can skip it and launch to silence.</p>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Thing</th><th>Really necessary?</th><th>Why</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th>Landing page</th>
+            <td><strong>Yes &mdash; but not for marketing</strong></td>
+            <td>Apple needs a privacy policy URL to accept the submission. Notion needs a privacy policy <em>and</em> terms URL to approve a public integration. You need a page whether or not a single visitor ever reads it.</td>
+          </tr>
+          <tr>
+            <th>Beta testers</th>
+            <td><strong>Yes</strong></td>
+            <td>Not a marketing activity. You cannot see your own onboarding &mdash; you know where everything is. Five people who are not you will find things you are structurally blind to.</td>
+          </tr>
+          <tr>
+            <th>Outreach</th>
+            <td>Optional, and it decides everything</td>
+            <td>Skip it and you will get roughly zero installs. The App Store is a checkout counter, not a discovery engine. Nobody browses it for journaling apps.</td>
+          </tr>
+          <tr>
+            <th>Brand identity, logo system, ads</th>
+            <td>No</td>
+            <td>An icon and one consistent colour is a brand at this stage. Paid ads before you know who wants this is setting money on fire.</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
     <h3>Positioning is the whole game</h3>
     <p>The journaling category is enormous and mostly undifferentiated. You are not competing on features &mdash; you are competing on one specific promise nobody else makes credibly, which is that the app will not lose what you said. You have the receipts: an adversarial test suite, a decision register, a migration suite that opens real stores.</p>
     <p>Lead with the failure, not the feature. "Never lose a thought mid-sentence" beats "AI-powered journaling with Notion sync" in every channel, and it is the sentence that will make a certain kind of person immediately understand you built this for yourself.</p>
+    <p>If you take the no-backend path, your second sentence is <strong>"your journal never leaves your phone"</strong> &mdash; which is a marketing message and a compliance answer at the same time, and almost nobody in this category can say it truthfully.</p>
 
     <div class="items">
 
       <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="write-the-one-sentence"><span class="chip chip-required">Required</span><span class="item-title">Write the one sentence, and stop rewriting it</span></label>
+        <p>One sentence that says what it is and who it is for. It goes on the landing page, in the App Store subtitle, and at the top of every post you write. If you cannot write it, you do not yet know what you are selling &mdash; and that is a product problem wearing a marketing costume.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="landing-page-compliance-first"><span class="chip chip-blocker">Blocker</span><span class="item-title">Landing page, because two reviews demand one</span></label>
+        <p>Minimum viable version is one page: the sentence, three screenshots, a "notify me" email field, and links to privacy policy, terms, and a support email. A static page on a free host is fine. This is a Saturday, not a project.</p>
+        <p>It blocks both the Apple submission and the Notion integration review, so it is genuinely first &mdash; ahead of anything else in this phase.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="five-to-ten-beta-testers"><span class="chip chip-required">Required</span><span class="item-title">Five to ten beta testers who are not you</span></label>
+        <p>TestFlight internal testing needs no review and is nearly instant; external testing reaches up to 10,000 people but the first build needs a review pass, so start it earlier than feels necessary.</p>
+        <p><strong>Watch a first run without helping.</strong> Say nothing, take notes, and count the seconds before they understand what to do. Every instinct will scream at you to explain &mdash; the moment you explain, you have destroyed the only data you were going to get.</p>
+        <p>Do not ask "do you like it". Ask what they expected to happen, where they got stuck, and whether they would use it tomorrow. "I like it" is politeness; "I did not know what to tap" is gold.</p>
+      </div>
+
+      <div class="item">
         <label class="item-head"><input type="checkbox" data-task="app-store-listing-craft"><span class="chip chip-required">Required</span><span class="item-title">App Store listing craft</span></label>
-        <p>Screenshots are the entire conversion funnel &mdash; most people never read the description. Show the product doing the thing your positioning claims. The subtitle carries almost as much search weight as the title, and the keyword field is invisible to users, so use it for terms you would never put in prose.</p>
+        <p>Screenshots are the entire conversion funnel &mdash; most people never read the description. Show the product doing the thing your positioning claims, with a caption on each. The subtitle carries almost as much search weight as the title, and the keyword field is invisible to users, so use it for terms you would never put in prose.</p>
       </div>
 
       <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="a-landing-page-that-exists-before-launch"><span class="chip chip-required">Required</span><span class="item-title">A landing page that exists before launch</span></label>
-        <p>You need somewhere to point the privacy policy, the terms, the support contact, and the press. It also collects emails during TestFlight, which is the only audience you will have on day one.</p>
+        <label class="item-head"><input type="checkbox" data-task="pick-three-places-and-be-there-early"><span class="chip chip-decide">Decide</span><span class="item-title">Pick three places, and be there before you need them</span></label>
+        <p>Not a growth strategy &mdash; three specific communities you are genuinely part of, joined weeks before launch so you are a member rather than a drive-by advert. For this product the honest shortlist is Notion communities, journaling communities, and the indie-dev crowd who will care about the engineering story.</p>
+        <p>Turning up on launch day to a community you have never posted in is the single most common way a first launch goes nowhere.</p>
       </div>
 
       <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="where-your-first-hundred-users-come-from"><span class="chip chip-decide">Decide</span><span class="item-title">Where your first hundred users come from</span></label>
-        <p>Answer this specifically before launch, not after. For this product the honest answer is probably: people who already journal and already use Notion, reached through communities you are genuinely part of. Write the build-in-public story &mdash; the six years of WWWT, the founding bug, the migration that nearly ate your journal. That story is more distinctive than the app.</p>
+        <label class="item-head"><input type="checkbox" data-task="write-the-story-not-the-announcement"><span class="chip chip-decide">Decide</span><span class="item-title">Write the story, not the announcement</span></label>
+        <p>"I made a journaling app" is ignorable. "I journaled every day for six years, my tooling kept eating my dictation, so I built one that cannot" is a thing people forward to a friend.</p>
+        <p>You have unusually good material here: the founding bug, the AI that had to be stopped from rewriting your voice, a migration that nearly ate your own journal and the test suite that now prevents it. Most people launching an app have nothing this specific to say.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="launch-more-than-once"><span class="chip chip-decide">Decide</span><span class="item-title">Plan to launch more than once</span></label>
+        <p>Launch is a habit, not an event. The single-day-big-bang model is how first-time founders end up demoralised: one post, a quiet afternoon, and the conclusion that nobody wants it.</p>
+        <p>Ship, tell one community, learn, improve, tell the next. Product Hunt and similar are worth doing <em>after</em> you have a few hundred people who like it, not as the opening move &mdash; they reward an audience you already have.</p>
       </div>
 
       <div class="item">
         <label class="item-head"><input type="checkbox" data-task="visual-identity"><span class="chip chip-later">Later</span><span class="item-title">Visual identity</span></label>
         <p>An icon, a type choice, and a colour you use consistently. You do not need a brand system. You need to not look like a weekend project in a grid of competitors.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="what-not-to-do"><span class="chip chip-later">Skip</span><span class="item-title">What to deliberately not do</span></label>
+        <p>Paid ads before you know who converts. Press releases &mdash; no journalist reads them. Buying followers or "influencer" outreach for a $3 app. A Discord server with no members. Rebuilding the landing page a fourth time because it is more comfortable than talking to people.</p>
+        <p>That last one is the real risk for an engineer. Polishing is work that feels productive and reaches nobody.</p>
       </div>
 
     </div>
