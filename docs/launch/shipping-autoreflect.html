@@ -1,0 +1,942 @@
+<title>Shipping AutoReflect</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+  :root {
+    --paper:      #F5F6F5;
+    --surface:    #FFFFFF;
+    --ink:        #14181B;
+    --ink-soft:   #3D4643;
+    --muted:      #667069;
+    --rule:       #DCE0DD;
+    --rule-soft:  #E9ECE9;
+    --accent:     #0E6E5B;
+    --accent-bg:  #E3EDE9;
+    --critical:   #A63421;
+    --critical-bg:#F6E4E0;
+    --warn:       #8A6516;
+    --warn-bg:    #F4EBDC;
+    --done:       #4A6B4F;
+    --done-bg:    #E6EDE6;
+
+    --measure: 68ch;
+    --step--1: 0.8125rem;
+    --step-0:  1.0625rem;
+    --step-1:  1.25rem;
+    --step-2:  1.5rem;
+    --step-3:  2rem;
+    --step-4:  2.75rem;
+
+    --sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", sans-serif;
+    --serif: "Newsreader", ui-serif, Georgia, "Times New Roman", serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #0F1312;
+      --surface:    #161B1A;
+      --ink:        #E4E9E6;
+      --ink-soft:   #B4BDB8;
+      --muted:      #838E88;
+      --rule:       #2A312F;
+      --rule-soft:  #212725;
+      --accent:     #57C4A3;
+      --accent-bg:  #142A25;
+      --critical:   #E08976;
+      --critical-bg:#2E1B17;
+      --warn:       #D6A85C;
+      --warn-bg:    #2A2317;
+      --done:       #8FB394;
+      --done-bg:    #1B2620;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:      #0F1312;
+    --surface:    #161B1A;
+    --ink:        #E4E9E6;
+    --ink-soft:   #B4BDB8;
+    --muted:      #838E88;
+    --rule:       #2A312F;
+    --rule-soft:  #212725;
+    --accent:     #57C4A3;
+    --accent-bg:  #142A25;
+    --critical:   #E08976;
+    --critical-bg:#2E1B17;
+    --warn:       #D6A85C;
+    --warn-bg:    #2A2317;
+    --done:       #8FB394;
+    --done-bg:    #1B2620;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: var(--step-0);
+    line-height: 1.65;
+    margin: 0;
+    padding: clamp(2rem, 6vw, 5rem) clamp(1.1rem, 5vw, 2rem) 6rem;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: var(--measure); margin: 0 auto; }
+
+  /* ---------- masthead ---------- */
+
+  .masthead { display: flex; flex-direction: column; gap: 1.1rem; }
+
+  .kicker {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: clamp(2.25rem, 7vw, var(--step-4));
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  .standfirst {
+    font-family: var(--serif);
+    font-size: var(--step-1);
+    line-height: 1.5;
+    color: var(--ink-soft);
+    margin: 0;
+    max-width: 58ch;
+  }
+
+  .masthead-rule {
+    border: 0;
+    border-top: 2px solid var(--ink);
+    margin: 2rem 0 0;
+  }
+
+  /* ---------- sections ---------- */
+
+  section { margin-top: 3.5rem; }
+
+  .phase-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.9rem;
+    padding-bottom: 0.6rem;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 1.6rem;
+  }
+
+  .phase-num {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    flex: none;
+  }
+
+  h2 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: var(--step-3);
+    line-height: 1.15;
+    letter-spacing: -0.015em;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  h3 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: var(--step-2);
+    line-height: 1.25;
+    margin: 2.5rem 0 0.75rem;
+    text-wrap: balance;
+  }
+
+  p { margin: 0 0 1rem; }
+  p:last-child { margin-bottom: 0; }
+
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+
+  strong { font-weight: 600; }
+  em { font-style: italic; }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.87em;
+    background: var(--rule-soft);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+    word-break: break-word;
+  }
+
+  /* ---------- the lede callout ---------- */
+
+  .lede {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--critical);
+    padding: 1.5rem clamp(1.1rem, 4vw, 1.9rem);
+    margin-top: 2.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+  }
+
+  .lede h2 { font-size: var(--step-2); }
+
+  /* ---------- checklist items ---------- */
+
+  .items { display: flex; flex-direction: column; }
+
+  .item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 1.35rem 0;
+    border-top: 1px solid var(--rule-soft);
+  }
+  .item:first-child { border-top: 1px solid var(--rule); }
+
+  .item-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+  }
+
+  .item-title {
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: var(--step-0);
+    line-height: 1.4;
+    margin: 0;
+  }
+
+  .chip {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    padding: 0.2em 0.5em;
+    border-radius: 2px;
+    white-space: nowrap;
+    flex: none;
+  }
+
+  .chip-blocker  { background: var(--critical-bg); color: var(--critical); }
+  .chip-required { background: var(--warn-bg);     color: var(--warn); }
+  .chip-decide   { background: var(--accent-bg);   color: var(--accent); }
+  .chip-later    { background: var(--rule-soft);   color: var(--muted); }
+  .chip-done     { background: var(--done-bg);     color: var(--done); }
+
+  .item p { color: var(--ink-soft); margin: 0; }
+  .item p + p { margin-top: 0.6rem; }
+
+  .where {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--muted);
+  }
+
+  /* ---------- table ---------- */
+
+  .scroll { overflow-x: auto; margin: 1.5rem 0; }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 34rem;
+    font-size: var(--step--1);
+  }
+
+  th, td {
+    text-align: left;
+    padding: 0.75rem 0.9rem 0.75rem 0;
+    border-bottom: 1px solid var(--rule-soft);
+    vertical-align: top;
+  }
+
+  thead th {
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: 0.6875rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--rule);
+  }
+
+  tbody th {
+    font-family: var(--sans);
+    font-weight: 600;
+    color: var(--ink);
+    padding-right: 1.2rem;
+  }
+
+  td { color: var(--ink-soft); }
+
+  .rec {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    color: var(--accent);
+    display: block;
+    margin-top: 0.3rem;
+  }
+
+  /* ---------- done list ---------- */
+
+  .done-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: 0.4rem 2rem;
+    margin: 1.25rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .done-grid li {
+    display: flex;
+    gap: 0.6rem;
+    align-items: baseline;
+    padding: 0.35rem 0;
+    color: var(--ink-soft);
+    font-size: var(--step--1);
+  }
+
+  .done-grid li::before {
+    content: "\2713";
+    color: var(--done);
+    font-weight: 600;
+    flex: none;
+  }
+
+  /* ---------- next steps ---------- */
+
+  ol.steps {
+    counter-reset: step;
+    list-style: none;
+    padding: 0;
+    margin: 1.5rem 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+  }
+
+  ol.steps li {
+    counter-increment: step;
+    display: grid;
+    grid-template-columns: 2.1rem 1fr;
+    gap: 0.8rem;
+    align-items: baseline;
+  }
+
+  ol.steps li::before {
+    content: counter(step, decimal-leading-zero);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  ol.steps p { color: var(--ink-soft); }
+  ol.steps strong { color: var(--ink); }
+
+  /* ---------- closing ---------- */
+
+  .closing {
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 2px solid var(--ink);
+    font-family: var(--serif);
+    font-size: var(--step-1);
+    line-height: 1.55;
+    color: var(--ink-soft);
+  }
+
+  .closing p { margin-bottom: 1rem; }
+
+  /* ---------- checkable items ---------- */
+
+  .item-head {
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .item-head input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: none;
+    width: 1.15rem;
+    height: 1.15rem;
+    margin: 0;
+    border: 1.5px solid var(--muted);
+    border-radius: 3px;
+    background: var(--surface);
+    position: relative;
+    top: 0.2rem;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+  }
+
+  .item-head input[type="checkbox"]:checked {
+    background: var(--done);
+    border-color: var(--done);
+  }
+
+  .item-head input[type="checkbox"]:checked::after {
+    content: "";
+    position: absolute;
+    left: 0.34rem;
+    top: 0.12rem;
+    width: 0.28rem;
+    height: 0.6rem;
+    border: solid var(--surface);
+    border-width: 0 2px 2px 0;
+    transform: rotate(42deg);
+  }
+
+  .item-head input[type="checkbox"]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .item.is-done .item-title {
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+    text-decoration-color: var(--muted);
+    color: var(--muted);
+  }
+
+  .item.is-done p,
+  .item.is-done .chip {
+    opacity: 0.55;
+  }
+
+  /* ---------- progress meter ---------- */
+
+  .progress {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem 1rem;
+    margin-top: 2rem;
+    padding: 0.9rem 0;
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .progress-count {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+
+  .progress-count b { color: var(--accent); font-weight: 600; }
+
+  .progress-track {
+    flex: 1 1 10rem;
+    height: 4px;
+    background: var(--rule-soft);
+    border-radius: 2px;
+    overflow: hidden;
+    min-width: 8rem;
+  }
+
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    transition: width 0.25s ease;
+  }
+
+  .progress-reset {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: none;
+    border: 0;
+    padding: 0.2em 0;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .progress-reset:hover { color: var(--ink); }
+  .progress-reset:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .living-note {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--muted);
+    margin-top: 0.9rem;
+  }
+
+  ol.steps li.is-done p { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--muted); }
+
+  ol.steps label {
+    display: grid;
+    grid-template-columns: 1.15rem 1fr;
+    gap: 0.7rem;
+    align-items: baseline;
+    cursor: pointer;
+  }
+
+  ol.steps input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 1.15rem;
+    height: 1.15rem;
+    margin: 0;
+    border: 1.5px solid var(--muted);
+    border-radius: 3px;
+    background: var(--surface);
+    position: relative;
+    top: 0.2rem;
+    cursor: pointer;
+  }
+  ol.steps input[type="checkbox"]:checked { background: var(--done); border-color: var(--done); }
+  ol.steps input[type="checkbox"]:checked::after {
+    content: "";
+    position: absolute;
+    left: 0.34rem; top: 0.12rem;
+    width: 0.28rem; height: 0.6rem;
+    border: solid var(--surface);
+    border-width: 0 2px 2px 0;
+    transform: rotate(42deg);
+  }
+  ol.steps input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="kicker">Release readiness &middot; v0.1 &rarr; 1.0</div>
+    <h1>Shipping AutoReflect</h1>
+    <p class="standfirst">What stands between a build that runs on your phone and a product other people trust with six years of their life.</p>
+  </header>
+  <hr class="masthead-rule">
+
+  <div class="progress">
+    <span class="progress-count"><b id="done-count">0</b> of <span id="total-count">0</span> done</span>
+    <span class="progress-track"><span class="progress-fill" id="progress-fill"></span></span>
+    <button type="button" class="progress-reset" id="reset-ticks">Clear my ticks</button>
+  </div>
+  <p class="living-note">A working checklist. Tick anything off yourself &mdash; it is remembered in this browser. Items already ticked when you open it are ones that are done and committed.</p>
+
+  <div class="lede">
+    <div class="kicker" style="color: var(--critical)">Read this one first</div>
+    <h2>Your first tenet stops at the edge of the device</h2>
+    <p><strong>Never lose what the user said or wrote.</strong> The code honors that beautifully &mdash; explicit flushes, durable audio before transcription, resumable sync, a migration suite that now opens real stores. All of it protects against process death, interrupted syncs, and restore-from-backup.</p>
+    <p>None of it protects against a lost phone. There is no account, no cloud copy, no export. A user who drops their iPhone in a lake loses everything, and they will have chosen your app <em>specifically</em> because you promised they wouldn't.</p>
+    <p>That gap is invisible from inside the codebase, because the code is correct. It is glaring from outside it. Whatever else you do, do not ship a durability-first journal with no way to get the journal back.</p>
+  </div>
+
+  <section>
+    <div class="phase-head">
+      <span class="phase-num">00</span>
+      <h2>Where you actually are</h2>
+    </div>
+    <p>More of the hard part is done than you probably think. This is not flattery &mdash; most first apps ship without any of the following, and it is the reason the gap list below is as short as it is.</p>
+    <ul class="done-grid">
+      <li>Durability model with adversarial tests</li>
+      <li>Versioned schema + verified migrations</li>
+      <li>Idempotent, resumable sync</li>
+      <li>Notion OAuth, tokens server-side only</li>
+      <li>Documented decision register</li>
+      <li>Microphone + photo usage strings</li>
+      <li>Apple Developer team configured</li>
+      <li>Offline-first with no backend required</li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="phase-head">
+      <span class="phase-num">01</span>
+      <h2>Decide the shape before you build anything</h2>
+    </div>
+    <p>Almost every item further down changes depending on this one choice, so make it first. Your backend today is explicitly single-tenant &mdash; one Notion token in one JSON file, one shared Groq key, an in-memory idempotency store. That is honest for one person and cannot serve strangers. You have three ways out.</p>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Shape</th><th>What it means</th><th>Cost to you</th><th>Trade</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th>A &middot; No backend<span class="rec">Recommended for 1.0</span></th>
+            <td>On-device transcription and formatting. Notion OAuth via a thin stateless proxy that holds nothing.</td>
+            <td>Zero per-user cost. No servers to run, breach, or scale.</td>
+            <td>AI quality below Groq. Real engineering to swap the providers.</td>
+          </tr>
+          <tr>
+            <th>B &middot; Bring your own key</th>
+            <td>Each user pastes their own Groq key; you never touch inference.</td>
+            <td>Near zero. No inference bill, no shared quota.</td>
+            <td>Brutal onboarding. Caps you at a few hundred technical users.</td>
+          </tr>
+          <tr>
+            <th>C &middot; Full SaaS</th>
+            <td>Multi-tenant backend, accounts, subscriptions, you pay for inference.</td>
+            <td>Months of work, ongoing ops, real liability.</td>
+            <td>The only shape that becomes a business. Also the only one that can bankrupt you on a bad month.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><strong>My honest read:</strong> ship A. Your product thesis is <em>local-first</em>, and the most aligned version of it has no server at all. It removes multi-tenancy, inference cost, key theft, GDPR data-processor obligations, and uptime from your first release simultaneously. You can add C later once you know people want it &mdash; you cannot easily un-ship a server holding strangers' journals.</p>
+    <p>Concretely: Apple's on-device speech recognition handles dictation, and on newer devices Apple's on-device language model can do the structuring pass your <code>wordguard</code> already polices. Keep the guard &mdash; it becomes even more important when the model is smaller.</p>
+  </section>
+
+  <section>
+    <div class="phase-head">
+      <span class="phase-num">02</span>
+      <h2>Blockers in the code</h2>
+    </div>
+
+    <div class="items">
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="backup-export-and-restore"><span class="chip chip-blocker">Blocker</span><span class="item-title">Backup, export, and restore</span></label>
+        <p>The lede above. Minimum viable version: CloudKit sync (you deliberately kept the schema compatible &mdash; ADR&#8209;008b) plus a plain "export everything" that writes markdown and media to Files. The export alone is a weekend and closes the worst of it.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="the-app-is-called-codenamepromise-on-the-hom"><span class="chip chip-blocker">Blocker</span><span class="item-title">The app is called CodenamePromise on the home screen</span></label>
+        <p><code>PRODUCT_NAME</code> is <code>$(TARGET_NAME)</code>, so the icon label is your codename. Set a display name, and decide whether the bundle id stays <code>com.codenamepromise.journal</code> &mdash; it is permanent once you ship and cannot be changed afterward.</p>
+        <p class="where">CodenamePromise.xcodeproj &middot; Config/Info.plist</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="there-is-no-app-icon"><span class="chip chip-blocker">Blocker</span><span class="item-title">There is no app icon</span></label>
+        <p>No asset catalog exists in the target at all. App Store Connect rejects submissions without a 1024&times;1024 icon. This is a hard stop and easy to forget until the upload fails.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="shared-api-key-baked-into-the-app"><span class="chip chip-blocker">Blocker</span><span class="item-title">Shared API key baked into the app</span></label>
+        <p>Only relevant if you keep a backend. <code>CP_API_KEY</code> is one shared secret; anyone can pull it out of the binary in minutes and spend your Groq quota. A shared secret in a distributed client is not authentication.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="onboarding-and-a-first-run-that-explains-its"><span class="chip chip-required">Required</span><span class="item-title">Onboarding, and a first-run that explains itself</span></label>
+        <p>Right now a new user opens an empty list. They need to learn in about twenty seconds that capture is instant, that Notion is optional, and that their words never leave the device unless they say so. That last point is your differentiator &mdash; say it out loud.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="crash-reporting-and-a-way-to-hear-about-fail"><span class="chip chip-required">Required</span><span class="item-title">Crash reporting and a way to hear about failures</span></label>
+        <p>You currently learn about bugs because you are the only user. Add crash reporting before strangers arrive, or you will be debugging from one-star reviews.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="version-numbers-that-mean-something"><span class="chip chip-required">Required</span><span class="item-title">Version numbers that mean something</span></label>
+        <p><code>MARKETING_VERSION</code> is <code>0.1</code>. Pick a scheme now and automate the build number, because you will be uploading a lot of builds and App Store Connect rejects duplicates.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="multi-tenancy-and-the-in-memory-idempotency-"><span class="chip chip-later">If you keep a backend</span><span class="item-title">Multi-tenancy and the in-memory idempotency store</span></label>
+        <p>Per-user rows, encrypted token column, and Redis or Postgres behind the idempotency cache &mdash; your own README already flags both. Only on path C.</p>
+        <p class="where">backend/app/connections.py &middot; backend/app/idempotency.py</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="phase-head">
+      <span class="phase-num">03</span>
+      <h2>Legal and compliance</h2>
+    </div>
+    <p>This is the part first-time founders skip and then scramble on during review. None of it is hard; all of it takes calendar time.</p>
+
+    <div class="items">
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="privacy-policy-at-a-public-url"><span class="chip chip-blocker">Blocker</span><span class="item-title">Privacy policy at a public URL</span></label>
+        <p>Every app needs one, no exceptions, and the URL goes in App Store Connect before you can submit. It must actually describe what you do &mdash; including, if you keep a backend, that journal text and audio are sent to a third-party inference provider.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="app-privacy-questionnaire"><span class="chip chip-blocker">Blocker</span><span class="item-title">App privacy questionnaire</span></label>
+        <p>Apple's privacy labels. Answer honestly and narrowly &mdash; "data not collected" is a genuine competitive advantage for a journal, and it is only available to you on path A. Getting this wrong is a compliance problem, not a marketing one.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="notion-public-integration-review"><span class="chip chip-required">Required</span><span class="item-title">Notion public integration review</span></label>
+        <p>Your OAuth integration is currently internal to your own workspace. Distributing to other people's workspaces means making it public, which requires a privacy policy URL, terms URL, and Notion's own review. Start this early &mdash; it is a queue you do not control.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="export-compliance-declaration"><span class="chip chip-required">Required</span><span class="item-title">Export compliance declaration</span></label>
+        <p>You use HTTPS, so you are almost certainly in the exempt category, but you must still declare it. Set <code>ITSAppUsesNonExemptEncryption</code> in the plist so you are not answering the question on every single upload.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="a-company-or-your-own-name"><span class="chip chip-decide">Decide</span><span class="item-title">A company, or your own name</span></label>
+        <p>You can ship as an individual &mdash; the App Store then displays your legal name publicly, which some people mind. An LLC costs a few hundred dollars, puts a business name on the listing, and separates your personal assets from the product. For a journaling app holding sensitive personal data, that separation is worth more than usual.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="trademark-search-on-the-name"><span class="chip chip-decide">Decide</span><span class="item-title">Trademark search on the name</span></label>
+        <p>Before you spend anything on branding, search the trademark register and the App Store. "AutoReflect" is a plausible-sounding name, which is exactly the kind that turns out to be taken. Finding out after launch is expensive.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="gdpr-and-the-inference-provider"><span class="chip chip-later">If EU users</span><span class="item-title">GDPR and the inference provider</span></label>
+        <p>On path C you become a data controller processing sensitive personal data, and Groq becomes your processor &mdash; which needs a data processing agreement and a real answer on retention. Read their terms before you promise anything in yours. On path A this row disappears entirely, which tells you something.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="in-app-account-deletion"><span class="chip chip-later">If accounts</span><span class="item-title">In-app account deletion</span></label>
+        <p>If you ever offer account creation, Apple requires deletion from inside the app &mdash; not an email to support. Another row that only exists on path C.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="phase-head">
+      <span class="phase-num">04</span>
+      <h2>Security</h2>
+    </div>
+    <p>You are already ahead here &mdash; tokens never touch the device, the API key lives in the Keychain, media is contained. What is left is mostly about the transition from one user to many.</p>
+
+    <div class="items">
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="decide-whether-the-journal-is-encrypted-at-r"><span class="chip chip-required">Required</span><span class="item-title">Decide whether the journal is encrypted at rest</span></label>
+        <p>SwiftData files inherit iOS file protection, which is meaningful but tied to the device passcode. For a product whose pitch is "your private journal," being able to state your encryption position clearly is part of the pitch. Decide it deliberately rather than inheriting a default.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="a-way-for-someone-to-report-a-vulnerability"><span class="chip chip-required">Required</span><span class="item-title">A way for someone to report a vulnerability</span></label>
+        <p>A security contact and a stated response commitment. It costs nothing and is the difference between a researcher emailing you and a researcher tweeting.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="rate-limiting-log-hygiene-dependency-scannin"><span class="chip chip-later">If you keep a backend</span><span class="item-title">Rate limiting, log hygiene, dependency scanning</span></label>
+        <p>Per-user rate limits so one account cannot drain your inference budget; an audit that journal text never reaches your logs; automated dependency alerts. Also run your own <code>/security-review</code> against the diff before each release.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="phase-head">
+      <span class="phase-num">05</span>
+      <h2>Branding, marketing, and the listing</h2>
+    </div>
+
+    <h3>Positioning is the whole game</h3>
+    <p>The journaling category is enormous and mostly undifferentiated. You are not competing on features &mdash; you are competing on one specific promise nobody else makes credibly, which is that the app will not lose what you said. You have the receipts: an adversarial test suite, a decision register, a migration suite that opens real stores.</p>
+    <p>Lead with the failure, not the feature. "Never lose a thought mid-sentence" beats "AI-powered journaling with Notion sync" in every channel, and it is the sentence that will make a certain kind of person immediately understand you built this for yourself.</p>
+
+    <div class="items">
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="app-store-listing-craft"><span class="chip chip-required">Required</span><span class="item-title">App Store listing craft</span></label>
+        <p>Screenshots are the entire conversion funnel &mdash; most people never read the description. Show the product doing the thing your positioning claims. The subtitle carries almost as much search weight as the title, and the keyword field is invisible to users, so use it for terms you would never put in prose.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="a-landing-page-that-exists-before-launch"><span class="chip chip-required">Required</span><span class="item-title">A landing page that exists before launch</span></label>
+        <p>You need somewhere to point the privacy policy, the terms, the support contact, and the press. It also collects emails during TestFlight, which is the only audience you will have on day one.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="where-your-first-hundred-users-come-from"><span class="chip chip-decide">Decide</span><span class="item-title">Where your first hundred users come from</span></label>
+        <p>Answer this specifically before launch, not after. For this product the honest answer is probably: people who already journal and already use Notion, reached through communities you are genuinely part of. Write the build-in-public story &mdash; the six years of WWWT, the founding bug, the migration that nearly ate your journal. That story is more distinctive than the app.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="visual-identity"><span class="chip chip-later">Later</span><span class="item-title">Visual identity</span></label>
+        <p>An icon, a type choice, and a colour you use consistently. You do not need a brand system. You need to not look like a weekend project in a grid of competitors.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="phase-head">
+      <span class="phase-num">06</span>
+      <h2>Money</h2>
+    </div>
+
+    <div class="items">
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="know-your-marginal-cost-before-you-price"><span class="chip chip-decide">Decide</span><span class="item-title">Know your marginal cost before you price</span></label>
+        <p>On path C every minute of dictation costs you money and every formatting call costs you money. Measure your own usage for a month &mdash; minutes transcribed, formatting calls, tokens &mdash; and compute the cost of a heavy user, not an average one. Journalers are not average; the people who love this app most will use it daily.</p>
+        <p>A flat subscription against a variable cost is how indie apps quietly lose money on their best customers. On path A this problem does not exist, which is another argument for A.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="the-model-paid-subscription-or-free-with-a-p"><span class="chip chip-decide">Decide</span><span class="item-title">The model: paid, subscription, or free with a paid tier</span></label>
+        <p>A one-time purchase suits a local-first tool with no running costs and sets expectations honestly. A subscription is the only thing that funds ongoing inference. Free with a paid tier gets the most installs and the most support burden. Pick the one that matches the shape you chose in phase 01 &mdash; they are not independent decisions.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="tax-banking-and-paid-agreements"><span class="chip chip-later">Later</span><span class="item-title">Tax, banking, and paid agreements</span></label>
+        <p>App Store Connect will not pay you until the paid apps agreement is signed and tax and banking details are complete. It is tedious, it involves forms, and it takes longer than you expect. Start it the week you decide to charge.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="phase-head">
+      <span class="phase-num">07</span>
+      <h2>The release cycle you asked for</h2>
+    </div>
+    <p>This is what turns "I could upload it today" into a practice you can sustain.</p>
+
+    <div class="items">
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="testflight-before-the-store-always"><span class="chip chip-required">Required</span><span class="item-title">TestFlight before the store, always</span></label>
+        <p>Internal testing needs no review and is nearly instant. External testing takes a review pass but lets you hand builds to real people. Every release goes through TestFlight first &mdash; including the ones you are sure about, especially the ones you are sure about.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="ci-that-runs-your-suites-on-every-push"><span class="chip chip-required">Required</span><span class="item-title">CI that runs your suites on every push</span></label>
+        <p>You have 150 Swift and 129 Python tests that run in under three seconds combined. That is a gift &mdash; wire them to run automatically so a red build stops a release rather than a user finding it. Your migration suite in particular should gate every single release.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="a-release-checklist-you-actually-follow"><span class="chip chip-required">Required</span><span class="item-title">A release checklist you actually follow</span></label>
+        <p>Bump version, run both suites, migration test against a fixture from the <em>previous shipped build</em>, TestFlight, soak for a few days, submit, then tag the commit. Write it down. You will skip steps from memory at 1am and that is precisely when the schema breaks.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="capture-a-store-fixture-every-time-you-ship"><span class="chip chip-required">Required</span><span class="item-title">Capture a store fixture every time you ship</span></label>
+        <p>This one is specific to you and you have just lived through why. The moment a version ships, capture a store written by it and check it in. Without that, the next migration is untested in exactly the way the last one was.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="cadence-and-phased-release"><span class="chip chip-decide">Decide</span><span class="item-title">Cadence, and phased release</span></label>
+        <p>Pick a rhythm you can hold &mdash; every two weeks is plenty. Use App Store phased release so a bad build reaches a fraction of users before everyone. Keep the ability to halt a rollout, and know how to use it before you need to.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="phase-head">
+      <span class="phase-num">08</span>
+      <h2>What to do in the next two weeks</h2>
+    </div>
+    <p>Everything above is the map. This is the next leg.</p>
+
+    <ol class="steps">
+      <li><label><input type="checkbox" data-task="step-choose-the-shape-a-b-or-c-nothing-el"><p><strong>Choose the shape.</strong> A, B, or C. Nothing else can be sequenced until this is decided, and half the list disappears depending on your answer.</p></label></li>
+      <li><label><input type="checkbox" data-task="step-search-the-trademark-register-for-the-na"><p><strong>Search the trademark register</strong> for the name, before you draw an icon or buy a domain.</p></label></li>
+      <li><label><input type="checkbox" data-task="step-build-export-markdown-plus-media-out-t"><p><strong>Build export.</strong> Markdown plus media, out to Files. It is the smallest thing that makes your first tenet true off-device, and you can ship it this week.</p></label></li>
+      <li><label><input type="checkbox" data-task="step-fix-the-name-and-make-an-icon-display-n"><p><strong>Fix the name and make an icon.</strong> Display name, bundle id decision, 1024&times;1024. These are hard stops at submission and they are boring, so they get deferred.</p></label></li>
+      <li><label><input type="checkbox" data-task="step-write-the-privacy-policy-and-stand-up-a"><p><strong>Write the privacy policy and stand up a landing page.</strong> Two pages. They unblock both Apple and Notion, and both are queues you do not control.</p></label></li>
+      <li><label><input type="checkbox" data-task="step-get-a-build-into-testflight-with-five-pe"><p><strong>Get a build into TestFlight</strong> with five people who are not you. Their first ten minutes will teach you more than another month of building.</p></label></li>
+    </ol>
+  </section>
+
+  <div class="closing">
+    <p>One last thing worth saying plainly. The gap list above is short because you did the hard part first &mdash; the durability work, the tests, the decision register. Most people ship the features and discover the foundations later, usually from a support inbox.</p>
+    <p>You did it the other way round. That is a real advantage, and it is worth knowing that you have it.</p>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var KEY = "autoreflect-launch-ticks-v1";
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('input[type="checkbox"][data-task]'));
+
+  function load() {
+    try {
+      var raw = window.localStorage.getItem(KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function save(state) {
+    try {
+      window.localStorage.setItem(KEY, JSON.stringify(state));
+    } catch (e) {
+      /* private browsing, or storage full &mdash; the page still works, it just forgets. */
+    }
+  }
+
+  var state = load();
+
+  // An item ticked in the markup is done and committed, and stale local state must
+  // never un-tick it. Local ticks are additive only.
+  boxes.forEach(function (box) {
+    if (box.hasAttribute("checked")) { box.checked = true; }
+    else if (state[box.dataset.task]) { box.checked = true; }
+    paint(box);
+  });
+
+  function paint(box) {
+    var row = box.closest(".item") || box.closest("li");
+    if (row) { row.classList.toggle("is-done", box.checked); }
+  }
+
+  function tally() {
+    var items = boxes.filter(function (b) { return b.closest(".item"); });
+    var done = items.filter(function (b) { return b.checked; }).length;
+    var total = items.length;
+    document.getElementById("done-count").textContent = String(done);
+    document.getElementById("total-count").textContent = String(total);
+    document.getElementById("progress-fill").style.width =
+      total ? (done / total * 100).toFixed(1) + "%" : "0%";
+  }
+
+  boxes.forEach(function (box) {
+    box.addEventListener("change", function () {
+      if (box.checked) { state[box.dataset.task] = true; }
+      else { delete state[box.dataset.task]; }
+      save(state);
+      paint(box);
+      tally();
+    });
+  });
+
+  document.getElementById("reset-ticks").addEventListener("click", function () {
+    state = {};
+    save(state);
+    boxes.forEach(function (box) {
+      box.checked = box.hasAttribute("checked");
+      paint(box);
+    });
+    tally();
+  });
+
+  tally();
+})();
+</script>
