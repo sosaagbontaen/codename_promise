@@ -209,6 +209,35 @@ return `Sendable` DTOs, never models; callers re-fetch by `UUID`. Swift 6 langua
 on, so the unsafe shape fails to compile rather than failing in the field. Journal-sized
 data does not need a background context — `@ModelActor` is available if that changes.
 
+**Extended to the view layer**, after a crash on deleting an entry:
+
+```
+Fatal error: This backing data was detached from a context without resolving
+attribute faults ... \EntryDraft.content
+```
+
+A deleted `@Model` is detached from its context and traps on any attribute read. SwiftUI
+keeps a deleted row's view alive to animate it away and re-evaluates its body while doing so,
+so `DraftRow`, holding `let draft: EntryDraft`, read `content` on a model that no longer had
+one. Removing the row from the array first only narrows that window — the retained view
+still points at the model.
+
+Two things were wrong, and the second was hiding under the first:
+
+1. `NavigationLink { CaptureView(...) }` stores its destination as a *stored property*, so
+   building a row built a whole `CaptureView`, and `CaptureController.init` reads
+   `draft.content` four times. Opening the list constructed 21 controllers across 10 drafts
+   without navigating anywhere. Rows now push a `Hashable` value and
+   `.navigationDestination(for:)` resolves it by `UUID`, so the editor is built once, when it
+   is actually opened.
+2. The row itself held the model. It now takes `DraftSummary` — a value snapshot taken in
+   `reload()` while the models are known-good.
+
+**The rule:** the view layer renders from snapshots and acts on `UUID`s. A SwiftUI view may
+outlive the model it was built from, so holding one is the same category of mistake as
+holding one across an `await`. `ThumbnailCache` grew a value-based entry point for the same
+reason — a thumbnail request must not be what drags a model back into a view.
+
 ### ADR-010 · `EntryContent` is a value, not an entity
 **Status:** Accepted · [`EntryContent`](../../Core/Sources/CodenamePromiseCore/Domain/EntryContent.swift)
 

@@ -7,17 +7,24 @@ import SwiftUI
 /// side effect shown as a badge rather than a state the entry graduates into.
 struct DraftListView: View {
     @Environment(AppServices.self) private var services
-    @State private var drafts: [EntryDraft] = []
+    @State private var drafts: [DraftSummary] = []
     @State private var loadError: String?
     @State private var showingSettings = false
     @State private var showingImport = false
     @State private var selection = Set<UUID>()
     @State private var editMode: EditMode = .inactive
     @State private var confirmingBulkDelete = false
-    @State private var openingDraft: OpeningDraft?
+    /// The navigation stack's path.
+    ///
+    /// Rows push a *value*, not a view. `NavigationLink { CaptureView(...) }` stores its
+    /// destination as a stored property, so building the row built a whole CaptureView —
+    /// and CaptureController.init reads draft.content. Opening this list constructed one
+    /// per row on every body pass, which is both wasteful and how a freshly deleted draft
+    /// got read after detaching. See `remove`.
+    @State private var path: [OpeningDraft] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 if let store = services.store, let files = services.files {
                     content(store: store, files: files)
@@ -77,13 +84,16 @@ struct DraftListView: View {
             .sheet(isPresented: $showingSettings) {
                 NotionSettingsView()
             }
-            // Creating an entry should put you in it. Landing back on the list with a new
-            // blank row and no cursor is a step the user then has to undo by hand.
-            .navigationDestination(item: $openingDraft) { opening in
+            // One destination for both tapping a row and creating an entry, resolved by
+            // UUID rather than by holding a model — so a draft deleted underneath it
+            // resolves to nothing instead of trapping (ADR-009a).
+            .navigationDestination(for: OpeningDraft.self) { opening in
                 if let store = services.store, let files = services.files,
                    let draft = try? store.draft(id: opening.id) {
                     CaptureView(draft: draft, store: store, fileStore: files)
                         .onDisappear { reload() }
+                } else {
+                    ContentUnavailableView("Entry no longer exists", systemImage: "tray")
                 }
             }
             .sheet(isPresented: $showingImport) {
@@ -123,11 +133,8 @@ struct DraftListView: View {
             ForEach(groupedDrafts, id: \.day) { group in
                 Section(group.label) {
                     ForEach(group.drafts, id: \.id) { draft in
-                        NavigationLink {
-                            CaptureView(draft: draft, store: store, fileStore: files)
-                                .onDisappear { reload() }
-                        } label: {
-                            DraftRow(draft: draft, fileStore: files)
+                        NavigationLink(value: OpeningDraft(id: draft.id)) {
+                            DraftRow(summary: draft, fileStore: files)
                         }
                         // Swipe the opposite way from delete. Duplicating is the safe action,
                         // so it gets the leading edge where an accidental swipe costs nothing.
@@ -169,7 +176,7 @@ struct DraftListView: View {
     private struct DraftGroup {
         let day: String
         let label: String
-        let drafts: [EntryDraft]
+        let drafts: [DraftSummary]
     }
 
     /// `entryDateKey` is `yyyy-MM-dd`, so the store already returns these in day order.
@@ -188,10 +195,16 @@ struct DraftListView: View {
 
     // MARK: - Actions
 
+    /// Snapshot limit for the row strip: enough to recognise a day at a glance without
+    /// turning the list into a gallery.
+    private static let thumbnailLimit = 6
+
     private func reload() {
         guard let store = services.store else { return }
         do {
-            drafts = try store.allDrafts()
+            drafts = try store.allDrafts().map {
+                DraftSummary($0, thumbnailLimit: Self.thumbnailLimit)
+            }
             loadError = nil
         } catch {
             loadError = error.localizedDescription
@@ -203,14 +216,20 @@ struct DraftListView: View {
         do {
             let draft = try store.createDraft()
             reload()
-            openingDraft = OpeningDraft(id: draft.id)
+            path.append(OpeningDraft(id: draft.id))
         } catch {
             loadError = error.localizedDescription
         }
     }
 
-    private func duplicate(_ draft: EntryDraft, files: MediaFileStore) {
-        guard let store = services.store else { return }
+    /// Resolves ids to models at the moment of acting, rather than holding models in state.
+    private func models(for ids: [UUID]) -> [EntryDraft] {
+        guard let store = services.store else { return [] }
+        return ids.compactMap { try? store.draft(id: $0) }
+    }
+
+    private func duplicate(_ summary: DraftSummary, files: MediaFileStore) {
+        guard let store = services.store, let draft = models(for: [summary.id]).first else { return }
         do {
             try store.duplicate(draft, fileStore: files)
             reload()
@@ -221,25 +240,37 @@ struct DraftListView: View {
 
     /// Deletes everything ticked, in one pass.
     private func deleteSelected() {
-        guard let store = services.store, let files = services.files else { return }
-        let doomed = drafts.filter { selection.contains($0.id) }
-        for draft in doomed {
-            do {
-                try store.delete(draft, fileStore: files)
-            } catch {
-                loadError = error.localizedDescription
-            }
-        }
+        guard let files = services.files else { return }
+        let doomed = drafts.filter { selection.contains($0.id) }.map(\.id)
         selection.removeAll()
         editMode = .inactive
-        reload()
+        remove(doomed, files: files)
     }
 
-    private func delete(_ offsets: IndexSet, in group: [EntryDraft], files: MediaFileStore) {
-        guard let store = services.store else { return }
-        for index in offsets {
+    private func delete(_ offsets: IndexSet, in group: [DraftSummary], files: MediaFileStore) {
+        remove(offsets.map { group[$0].id }, files: files)
+    }
+
+    /// Takes the rows out of the list *before* deleting the models behind them.
+    ///
+    /// A deleted `@Model` is detached from its context, and reading any attribute on it
+    /// traps — "This backing data was detached from a context without resolving attribute
+    /// faults". SwiftUI is free to evaluate this list's body between the delete and the
+    /// refetch, and `DraftRow` reads `draft.content`, so leaving a doomed draft in `drafts`
+    /// for even one pass is a crash waiting for the right timing. Emptying first closes the
+    /// window rather than narrowing it.
+    private func remove(_ doomed: [UUID], files: MediaFileStore) {
+        guard let store = services.store, !doomed.isEmpty else { return }
+        let ids = Set(doomed)
+        let models = models(for: doomed)
+
+        drafts.removeAll { ids.contains($0.id) }
+        // Nor may the stack still be pointing at one of them.
+        path.removeAll { ids.contains($0.id) }
+
+        for draft in models {
             do {
-                try store.delete(group[index], fileStore: files)
+                try store.delete(draft, fileStore: files)
             } catch {
                 loadError = error.localizedDescription
             }
@@ -255,20 +286,18 @@ struct OpeningDraft: Identifiable, Hashable {
 }
 
 struct DraftRow: View {
-    let draft: EntryDraft
+    /// A snapshot, never a model — see `DraftSummary` for the crash that bought this rule.
+    let summary: DraftSummary
     let fileStore: MediaFileStore
-
-    /// Enough to recognise a day at a glance without turning the list into a gallery.
-    private let previewLimit = 6
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title)
+            Text(summary.title)
                 .font(.body.weight(.medium))
                 .lineLimit(1)
 
-            if !preview.isEmpty {
-                Text(preview)
+            if !summary.preview.isEmpty {
+                Text(summary.preview)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -277,13 +306,13 @@ struct DraftRow: View {
             // A strip of what's actually attached, rather than a count. Seeing the day's
             // photos is the point of opening the list — "3 photos" tells you nothing about
             // which day this was.
-            if !draft.orderedMedia.isEmpty {
+            if !summary.thumbnails.isEmpty {
                 HStack(spacing: 4) {
-                    ForEach(draft.orderedMedia.prefix(previewLimit), id: \.id) { item in
-                        RowThumbnail(item: item, fileStore: fileStore)
+                    ForEach(summary.thumbnails) { thumb in
+                        RowThumbnail(thumb: thumb, fileStore: fileStore)
                     }
-                    if draft.orderedMedia.count > previewLimit {
-                        Text("+\(draft.orderedMedia.count - previewLimit)")
+                    if summary.hiddenThumbnailCount > 0 {
+                        Text("+\(summary.hiddenThumbnailCount)")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .frame(width: 34, height: 34)
@@ -294,10 +323,10 @@ struct DraftRow: View {
             }
 
             HStack(spacing: 8) {
-                if pendingRecordings > 0 {
-                    badge("waveform", "\(pendingRecordings)", .secondary)
+                if summary.pendingRecordings > 0 {
+                    badge("waveform", "\(summary.pendingRecordings)", .secondary)
                 }
-                if draft.content.formattedText != nil {
+                if summary.isFormatted {
                     // Purple is the app's mark for anything the AI touched.
                     badge("sparkles", "formatted", .purple)
                 }
@@ -308,48 +337,22 @@ struct DraftRow: View {
         .padding(.vertical, 2)
     }
 
-    private var title: String {
-        if let title = draft.content.title, !title.isEmpty { return title }
-        let firstLine = draft.content.rawText
-            .split(separator: "\n", omittingEmptySubsequences: true)
-            .first
-            .map(String.init) ?? ""
-        return firstLine.isEmpty ? "Untitled entry" : firstLine
-    }
-
-    private var preview: String {
-        let text = draft.content.rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard text != title else { return "" }
-        return text
-    }
-
-    private var pendingRecordings: Int {
-        draft.audioCaptures.filter { !$0.isSafeToDelete }.count
-    }
-
     /// Green when the destination holds what you see; amber when it doesn't yet.
-    ///
-    /// An entry with edits made since its last sync counts as not synced — that is the state
-    /// most worth flagging, because it's the one where the app and Notion silently disagree.
     @ViewBuilder
     private var syncBadge: some View {
-        if draft.content.isEmpty {
+        switch summary.sync {
+        case .hidden:
             EmptyView()
-        } else {
-            let state = draft.syncStates.first { $0.target == .notion }
-            let dirty = draft.needsSync(to: .notion)
-
-            if let state, state.status == .syncing {
-                badge("arrow.up.circle", "syncing", .secondary)
-            } else if let state, state.status == .failed {
-                badge("exclamationmark.icloud", "sync failed", .orange)
-            } else if !dirty {
-                badge("checkmark.icloud.fill", "synced", .green)
-            } else if state?.externalId != nil {
-                badge("arrow.triangle.2.circlepath", "unsynced changes", .orange)
-            } else {
-                badge("icloud.slash", "not synced", .orange)
-            }
+        case .syncing:
+            badge("arrow.up.circle", "syncing", .secondary)
+        case .failed:
+            badge("exclamationmark.icloud", "sync failed", .orange)
+        case .synced:
+            badge("checkmark.icloud.fill", "synced", .green)
+        case .unsyncedChanges:
+            badge("arrow.triangle.2.circlepath", "unsynced changes", .orange)
+        case .notSynced:
+            badge("icloud.slash", "not synced", .orange)
         }
     }
 
@@ -365,7 +368,7 @@ struct DraftRow: View {
 /// A small thumbnail for the list. Uses the shared downsampling cache — decoding full-size
 /// originals while scrolling would make the list stutter badly.
 private struct RowThumbnail: View {
-    let item: MediaItem
+    let thumb: DraftSummary.Thumb
     let fileStore: MediaFileStore
 
     @State private var image: UIImage?
@@ -381,7 +384,7 @@ private struct RowThumbnail: View {
         .frame(width: 34, height: 34)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(alignment: .bottomTrailing) {
-            if item.kind == .video {
+            if thumb.isVideo {
                 Image(systemName: "play.fill")
                     .font(.system(size: 7))
                     .foregroundStyle(.white)
@@ -391,7 +394,8 @@ private struct RowThumbnail: View {
         .task {
             if image == nil {
                 image = await ThumbnailCache.shared.thumbnail(
-                    for: item, fileStore: fileStore, maxPixel: 80
+                    id: thumb.id, relativePath: thumb.relativePath, isVideo: thumb.isVideo,
+                    fileStore: fileStore, maxPixel: 80
                 )
             }
         }

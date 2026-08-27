@@ -33,19 +33,36 @@ final class ThumbnailCache {
         fileStore: MediaFileStore,
         maxPixel: CGFloat = 240
     ) async -> UIImage? {
-        let key = "\(item.id.uuidString)-\(Int(maxPixel))"
+        await thumbnail(
+            id: item.id, relativePath: item.relativePath, isVideo: item.kind == .video,
+            fileStore: fileStore, maxPixel: maxPixel
+        )
+    }
+
+    /// The same thing from plain values.
+    ///
+    /// The draft list renders from snapshots rather than from `@Model` objects, because a row
+    /// that outlives its model — which happens on delete, while the row animates away — traps
+    /// the moment it reads an attribute. A thumbnail request must not be the thing that drags
+    /// a model back into the view layer.
+    func thumbnail(
+        id: UUID,
+        relativePath: String,
+        isVideo: Bool,
+        fileStore: MediaFileStore,
+        maxPixel: CGFloat = 240
+    ) async -> UIImage? {
+        let key = "\(id.uuidString)-\(Int(maxPixel))"
         if let hit = cache.object(forKey: key as NSString) { return hit }
         if let existing = inFlight[key] { return await existing.value }
 
-        let url = fileStore.url(for: item.relativePath)
-        let kind = item.kind
+        let url = fileStore.url(for: relativePath)
 
         let task = Task<UIImage?, Never> {
             let image: UIImage? = await Task.detached(priority: .utility) {
-                switch kind {
-                case .photo: Self.downsample(url, maxPixel: maxPixel)
-                case .video: await Self.videoFrame(url, maxPixel: maxPixel)
-                }
+                isVideo
+                    ? await Self.videoFrame(url, maxPixel: maxPixel)
+                    : Self.downsample(url, maxPixel: maxPixel)
             }.value
             return image
         }
