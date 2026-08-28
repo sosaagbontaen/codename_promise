@@ -88,6 +88,33 @@ public final class DraftStore {
         )
     }
 
+    /// The days in a window that already have at least one entry.
+    ///
+    /// `entryDateKey` is `yyyy-MM-dd`, so a lexicographic range is a chronological range and
+    /// this needs no date arithmetic in the predicate (ADR-006).
+    public func entryDays(from: CalendarDay, through: CalendarDay) throws -> Set<CalendarDay> {
+        let lower = from.rawValue
+        let upper = through.rawValue
+        let drafts = try context.fetch(
+            FetchDescriptor<EntryDraft>(
+                predicate: #Predicate { $0.entryDateKey >= lower && $0.entryDateKey <= upper }
+            )
+        )
+        return Set(drafts.compactMap { CalendarDay(rawValue: $0.entryDateKey) })
+    }
+
+    /// The earliest day the user has ever written about, or nil if they never have.
+    ///
+    /// Bounds the open-days window so a new install is never shown a backlog it did not earn.
+    /// See `JournalGaps`.
+    public func earliestEntryDay() throws -> CalendarDay? {
+        var descriptor = FetchDescriptor<EntryDraft>(
+            sortBy: [SortDescriptor(\.entryDateKey, order: .forward)]
+        )
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first.flatMap { CalendarDay(rawValue: $0.entryDateKey) }
+    }
+
     /// Deletes a draft and the bytes it owned. Cascade rules clear the rows; the file store
     /// has to be told about the files. See ADR-018a.
     public func delete(_ draft: EntryDraft, fileStore: MediaFileStore?) throws {

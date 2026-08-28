@@ -11,6 +11,9 @@ struct DraftListView: View {
     @State private var loadError: String?
     @State private var showingSettings = false
     @State private var showingImport = false
+    @State private var showingOpenDays = false
+    /// Recomputed on every reload; drives the prompt row at the top of the list.
+    @State private var mostRecentOpenDay: CalendarDay?
     @State private var selection = Set<UUID>()
     @State private var editMode: EditMode = .inactive
     @State private var confirmingBulkDelete = false
@@ -96,6 +99,14 @@ struct DraftListView: View {
                     ContentUnavailableView("Entry no longer exists", systemImage: "tray")
                 }
             }
+            .sheet(isPresented: $showingOpenDays) {
+                if let store = services.store {
+                    OpenDaysView(store: store) { draft in
+                        reload()
+                        path.append(OpeningDraft(id: draft.id))
+                    }
+                }
+            }
             .sheet(isPresented: $showingImport) {
                 if let store = services.store, let files = services.files {
                     PhotoImportView(store: store, fileStore: files) { reload() }
@@ -117,6 +128,14 @@ struct DraftListView: View {
     @ViewBuilder
     private func content(store: DraftStore, files: MediaFileStore) -> some View {
         List(selection: $selection) {
+            if !drafts.isEmpty {
+                Section {
+                    OpenDaysPrompt(mostRecentOpenDay: mostRecentOpenDay) {
+                        showingOpenDays = true
+                    }
+                }
+            }
+
             if let notice = services.recoveryNotice {
                 Section {
                     RecoveryNotice(message: notice) { services.dismissRecoveryNotice() }
@@ -199,12 +218,26 @@ struct DraftListView: View {
     /// turning the list into a gallery.
     private static let thumbnailLimit = 6
 
+    /// The window the prompt row talks about. The sheet itself can widen it.
+    private static let promptWindowDays = 30
+
     private func reload() {
         guard let store = services.store else { return }
         do {
             drafts = try store.allDrafts().map {
                 DraftSummary($0, thumbnailLimit: Self.thumbnailLimit)
             }
+
+            let through = CalendarDay.today()
+            let from = through.adding(days: -(Self.promptWindowDays - 1))
+            // Newest first, so the head of the list is the day still worth remembering.
+            mostRecentOpenDay = JournalGaps.openDays(
+                from: from,
+                through: through,
+                covered: try store.entryDays(from: from, through: through),
+                firstEntryDay: try store.earliestEntryDay()
+            ).first
+
             loadError = nil
         } catch {
             loadError = error.localizedDescription
