@@ -577,6 +577,65 @@
   <section>
     <div class="phase-head">
       <span class="phase-num">01</span>
+      <h2>What you are actually selling</h2>
+    </div>
+
+    <p>This is upstream of every other decision in this document. You cannot write an App Store subtitle, shoot a screenshot, or choose a community to post in without it &mdash; and it is the thing that nearly made you kill the project, so it gets its own phase.</p>
+
+    <h3>The lesson from the silly apps is not the one it looks like</h3>
+    <p>A height-predictor app clearing six figures a month does not prove that value is irrelevant. It proves something narrower and more useful: <strong>legibility beats sophistication.</strong> That app answers one question, in three words, that a specific person is already anxious about and already typing into a search box.</p>
+    <p>You have the inverse problem. The engineering is genuinely unusual &mdash; adversarial durability tests, a word guard that stops the model rewriting you, a migration suite that opens real stores &mdash; and none of it is legible in three seconds. Steal the legibility, not the emptiness. Building something you find contemptible is a bad plan even when it works, because you will not have the stamina to keep shipping it.</p>
+
+    <h3>The invisible-benefit trap</h3>
+    <p>"Never lose your work" is the truest thing about this app and the weakest thing to lead with. Every competitor implicitly claims it, a stranger cannot verify it from a listing, and a user only feels it on the day it saves them &mdash; which may be never. It is a <em>reason to stay</em>, not a reason to try.</p>
+    <p>Lead with something a person can see happening.</p>
+
+    <h3>The claim that is actually differentiated</h3>
+    <p>Not storage &mdash; <strong>assembly</strong>. The fastest path from "something happened" to "it is written down, on the right day, with the photos."</p>
+    <p>Two features you already have or nearly have make that literal rather than aspirational: importing a week of photos and routing each to the day it was taken, and showing which days are still blank. Nobody else does the first one. Together they are a fifteen-second demo, which is exactly what a screenshot and a listing need.</p>
+    <p>The second claim, and the one that earns the trust: <strong>it structures what you said without rewriting it.</strong> Anyone who has pasted their own writing into a chatbot has felt it come back flattened. That is a remembered, specific annoyance, and you are the only journaling app that enforces the fix rather than promising it.</p>
+
+    <div class="items">
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="name-the-person-not-the-market"><span class="chip chip-blocker">Blocker</span><span class="item-title">Name the person, not the market</span></label>
+        <p>"People who journal" is not an audience you can reach. "People who already journal most days, prefer talking to typing, and keep their life in Notion" is a person you can find in three specific places this week.</p>
+        <p>Small and high-intent beats large and vague. People who have journaled daily for years are unusual, passionate, and easy to identify &mdash; and they are the only ones who will feel the durability work at all.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="the-wedge-is-assembly"><span class="chip chip-decide">Decide</span><span class="item-title">Commit to the assembly claim</span></label>
+        <p>Pick it and let it govern the roadmap. Everything that shortens "something happened" to "it is filed properly" is the product; everything else is a feature you happen to have.</p>
+        <p>It also tells you what to demo, and demo-ability is the whole listing.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="export-is-the-universal-integration"><span class="chip chip-decide">Decide</span><span class="item-title">Export is the integration layer &mdash; do not build a second one yet</span></label>
+        <p>Being "the thing that gets notes into X" is a commodity position: you are one roadmap item away from X shipping it themselves, and a second integration doubles the OAuth, block-model, chunking and idempotency work you already know the cost of.</p>
+        <p>Markdown-plus-media export answers "I do not use Notion" for most people, and it is <em>already the top blocker in this document</em> for a completely different reason. One weekend closes the biggest hole in the product and the biggest objection to it at the same time. Add a second deep integration when users tell you which one, with their wallets.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="write-the-one-sentence"><span class="chip chip-blocker">Blocker</span><span class="item-title">Write the one sentence, and stop rewriting it</span></label>
+        <p>What it is and who it is for. It goes on the landing page, in the App Store subtitle, and at the top of every post. If you cannot write it, you do not yet know what you are selling &mdash; and that is a product problem wearing a marketing costume.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="twenty-conversations-before-building-more"><span class="chip chip-required">Required</span><span class="item-title">Twenty conversations before you build for the answer</span></label>
+        <p>Find twenty people who journal regularly and ask what breaks in their current setup. Do not pitch. If "I take photos all week and cannot remember which day was which" comes back unprompted, you have your listing written for you. If it never comes up, you have learned that cheaply and can aim somewhere else while it is still cheap.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="accept-the-honest-ceiling"><span class="chip chip-decide">Decide</span><span class="item-title">Decide what a win looks like</span></label>
+        <p>This is a real product for a real niche. Whether that niche is a business is genuinely unknown, and anyone who tells you otherwise is guessing. Decide now what would count &mdash; a hundred people who use it weekly, a thousand, a full-time income &mdash; because "it did not become GoTall" is not a verdict on anything.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="phase-head">
+      <span class="phase-num">02</span>
       <h2>Decide the shape before you build anything</h2>
     </div>
     <p>Almost every item further down changes depending on this one choice, so make it first. Your backend today is explicitly single-tenant &mdash; one Notion token in one JSON file, one shared Groq key, an in-memory idempotency store. That is honest for one person and cannot serve strangers. You have three ways out.</p>
@@ -615,7 +674,7 @@
 
   <section>
     <div class="phase-head">
-      <span class="phase-num">02</span>
+      <span class="phase-num">03</span>
       <h2>Blockers in the code</h2>
     </div>
 
@@ -640,6 +699,18 @@
       <div class="item">
         <label class="item-head"><input type="checkbox" data-task="shared-api-key-baked-into-the-app"><span class="chip chip-blocker">Blocker</span><span class="item-title">Shared API key baked into the app</span></label>
         <p>Only relevant if you keep a backend. <code>CP_API_KEY</code> is one shared secret; anyone can pull it out of the binary in minutes and spend your Groq quota. A shared secret in a distributed client is not authentication.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="show-the-gaps-in-the-week"><span class="chip chip-required">Required</span><span class="item-title">Show which days are still blank</span></label>
+        <p>A date range with the days that have no entry, each tappable to start it. Cheap to build, and it does three jobs at once: it is the retention hook, it is half the assembly claim, and it is a screenshot.</p>
+        <p><strong>Frame it as an invitation, not a report card.</strong> Streaks work for language learning because missing a day really is a failure. In a reflection app, guilt is the thing that makes people delete it. "Tuesday and Thursday are still open, and here are the photos from them" is warm; "you broke your 14-day streak" is why people stop journaling.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="make-it-feel-like-something"><span class="chip chip-required">Required</span><span class="item-title">Make it feel like something</span></label>
+        <p>Not fun exactly &mdash; this is somebody's private life, and jokes and confetti curdle fast. Aim for <em>warmth and responsiveness</em>: haptics on commit, a save state that reassures rather than reports, real transitions, copy written by a person. The interior of an entry is where all the time is spent and it currently looks like a form.</p>
+        <p>One deliberate flourish beats twenty scattered ones. The moment worth spending it on is right after you stop talking and the words appear.</p>
       </div>
 
       <div class="item">
@@ -668,7 +739,7 @@
 
   <section>
     <div class="phase-head">
-      <span class="phase-num">03</span>
+      <span class="phase-num">04</span>
       <h2>Legal and compliance</h2>
     </div>
     <p>This is the part first-time founders skip and then scramble on during review. None of it is hard; all of it takes calendar time.</p>
@@ -720,7 +791,7 @@
 
   <section>
     <div class="phase-head">
-      <span class="phase-num">04</span>
+      <span class="phase-num">05</span>
       <h2>Security</h2>
     </div>
     <p>You are already ahead here &mdash; tokens never touch the device, the API key lives in the Keychain, media is contained. What is left is mostly about the transition from one user to many.</p>
@@ -747,7 +818,7 @@
 
   <section>
     <div class="phase-head">
-      <span class="phase-num">05</span>
+      <span class="phase-num">06</span>
       <h2>Getting it in front of people</h2>
     </div>
 
@@ -792,14 +863,10 @@
     <div class="items">
 
       <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="write-the-one-sentence"><span class="chip chip-required">Required</span><span class="item-title">Write the one sentence, and stop rewriting it</span></label>
-        <p>One sentence that says what it is and who it is for. It goes on the landing page, in the App Store subtitle, and at the top of every post you write. If you cannot write it, you do not yet know what you are selling &mdash; and that is a product problem wearing a marketing costume.</p>
-      </div>
-
-      <div class="item">
         <label class="item-head"><input type="checkbox" data-task="landing-page-compliance-first"><span class="chip chip-blocker">Blocker</span><span class="item-title">Landing page, because two reviews demand one</span></label>
         <p>Minimum viable version is one page: the sentence, three screenshots, a "notify me" email field, and links to privacy policy, terms, and a support email. A static page on a free host is fine. This is a Saturday, not a project.</p>
-        <p>It blocks both the Apple submission and the Notion integration review, so it is genuinely first &mdash; ahead of anything else in this phase.</p>
+        <p>It blocks both the Apple submission and the Notion integration review, so it is genuinely first &mdash; ahead of anything else in this phase. Framer is fine, so is a static page on a free host; the tool is not the hard part.</p>
+        <p>Put it up <em>while review is pending</em> rather than after. That waiting week is free audience-building time, and the waitlist is the only list you will have on launch day.</p>
       </div>
 
       <div class="item">
@@ -833,6 +900,18 @@
       </div>
 
       <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="a-place-for-feature-requests"><span class="chip chip-later">Later</span><span class="item-title">Somewhere for feature requests to pile up</span></label>
+        <p>Canny is the polished option and it is paid. At this stage you do not need voting, you need a list: an in-app "send feedback" that opens a mail composer, and a public page you maintain by hand. Fider is open-source and self-hostable when you outgrow that, and several hosted boards have free tiers worth comparing once you actually have requests to sort.</p>
+        <p>Ten users do not need a voting system. Ten thousand do, and you will know when.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="lifecycle-messaging-the-right-way"><span class="chip chip-later">Later</span><span class="item-title">Lifecycle messaging, but check what it forces</span></label>
+        <p>A welcome email and a launch announcement to the waitlist need nothing but a list &mdash; Loops and Resend both have free tiers for a small one.</p>
+        <p>"Seven days inactive" is a different animal. Emailing someone about their behaviour means you hold an account for them and track their usage server-side, which reintroduces the entire multi-tenant, GDPR-processor problem you avoided by having no backend. <strong>Use a local notification instead.</strong> It runs on the device, needs no account, knows nothing you have to protect, works offline &mdash; and for a journaling nudge it is simply better, because it can fire at the hour they usually write.</p>
+      </div>
+
+      <div class="item">
         <label class="item-head"><input type="checkbox" data-task="visual-identity"><span class="chip chip-later">Later</span><span class="item-title">Visual identity</span></label>
         <p>An icon, a type choice, and a colour you use consistently. You do not need a brand system. You need to not look like a weekend project in a grid of competitors.</p>
       </div>
@@ -848,7 +927,7 @@
 
   <section>
     <div class="phase-head">
-      <span class="phase-num">06</span>
+      <span class="phase-num">07</span>
       <h2>Money</h2>
     </div>
 
@@ -875,7 +954,7 @@
 
   <section>
     <div class="phase-head">
-      <span class="phase-num">07</span>
+      <span class="phase-num">08</span>
       <h2>The release cycle you asked for</h2>
     </div>
     <p>This is what turns "I could upload it today" into a practice you can sustain.</p>
@@ -885,6 +964,12 @@
       <div class="item">
         <label class="item-head"><input type="checkbox" data-task="testflight-before-the-store-always"><span class="chip chip-required">Required</span><span class="item-title">TestFlight before the store, always</span></label>
         <p>Internal testing needs no review and is nearly instant. External testing takes a review pass but lets you hand builds to real people. Every release goes through TestFlight first &mdash; including the ones you are sure about, especially the ones you are sure about.</p>
+      </div>
+
+      <div class="item">
+        <label class="item-head"><input type="checkbox" data-task="product-analytics-carefully"><span class="chip chip-required">Required</span><span class="item-title">Product analytics &mdash; and the trap in adding them</span></label>
+        <p>You do need to know where people fall out of onboarding and whether anyone returns on day seven. PostHog has a free tier generous enough for this stage and can be self-hosted; check its current limits rather than trusting a number written here.</p>
+        <p><strong>The trap:</strong> the moment you add analytics, "data not collected" stops being a truthful answer on Apple's privacy questionnaire &mdash; and that answer is one of the best things this app has to say. Weigh it deliberately. If you do add it, instrument <em>events</em> only: never entry text, never titles, never transcripts, never counts specific enough to fingerprint someone. A journaling app leaking content through its analytics is the one mistake there is no recovering from.</p>
       </div>
 
       <div class="item">
@@ -912,15 +997,16 @@
 
   <section>
     <div class="phase-head">
-      <span class="phase-num">08</span>
+      <span class="phase-num">09</span>
       <h2>What to do in the next two weeks</h2>
     </div>
     <p>Everything above is the map. This is the next leg.</p>
 
     <ol class="steps">
+      <li><label><input type="checkbox" data-task="step-twenty-conversations-and-one-sentence"><p><strong>Have twenty conversations, then write the one sentence.</strong> Before any code. It decides the listing, the screenshots, the communities, and half the roadmap &mdash; and it is the thing currently stopping you, not the engineering.</p></label></li>
       <li><label><input type="checkbox" data-task="step-choose-the-shape-a-b-or-c-nothing-el"><p><strong>Choose the shape.</strong> A, B, or C. Nothing else can be sequenced until this is decided, and half the list disappears depending on your answer.</p></label></li>
       <li><label><input type="checkbox" data-task="step-search-the-trademark-register-for-the-na"><p><strong>Search the trademark register</strong> for the name, before you draw an icon or buy a domain.</p></label></li>
-      <li><label><input type="checkbox" data-task="step-build-export-markdown-plus-media-out-t"><p><strong>Build export.</strong> Markdown plus media, out to Files. It is the smallest thing that makes your first tenet true off-device, and you can ship it this week.</p></label></li>
+      <li><label><input type="checkbox" data-task="step-build-export-markdown-plus-media-out-t"><p><strong>Build export.</strong> Markdown plus media, out to Files. It is the smallest thing that makes your first tenet true off-device &mdash; and it doubles as the answer to "I do not use Notion", so one weekend closes the biggest hole in the product and the biggest objection to it.</p></label></li>
       <li><label><input type="checkbox" data-task="step-fix-the-name-and-make-an-icon-display-n"><p><strong>Fix the name and make an icon.</strong> Display name, bundle id decision, 1024&times;1024. These are hard stops at submission and they are boring, so they get deferred.</p></label></li>
       <li><label><input type="checkbox" data-task="step-write-the-privacy-policy-and-stand-up-a"><p><strong>Write the privacy policy and stand up a landing page.</strong> Two pages. They unblock both Apple and Notion, and both are queues you do not control.</p></label></li>
       <li><label><input type="checkbox" data-task="step-get-a-build-into-testflight-with-five-pe"><p><strong>Get a build into TestFlight</strong> with five people who are not you. Their first ten minutes will teach you more than another month of building.</p></label></li>
