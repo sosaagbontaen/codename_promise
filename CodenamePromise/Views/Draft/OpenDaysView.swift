@@ -1,6 +1,56 @@
 import CodenamePromiseCore
 import SwiftUI
 
+/// How the check against the destination is going, in the user's terms.
+///
+/// Separated from `OpenDaysScope` because that answers "what was this based on" while this
+/// answers "what is happening right now", and the second is what earns trust while a network
+/// call is in flight.
+///
+/// The colours are deliberate, and `notConnected` is deliberately **not** red. Red has to
+/// mean something went wrong; a person who simply has not connected Notion has nothing wrong
+/// with their setup, and an app that shows them an alarm colour for it is crying wolf. That
+/// state is neutral and tells them what it would take to include Notion.
+enum DestinationCheck: Equatable {
+    /// No destination configured. Nothing is broken.
+    case notConnected(String)
+    /// Asking the destination now.
+    case checking
+    /// Answer includes the destination.
+    case included
+    /// Tried, and could not.
+    case failed(String)
+
+    var tint: Color {
+        switch self {
+        case .notConnected: .secondary
+        case .checking: .orange
+        case .included: .green
+        case .failed: .red
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .notConnected: "icloud.slash"
+        case .checking: "arrow.triangle.2.circlepath"
+        case .included: "checkmark.circle.fill"
+        case .failed: "exclamationmark.triangle.fill"
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .notConnected(let why): why
+        case .checking: "Checking your Notion database\u{2026}"
+        case .included: "Checked this device and Notion"
+        case .failed(let why): why
+        }
+    }
+
+    var isChecking: Bool { self == .checking }
+}
+
 /// The days you haven't written up yet, offered rather than counted.
 ///
 /// The tone here is load-bearing. A reflection app that reports a score, a streak, or a
@@ -18,9 +68,8 @@ struct OpenDaysView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var window: Window = .month
     @State private var openDays: [CalendarDay] = []
-    @State private var scope: OpenDaysScope = .thisDeviceOnly
+    @State private var check: DestinationCheck = .checking
     @State private var hasEverWritten = true
-    @State private var isChecking = false
     @State private var loadError: String?
 
     enum Window: String, CaseIterable, Identifiable {
@@ -68,21 +117,66 @@ struct OpenDaysView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
                 }
-                ToolbarItem(placement: .primaryAction) {
-                    if isChecking { ProgressView().controlSize(.small) }
-                }
             }
             .safeAreaInset(edge: .top) {
-                Picker("Range", selection: $window) {
-                    ForEach(Window.allCases) { Text($0.rawValue).tag($0) }
+                VStack(spacing: 8) {
+                    Picker("Range", selection: $window) {
+                        ForEach(Window.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+
+                    statusBanner
                 }
-                .pickerStyle(.segmented)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
                 .background(.bar)
             }
             .task(id: window) { await reload() }
         }
+    }
+
+    /// Says what is happening, in colour, with a way to ask again.
+    ///
+    /// Retry is always offered, not only after a failure: the destination can change
+    /// underneath the app at any time — a page written on a laptop five minutes ago is
+    /// invisible here until something asks Notion again.
+    private var statusBanner: some View {
+        HStack(spacing: 8) {
+            Group {
+                if check.isChecking {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: check.symbol)
+                }
+            }
+            .foregroundStyle(check.tint)
+            .frame(width: 16)
+
+            Text(check.label)
+                .font(.caption)
+                .foregroundStyle(check == .included ? .secondary : check.tint)
+                .lineLimit(2)
+
+            Spacer(minLength: 4)
+
+            if connection != nil {
+                Button {
+                    Task { await reload() }
+                } label: {
+                    Label(retryLabel, systemImage: "arrow.clockwise")
+                        .font(.caption)
+                        .labelStyle(.titleAndIcon)
+                }
+                .disabled(check.isChecking)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var retryLabel: String {
+        if case .failed = check { return "Retry" }
+        return "Check again"
     }
 
     private var list: some View {
@@ -110,24 +204,13 @@ struct OpenDaysView: View {
                     .buttonStyle(.plain)
                 }
             } footer: {
-                // Says what it is without saying what you failed to do — and, crucially, says
-                // what it actually checked, so a local-only answer is never mistaken for the
-                // whole truth.
-                Text(scopeNote)
+                // Says what it is without saying what you failed to do. What was *checked*
+                // lives in the banner, where it is visible before you scroll.
+                Text("Tap a day to start its entry. Photos from that day can be added with Import.")
             }
         }
-    }
-
-    /// What was actually checked. Never let a device-only answer imply it checked Notion.
-    private var scopeNote: String {
-        switch scope {
-        case .deviceAndDestination:
-            "Checked this device and your Notion database. Tap a day to start its entry."
-        case .thisDeviceOnly:
-            connection == nil
-                ? "Checked entries on this device. Connect Notion to include days you wrote there."
-                : "Couldn't reach Notion, so this only covers entries on this device."
-        }
+        // Pull-to-refresh as well as the button: this is a list of things that can go stale.
+        .refreshable { await reload() }
     }
 
     private func relativeLabel(for day: CalendarDay) -> String {
@@ -145,36 +228,53 @@ struct OpenDaysView: View {
             let earliest = try store.earliestEntryDay()
 
             // Local answer first, so the list is never blocked on the network.
-            var report = JournalGaps.report(
-                from: from, through: through,
-                localDays: localDays, destinationDays: nil,
-                localFirstEntryDay: earliest
-            )
-            openDays = report.days
-            scope = report.scope
-            hasEverWritten = earliest != nil
+            func apply(_ destinationDays: Set<CalendarDay>?) {
+                let report = JournalGaps.report(
+                    from: from, through: through,
+                    localDays: localDays, destinationDays: destinationDays,
+                    localFirstEntryDay: earliest
+                )
+                openDays = report.days
+                hasEverWritten = earliest != nil || !(destinationDays ?? []).isEmpty
+            }
+            apply(nil)
             loadError = nil
 
-            guard let connection else { return }
-
-            // Then widen it with what the destination already holds. A failure here is not
-            // an error to show — it just means the answer stays device-only and says so.
-            isChecking = true
-            defer { isChecking = false }
-            guard let remote = try? await connection.entryDays(from: from, through: through) else {
+            guard let connection else {
+                check = .notConnected("Notion isn't connected — showing this device only")
                 return
             }
 
-            report = JournalGaps.report(
-                from: from, through: through,
-                localDays: localDays, destinationDays: remote,
-                localFirstEntryDay: earliest
-            )
-            openDays = report.days
-            scope = report.scope
-            hasEverWritten = earliest != nil || !remote.isEmpty
+            check = .checking
+            do {
+                let remote = try await connection.entryDays(from: from, through: through)
+                apply(remote)
+                check = .included
+            } catch {
+                // A failure here is never an error page. The local answer stands; the banner
+                // says what it is worth, and offers to try again.
+                check = Self.checkState(for: error)
+            }
         } catch {
             loadError = error.localizedDescription
+        }
+    }
+
+    /// Distinguishes "not set up" from "went wrong", because only the second deserves red.
+    private static func checkState(for error: Error) -> DestinationCheck {
+        guard let apiError = error as? APIError else {
+            return .failed("Couldn't check Notion — showing this device only")
+        }
+        switch apiError {
+        case .notConfigured:
+            return .notConnected("No backend configured — showing this device only")
+        case .server(let status, let message) where status == 409:
+            // "Pick a Notion database first" is a setup step, not a fault.
+            return .notConnected(message ?? "Pick a Notion database to include it")
+        case .offline:
+            return .failed("Offline — showing this device only")
+        default:
+            return .failed("Couldn't reach Notion — showing this device only")
         }
     }
 
