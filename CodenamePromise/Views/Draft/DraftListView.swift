@@ -101,7 +101,10 @@ struct DraftListView: View {
             }
             .sheet(isPresented: $showingOpenDays) {
                 if let store = services.store {
-                    OpenDaysView(store: store) { draft in
+                    OpenDaysView(
+                        store: store,
+                        connection: services.connectionService
+                    ) { draft in
                         reload()
                         path.append(OpeningDraft(id: draft.id))
                     }

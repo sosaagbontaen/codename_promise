@@ -95,6 +95,11 @@ public protocol NotionConnectionService: Sendable {
     func status() async throws -> NotionConnectionStatus
     func databases() async throws -> [NotionDatabase]
     func pages() async throws -> [NotionPage]
+
+    /// Days between `from` and `through` that already have a page in the chosen database.
+    ///
+    /// Dates only. Whether a day is written does not require reading what was written.
+    func entryDays(from: CalendarDay, through: CalendarDay) async throws -> Set<CalendarDay>
     func selectDatabase(id: String) async throws -> NotionConnectionStatus
     func disconnect() async throws
 }
@@ -130,6 +135,21 @@ public struct HTTPNotionConnectionService: NotionConnectionService {
 
     public func pages() async throws -> [NotionPage] {
         try await client.get(path: "notion/pages", expecting: PageList.self).pages
+    }
+
+    private struct DayList: Decodable {
+        let days: [String]
+    }
+
+    public func entryDays(from: CalendarDay, through: CalendarDay) async throws -> Set<CalendarDay> {
+        let response = try await client.get(
+            path: "notion/entry-days",
+            query: ["start": from.rawValue, "end": through.rawValue],
+            expecting: DayList.self
+        )
+        // Unparseable days are dropped rather than throwing: one malformed date in a
+        // six-year database must not make the whole answer unavailable.
+        return Set(response.days.compactMap { CalendarDay(rawValue: $0) })
     }
 
     private struct SelectBody: Encodable, Sendable {

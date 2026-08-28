@@ -362,6 +362,81 @@ async def list_pages(
     return pages
 
 
+async def entry_days(
+    access_token: str,
+    database_id: str,
+    date_property: Optional[str],
+    start: str,
+    end: str,
+    base_url: str = NOTION_BASE_URL,
+) -> List[str]:
+    """The `yyyy-MM-dd` days that already have a page, between ``start`` and ``end``.
+
+    This is what makes "which days am I missing" answerable at all. The device only knows
+    about entries it captured; someone with years of journal in Notion has a history the app
+    has never seen, and telling them they missed a week they actually wrote would be worse
+    than saying nothing.
+
+    Filters and paginates server-side rather than listing recent pages and hoping the window
+    is covered — a busy month is more than one page of results, and a silently truncated
+    answer here reads as a gap that is not there.
+
+    Returns dates only. Never titles, never content: knowing whether a day is written does
+    not require reading what was written.
+    """
+    if not date_property:
+        raise NotionError("This database has no date property, so days can't be checked.")
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Notion-Version": NOTION_VERSION,
+        "Content-Type": "application/json",
+    }
+    payload: Dict[str, Any] = {
+        "filter": {
+            "and": [
+                {"property": date_property, "date": {"on_or_after": start}},
+                {"property": date_property, "date": {"on_or_before": end}},
+            ]
+        },
+        "page_size": 100,
+    }
+
+    found: List[str] = []
+    cursor: Optional[str] = None
+    # Bounded so a pathological database cannot spin here forever; 100 pages x 100 rows is
+    # far more than any date window this is asked about.
+    for _ in range(100):
+        if cursor:
+            payload["start_cursor"] = cursor
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    f"{base_url}/databases/{database_id}/query", headers=headers, json=payload
+                )
+        except httpx.HTTPError as exc:
+            raise NotionError(f"Could not reach Notion: {exc}") from exc
+
+        if response.status_code >= 400:
+            raise NotionError(f"Notion returned {response.status_code} checking days.")
+
+        body = response.json()
+        for item in body.get("results", []):
+            value = (item.get("properties", {}).get(date_property) or {}).get("date") or {}
+            raw = value.get("start")
+            if raw:
+                # Notion dates may carry a time and an offset; the day is the first 10 chars.
+                found.append(raw[:10])
+
+        if not body.get("has_more"):
+            break
+        cursor = body.get("next_cursor")
+        if not cursor:
+            break
+
+    return sorted(set(found))
+
+
 async def list_databases(access_token: str, base_url: str = NOTION_BASE_URL) -> List[Dict[str, str]]:
     """Databases the user granted this integration access to, for the in-app picker.
 

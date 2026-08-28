@@ -182,3 +182,90 @@ struct OpenDaysStoreTests {
                 "July is before they started, so it is not a backlog")
     }
 }
+
+/// Answering "which days am I missing" against the destination as well as the device.
+///
+/// This is where the feature earns or loses trust. The device only knows about entries it
+/// captured itself; someone arriving with years of journal in Notion has a history the app
+/// has never seen. A local-only answer presented as the whole truth would tell them they
+/// skipped weeks they actually wrote — the exact accusation the feature exists to avoid.
+@Suite("Open days across device and destination")
+struct OpenDaysReportTests {
+
+    private let utc = TimeZone(identifier: "UTC")!
+    private func day(_ raw: String) -> CalendarDay { CalendarDay(rawValue: raw)! }
+    private func days(_ raws: String...) -> Set<CalendarDay> { Set(raws.map { day($0) }) }
+
+    @Test("a day written only in Notion is not reported as missing")
+    func destinationDaysCount() {
+        let report = JournalGaps.report(
+            from: day("2026-08-01"), through: day("2026-08-04"),
+            localDays: days("2026-08-01"),
+            destinationDays: days("2026-08-02", "2026-08-03"),
+            localFirstEntryDay: day("2026-08-01"), timeZone: utc
+        )
+        #expect(report.days == [day("2026-08-04")])
+        #expect(report.scope == .deviceAndDestination)
+    }
+
+    /// The failure that would make this feature actively harmful.
+    @Test("an unreachable destination downgrades the answer instead of inventing gaps")
+    func unreachableIsLabelled() {
+        let report = JournalGaps.report(
+            from: day("2026-08-01"), through: day("2026-08-04"),
+            localDays: days("2026-08-01"),
+            destinationDays: nil,
+            localFirstEntryDay: day("2026-08-01"), timeZone: utc
+        )
+        #expect(report.scope == .thisDeviceOnly,
+                "the UI has to be able to say it only checked this device")
+        #expect(report.days == [day("2026-08-04"), day("2026-08-03"), day("2026-08-02")])
+    }
+
+    /// Years of Notion history predate the app; the window should honour that.
+    @Test("history in the destination widens how far back counts")
+    func destinationExtendsHistory() {
+        let report = JournalGaps.report(
+            from: day("2026-08-01"), through: day("2026-08-05"),
+            localDays: days("2026-08-05"),
+            destinationDays: days("2026-08-02"),
+            localFirstEntryDay: day("2026-08-05"), timeZone: utc
+        )
+        #expect(report.days == [day("2026-08-04"), day("2026-08-03")],
+                "the 2nd proves they were journaling before the app, so the 3rd and 4th are real gaps")
+    }
+
+    @Test("someone journaling only in Notion still gets an answer")
+    func noLocalEntriesAtAll() {
+        let report = JournalGaps.report(
+            from: day("2026-08-01"), through: day("2026-08-03"),
+            localDays: [],
+            destinationDays: days("2026-08-01"),
+            localFirstEntryDay: nil, timeZone: utc
+        )
+        #expect(report.days == [day("2026-08-03"), day("2026-08-02")])
+        #expect(report.scope == .deviceAndDestination)
+    }
+
+    @Test("a fresh install with an empty destination is still not scolded")
+    func nothingAnywhere() {
+        let report = JournalGaps.report(
+            from: day("2026-08-01"), through: day("2026-08-30"),
+            localDays: [], destinationDays: [],
+            localFirstEntryDay: nil, timeZone: utc
+        )
+        #expect(report.days.isEmpty)
+    }
+
+    @Test("both sides agreeing means nothing is open")
+    func fullyCovered() {
+        let report = JournalGaps.report(
+            from: day("2026-08-01"), through: day("2026-08-03"),
+            localDays: days("2026-08-01", "2026-08-03"),
+            destinationDays: days("2026-08-02"),
+            localFirstEntryDay: day("2026-08-01"), timeZone: utc
+        )
+        #expect(report.days.isEmpty)
+        #expect(report.scope == .deviceAndDestination)
+    }
+}

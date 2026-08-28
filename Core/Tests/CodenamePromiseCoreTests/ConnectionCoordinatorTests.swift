@@ -30,6 +30,14 @@ final class StubConnectionService: NotionConnectionService, @unchecked Sendable 
         return availablePages
     }
 
+    var destinationDays: Set<CalendarDay> = []
+    var entryDaysError: Error?
+
+    func entryDays(from: CalendarDay, through: CalendarDay) async throws -> Set<CalendarDay> {
+        if let entryDaysError { throw entryDaysError }
+        return destinationDays.filter { $0 >= from && $0 <= through }
+    }
+
     func selectDatabase(id: String) async throws -> NotionConnectionStatus {
         selectedIds.append(id)
         if let selectError { throw selectError }

@@ -10,13 +10,17 @@ import SwiftUI
 /// `JournalGaps`), and an empty state that reads as a good outcome rather than an absence.
 struct OpenDaysView: View {
     let store: DraftStore
+    /// Optional on purpose: with no destination connected this still works, it just says so.
+    let connection: (any NotionConnectionService)?
     /// Called with a brand-new draft for the chosen day, so the list can open it.
     let onStartDay: (EntryDraft) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var window: Window = .month
     @State private var openDays: [CalendarDay] = []
+    @State private var scope: OpenDaysScope = .thisDeviceOnly
     @State private var hasEverWritten = true
+    @State private var isChecking = false
     @State private var loadError: String?
 
     enum Window: String, CaseIterable, Identifiable {
@@ -64,6 +68,9 @@ struct OpenDaysView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
                 }
+                ToolbarItem(placement: .primaryAction) {
+                    if isChecking { ProgressView().controlSize(.small) }
+                }
             }
             .safeAreaInset(edge: .top) {
                 Picker("Range", selection: $window) {
@@ -74,8 +81,7 @@ struct OpenDaysView: View {
                 .padding(.bottom, 8)
                 .background(.bar)
             }
-            .onChange(of: window) { reload() }
-            .task { reload() }
+            .task(id: window) { await reload() }
         }
     }
 
@@ -104,9 +110,23 @@ struct OpenDaysView: View {
                     .buttonStyle(.plain)
                 }
             } footer: {
-                // Says what it is without saying what you failed to do.
-                Text("Tap a day to start its entry. Photos from that day can be added with Import.")
+                // Says what it is without saying what you failed to do — and, crucially, says
+                // what it actually checked, so a local-only answer is never mistaken for the
+                // whole truth.
+                Text(scopeNote)
             }
+        }
+    }
+
+    /// What was actually checked. Never let a device-only answer imply it checked Notion.
+    private var scopeNote: String {
+        switch scope {
+        case .deviceAndDestination:
+            "Checked this device and your Notion database. Tap a day to start its entry."
+        case .thisDeviceOnly:
+            connection == nil
+                ? "Checked entries on this device. Connect Notion to include days you wrote there."
+                : "Couldn't reach Notion, so this only covers entries on this device."
         }
     }
 
@@ -117,19 +137,42 @@ struct OpenDaysView: View {
         return day.representativeDate().formatted(.relative(presentation: .named))
     }
 
-    private func reload() {
+    private func reload() async {
         do {
             let through = CalendarDay.today()
             let from = through.adding(days: -(window.days - 1))
+            let localDays = try store.entryDays(from: from, through: through)
             let earliest = try store.earliestEntryDay()
-            hasEverWritten = earliest != nil
-            openDays = JournalGaps.openDays(
-                from: from,
-                through: through,
-                covered: try store.entryDays(from: from, through: through),
-                firstEntryDay: earliest
+
+            // Local answer first, so the list is never blocked on the network.
+            var report = JournalGaps.report(
+                from: from, through: through,
+                localDays: localDays, destinationDays: nil,
+                localFirstEntryDay: earliest
             )
+            openDays = report.days
+            scope = report.scope
+            hasEverWritten = earliest != nil
             loadError = nil
+
+            guard let connection else { return }
+
+            // Then widen it with what the destination already holds. A failure here is not
+            // an error to show — it just means the answer stays device-only and says so.
+            isChecking = true
+            defer { isChecking = false }
+            guard let remote = try? await connection.entryDays(from: from, through: through) else {
+                return
+            }
+
+            report = JournalGaps.report(
+                from: from, through: through,
+                localDays: localDays, destinationDays: remote,
+                localFirstEntryDay: earliest
+            )
+            openDays = report.days
+            scope = report.scope
+            hasEverWritten = earliest != nil || !remote.isEmpty
         } catch {
             loadError = error.localizedDescription
         }

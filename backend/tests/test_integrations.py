@@ -740,3 +740,87 @@ class TestLongEntryChunking:
 
         text = "word" * 500  # no blank lines, no newlines
         assert _split_for_formatting(text, 100) == [text]
+
+
+class TestEntryDays:
+    """Answering "which days am I missing" needs the destination, not just the device.
+
+    Someone arriving with years of journal in Notion has a history the app has never seen, so
+    a local-only answer would tell them they skipped weeks they actually wrote.
+    """
+
+    def _app(self, days_by_page):
+        from app import routes_notion_auth
+
+        class FakeGateway:
+            def __init__(self, *args, **kwargs):
+                pass
+
+        async def fake_day_lister(access_token, database_id, date_property, start, end):
+            assert date_property == "When", "the configured date column must be used"
+            return sorted({d for d in days_by_page if start <= d <= end})
+
+        settings = Settings(
+            notion_client_id="cid",
+            notion_client_secret="s",
+            notion_redirect_uri="http://localhost/cb",
+        )
+        store = InMemoryConnectionStore(
+            NotionConnection(
+                access_token="t",
+                workspace_id="ws",
+                database_id="db-1",
+                title_property="Name",
+                date_property="When",
+            )
+        )
+        app = create_app(settings=settings, connections=store)
+        app.router.routes = [
+            r for r in app.router.routes if not getattr(r, "path", "").startswith("/notion/")
+        ]
+        app.include_router(
+            routes_notion_auth.build_router(
+                oauth=NotionOAuth("cid", "s", "http://localhost/cb"),
+                store=store,
+                app_return_url="app://done",
+                gateway_factory=FakeGateway,
+                day_lister=fake_day_lister,
+            )
+        )
+        return TestClient(app)
+
+    def test_returns_the_days_that_have_a_page(self):
+        client = self._app(["2026-08-02", "2026-08-04", "2026-09-01"])
+
+        response = client.get(
+            "/notion/entry-days", params={"start": "2026-08-01", "end": "2026-08-31"}
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"days": ["2026-08-02", "2026-08-04"]}
+
+    def test_returns_dates_only_and_never_content(self):
+        """Whether a day is written must not require reading what was written."""
+        client = self._app(["2026-08-02"])
+
+        body = client.get(
+            "/notion/entry-days", params={"start": "2026-08-01", "end": "2026-08-31"}
+        ).json()
+
+        assert set(body) == {"days"}
+        assert body["days"] == ["2026-08-02"]
+
+    def test_asking_before_a_database_is_chosen_is_a_clear_409(self):
+        settings = Settings(
+            notion_client_id="cid",
+            notion_client_secret="s",
+            notion_redirect_uri="http://localhost/cb",
+        )
+        store = InMemoryConnectionStore(NotionConnection(access_token="t", workspace_id="ws"))
+        app = create_app(settings=settings, connections=store)
+
+        response = TestClient(app).get(
+            "/notion/entry-days", params={"start": "2026-08-01", "end": "2026-08-31"}
+        )
+
+        assert response.status_code == 409

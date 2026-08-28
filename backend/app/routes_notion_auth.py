@@ -14,7 +14,13 @@ from pydantic import BaseModel
 
 from .connections import ConnectionStore
 from .oauth import NotionOAuth, OAuthNotConfigured, OAuthStateError
-from .providers.notion_api import NotionError, NotionGatewayHTTP, list_databases, list_pages
+from .providers.notion_api import (
+    NotionError,
+    NotionGatewayHTTP,
+    entry_days,
+    list_databases,
+    list_pages,
+)
 
 
 class SelectDatabaseRequest(BaseModel):
@@ -28,6 +34,7 @@ def build_router(
     database_lister=list_databases,
     gateway_factory=NotionGatewayHTTP,
     page_lister=list_pages,
+    day_lister=entry_days,
 ) -> APIRouter:
     router = APIRouter(prefix="/notion", tags=["notion-auth"])
 
@@ -107,6 +114,32 @@ def build_router(
             raise HTTPException(status_code=409, detail="Pick a Notion database first.")
         try:
             return {"pages": await page_lister(connection.access_token, connection.database_id)}
+        except NotionError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
+    @router.get("/entry-days")
+    async def days(start: str, end: str) -> Dict[str, List[str]]:
+        """Which days in a range already have a page in the chosen database.
+
+        The device only knows about entries it captured itself. Someone bringing years of
+        journal with them has a history the app has never seen, and a "you missed this week"
+        built on the local store alone would be wrong about most of it.
+
+        Dates only. Whether a day is written does not require reading what was written.
+        """
+        connection = store.get()
+        if connection is None or not connection.is_ready:
+            raise HTTPException(status_code=409, detail="Pick a Notion database first.")
+        try:
+            return {
+                "days": await day_lister(
+                    connection.access_token,
+                    connection.database_id,
+                    connection.date_property,
+                    start,
+                    end,
+                )
+            }
         except NotionError as exc:
             raise HTTPException(status_code=502, detail=str(exc))
 

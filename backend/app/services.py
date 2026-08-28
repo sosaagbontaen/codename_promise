@@ -42,6 +42,9 @@ class NotionGateway(Protocol):
 
     async def list_pages(self, limit: int = 50) -> List[Dict[str, Any]]: ...
 
+    #: Days that already have a page, so the client can say which are missing.
+    async def entry_days(self, start: str, end: str) -> List[str]: ...
+
 
 # --- Stubs -----------------------------------------------------------------------------
 
@@ -147,6 +150,13 @@ class InMemoryNotion:
             }
             for page_id, page in list(self.pages.items())[:limit]
         ]
+
+    async def entry_days(self, start: str, end: str) -> List[str]:
+        return sorted({
+            str(page["entry_date"])[:10]
+            for page in self.pages.values()
+            if page.get("entry_date") and start <= str(page["entry_date"])[:10] <= end
+        })
 
 
 async def insert_entry(

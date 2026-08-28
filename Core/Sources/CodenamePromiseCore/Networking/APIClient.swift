@@ -100,9 +100,12 @@ public struct APIClient: Sendable {
 
     public func get<Response: Decodable>(
         path: String,
+        query: [String: String] = [:],
         expecting: Response.Type
     ) async throws -> Response {
-        let request = try makeRequest(path: path, method: "GET", idempotencyKey: nil)
+        let request = try makeRequest(
+            path: path, method: "GET", idempotencyKey: nil, query: query
+        )
         return try decode(Response.self, from: try await perform(request))
     }
 
@@ -185,12 +188,25 @@ public struct APIClient: Sendable {
     private func makeRequest(
         path: String,
         method: String,
-        idempotencyKey: IdempotencyKey?
+        idempotencyKey: IdempotencyKey?,
+        query: [String: String] = [:]
     ) throws -> URLRequest {
         guard let baseURL = configuration.baseURL else { throw APIError.notConfigured }
         guard reachability.isReachable else { throw APIError.offline }
 
-        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        var url = baseURL.appendingPathComponent(path)
+        if !query.isEmpty {
+            // Built through URLComponents rather than string interpolation: appending a
+            // path component would percent-encode the "?" and quietly request a path that
+            // does not exist.
+            var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            components?.queryItems = query
+                .sorted { $0.key < $1.key }
+                .map { URLQueryItem(name: $0.key, value: $0.value) }
+            if let built = components?.url { url = built }
+        }
+
+        var request = URLRequest(url: url)
         request.httpMethod = method
         request.timeoutInterval = 60
 
