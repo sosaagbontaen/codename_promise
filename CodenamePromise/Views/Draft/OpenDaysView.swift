@@ -72,19 +72,42 @@ struct OpenDaysView: View {
     @State private var hasEverWritten = true
     @State private var loadError: String?
 
-    enum Window: String, CaseIterable, Identifiable {
-        case week = "Week"
-        case month = "Month"
-        case quarter = "3 months"
+    /// How far back to look.
+    ///
+    /// Longer ranges are cheap to compute — Notion returns 100 pages per request, so a year
+    /// is a handful of calls, and the day-by-day walk is a few hundred iterations. What they
+    /// cost is *tone*: a year of sparse journaling is a very long list of days you did not
+    /// write. That is why anything past a month groups by month below, so the answer reads
+    /// as "August has a gap" rather than as three hundred individual reproaches.
+    ///
+    /// Deliberately stops at a year rather than offering "all time". The window is already
+    /// clamped to the first entry, so "all time" would mean *every day since you started* —
+    /// for someone with years of history that is thousands of rows and no way to act on
+    /// them. A year is the longest span anyone audits in practice.
+    enum Window: Int, CaseIterable, Identifiable {
+        case week = 7
+        case month = 30
+        case quarter = 90
+        case halfYear = 182
+        case year = 365
 
-        var id: String { rawValue }
-        var days: Int {
+        var id: Int { rawValue }
+        var days: Int { rawValue }
+
+        /// Phrased as a span, because "Month" alone could mean this month or the last 30
+        /// days and the difference matters when you are hunting a gap.
+        var label: String {
             switch self {
-            case .week: 7
-            case .month: 30
-            case .quarter: 90
+            case .week: "Past 7 days"
+            case .month: "Past 30 days"
+            case .quarter: "Past 3 months"
+            case .halfYear: "Past 6 months"
+            case .year: "Past year"
             }
         }
+
+        /// Past a month, a flat list stops being readable.
+        var groupsByMonth: Bool { days > 31 }
     }
 
     var body: some View {
@@ -105,7 +128,7 @@ struct OpenDaysView: View {
                     ContentUnavailableView {
                         Label("You're all caught up", systemImage: "checkmark.circle")
                     } description: {
-                        Text("Every day in the last \(window.days) is written up.")
+                        Text("Every day in the \(window.label.lowercased()) is written up.")
                     }
                 } else {
                     list
@@ -119,14 +142,24 @@ struct OpenDaysView: View {
                 }
             }
             .safeAreaInset(edge: .top) {
-                VStack(spacing: 8) {
-                    Picker("Range", selection: $window) {
-                        ForEach(Window.allCases) { Text($0.rawValue).tag($0) }
+                VStack(alignment: .leading, spacing: 8) {
+                    // A menu rather than a segmented control: five spans do not fit across a
+                    // phone, and they would only get shorter and less readable as more are
+                    // added.
+                    Menu {
+                        Picker("Range", selection: $window) {
+                            ForEach(Window.allCases) { Text($0.label).tag($0) }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(window.label).font(.subheadline.weight(.medium))
+                            Image(systemName: "chevron.up.chevron.down").font(.caption2)
+                        }
                     }
-                    .pickerStyle(.segmented)
 
                     statusBanner
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
                 .background(.bar)
@@ -181,36 +214,86 @@ struct OpenDaysView: View {
 
     private var list: some View {
         List {
-            Section {
-                ForEach(openDays, id: \.rawValue) { day in
-                    Button {
-                        start(day)
-                    } label: {
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(day.representativeDate()
-                                    .formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
-                                    .font(.body)
-                                Text(relativeLabel(for: day))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+            if window.groupsByMonth {
+                ForEach(monthGroups, id: \.key) { group in
+                    Section {
+                        ForEach(group.days, id: \.rawValue) { dayRow($0) }
+                    } header: {
+                        HStack {
+                            Text(group.title)
                             Spacer()
-                            Image(systemName: "square.and.pencil")
-                                .foregroundStyle(.tint)
+                            // A locating count, not a score: the whole point of a long range
+                            // is finding *which* month has the gap.
+                            Text("\(group.days.count) open")
+                                .foregroundStyle(.secondary)
                         }
-                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
                 }
-            } footer: {
+            } else {
+                Section {
+                    ForEach(openDays, id: \.rawValue) { dayRow($0) }
+                }
+            }
+
+            Section {
                 // Says what it is without saying what you failed to do. What was *checked*
                 // lives in the banner, where it is visible before you scroll.
                 Text("Tap a day to start its entry. Photos from that day can be added with Import.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .listRowBackground(Color.clear)
             }
         }
-        // Pull-to-refresh as well as the button: this is a list of things that can go stale.
+        // Pull-to-refresh as well as the button: this is a list that goes stale by nature.
         .refreshable { await reload() }
+    }
+
+    private func dayRow(_ day: CalendarDay) -> some View {
+        Button {
+            start(day)
+        } label: {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(day.representativeDate()
+                        .formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
+                        .font(.body)
+                    Text(relativeLabel(for: day))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "square.and.pencil")
+                    .foregroundStyle(.tint)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private struct MonthGroup {
+        let key: String
+        let title: String
+        let days: [CalendarDay]
+    }
+
+    /// Newest month first, preserving the newest-first order within each.
+    private var monthGroups: [MonthGroup] {
+        var order: [String] = []
+        var buckets: [String: [CalendarDay]] = [:]
+        for day in openDays {
+            let key = String(day.rawValue.prefix(7))   // yyyy-MM sorts chronologically
+            if buckets[key] == nil { order.append(key) }
+            buckets[key, default: []].append(day)
+        }
+        return order.map { key in
+            let days = buckets[key] ?? []
+            return MonthGroup(
+                key: key,
+                title: days.first?.representativeDate()
+                    .formatted(.dateTime.month(.wide).year()) ?? key,
+                days: days
+            )
+        }
     }
 
     private func relativeLabel(for day: CalendarDay) -> String {

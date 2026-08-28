@@ -114,6 +114,34 @@ struct JournalGapsTests {
         ).isEmpty)
     }
 
+    /// Longer ranges were the reason to check this: a year is 365 calendar additions and a
+    /// leap year is 366, and an off-by-one in either would silently shift every date shown.
+    @Test("a full year window is exact, and cheap")
+    func fullYearWindow() {
+        let start = Date()
+        let open = JournalGaps.openDays(
+            from: day("2025-08-28"), through: day("2026-08-27"),
+            covered: days("2026-01-01"),
+            firstEntryDay: day("2020-01-01"), timeZone: utc
+        )
+        // 2025-08-28 through 2026-08-27 inclusive is 365 days; one of them is written.
+        #expect(open.count == 364)
+        #expect(open.first == day("2026-08-27"))
+        #expect(open.last == day("2025-08-28"))
+        #expect(!open.contains(day("2026-01-01")))
+        #expect(Date().timeIntervalSince(start) < 1.0, "a year must not be slow to compute")
+    }
+
+    @Test("a leap day inside a long window is included exactly once")
+    func leapDayInLongWindow() {
+        let open = JournalGaps.openDays(
+            from: day("2028-02-27"), through: day("2028-03-02"),
+            covered: [], firstEntryDay: day("2020-01-01"), timeZone: utc
+        )
+        #expect(open == [day("2028-03-02"), day("2028-03-01"),
+                         day("2028-02-29"), day("2028-02-28"), day("2028-02-27")])
+    }
+
     @Test("the window spans a month boundary correctly")
     func spansMonths() {
         let open = JournalGaps.openDays(
