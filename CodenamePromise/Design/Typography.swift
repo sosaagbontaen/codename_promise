@@ -88,30 +88,20 @@ enum Type {
         .system(size: size, weight: weight.systemWeight)
     }
 
-    // MARK: The user's own words — Literata
+    // MARK: Your own words — whichever face you chose
 
     /// What someone actually wrote, as opposed to anything the app says.
     ///
-    /// Poppins is a geometric display face: perfectly circular bowls, near-uniform strokes,
-    /// a tall x-height with short extenders, and no true italic. All of that is why the
-    /// wordmark looks good and why a paragraph of it does not — word shapes flatten out and
-    /// there is no rhythm to follow, which is tiring at any length past a caption.
+    /// The face is a user setting, not a design decision — see `JournalFont`. The *split* is
+    /// the design decision, and it stands whichever face is chosen: chrome speaks the system
+    /// font, the brand speaks Poppins, and your journal speaks in something neither of them
+    /// uses. That separation is what makes an entry read as yours rather than as a record in
+    /// somebody's app.
     ///
-    /// Literata is drawn for reading on screen, and the split earns its keep twice: it makes
-    /// long entries comfortable, and it draws a line between *the app's voice* and *yours*.
-    /// Chrome speaks Poppins; your journal does not.
-    ///
-    /// It is variable on two axes. `opsz` is set to the point size, which is the whole point
-    /// of an optical-size axis and is why small text stays open rather than merely shrunk.
+    /// `weight` is a numeric axis value rather than a `Font.Weight` because one of the
+    /// options is a variable font; it is mapped down for the rest.
     static func journal(_ size: CGFloat = 17, _ weight: CGFloat = 400) -> Font {
-        let descriptor = UIFontDescriptor(fontAttributes: [
-            .family: "Literata",
-            kCTFontVariationAttribute as UIFontDescriptor.AttributeName: [
-                0x77676874: weight,          // 'wght'
-                0x6F70737A: Double(size),    // 'opsz'
-            ],
-        ])
-        return Font(UIFont(descriptor: descriptor, size: size))
+        JournalFont.current.font(size: size, weight: weight)
     }
 
     /// Everything dictated is timed, and digits that jump around are distracting. Poppins has

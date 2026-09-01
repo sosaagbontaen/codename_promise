@@ -52,7 +52,17 @@ enum Brand {
     /// than the mark's flat #0F1115: a true near-black flattens the confetti and makes the
     /// violet look like it is floating, where a ground with blue already in it holds them.
     static let ground = Color(light: 0xF2F4F7, dark: 0x0E1119)
-    static let surface = Color(light: 0xFFFFFF, dark: 0x171B26)
+    /// Cards.
+    ///
+    /// Was #171B26, about ten points off the ground in each channel - a difference that
+    /// survives a screenshot and does not survive a real phone at evening brightness, which
+    /// is when this app gets used. Lifted, and paired with `edge` below, because at low
+    /// contrast an *outline* is what defines a shape; raising the fill far enough to do the
+    /// job on its own would wash the whole screen out.
+    static let surface = Color(light: 0xFFFFFF, dark: 0x1C2231)
+
+    /// The hairline around a card. Does most of the work of separating it from the ground.
+    static let edge = Color(light: 0x0F1115, dark: 0xFFFFFF).opacity(0.07)
 
     static let ink = Color(light: 0x0F1115, dark: 0xEDEFF6)
     /// The sheet's grey, for anything secondary.

@@ -16,6 +16,7 @@ struct NotionSettingsView: View {
     @State private var serverURL = ""
     @State private var serverSaved = false
     @AppStorage(Appearance.storageKey) private var appearance: Appearance = .dark
+    @AppStorage(JournalFont.storageKey) private var journalFont: JournalFont = .rounded
     @State private var showingExport = false
     @State private var showingFeedback = false
 
@@ -123,6 +124,39 @@ struct NotionSettingsView: View {
     @ViewBuilder
     private var localSections: some View {
         AppIconPicker()
+
+        // Set in the face itself, because nobody can pick a reading font from its name.
+        Section {
+            ForEach(JournalFont.allCases) { choice in
+                Button {
+                    journalFont = choice
+                    Haptics.picked()
+                } label: {
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("The evening was warmer than we expected.")
+                                .font(choice.font(size: 16, weight: 400))
+                                .foregroundStyle(Brand.ink)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                            Text("\(choice.label) \u{00B7} \(choice.note)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 8)
+                        Image(systemName: journalFont == choice
+                              ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(journalFont == choice ? Brand.violet : Brand.muted)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.row)
+            }
+        } header: {
+            Text("Your writing")
+        } footer: {
+            Text("Only your own words change \u{2014} titles, entries, previews. The rest of the app stays as it is.")
+        }
 
         Section {
             Picker(selection: $appearance) {

@@ -74,7 +74,7 @@ struct CompactDraftRow: View {
             Spacer(minLength: 6)
 
             VStack(alignment: .trailing, spacing: 4) {
-                Text(summary.time)
+                Text(summary.edited)
                     .font(Type.caption(11))
                     .foregroundStyle(Brand.muted)
                 // Status as a dot, not a sentence: at this density a word would be most of

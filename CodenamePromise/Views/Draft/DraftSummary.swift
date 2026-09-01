@@ -17,10 +17,17 @@ struct DraftSummary: Identifiable, Hashable {
     let id: UUID
     let entryDateKey: String
     let title: String
-    /// When the entry was *started*, phrased so it cannot be misread as a timestamp for the
-    /// day it is filed under. A time of day when those agree, "added Sep 1" when they do not.
-    /// Never last-modified: an entry you tidied a typo in did not happen at 11pm.
-    let time: String
+    /// When the entry was last touched, and labelled as such.
+    ///
+    /// The bare time this used to show was `createdAt`, which read as a timestamp for the day
+    /// in the heading above it - a day it often had nothing to do with. Labelling it "added"
+    /// fixed the lie but not the usefulness: on a list you scan to find what you were last
+    /// working on, when you last *touched* something is the question being asked.
+    ///
+    /// The word is doing the work. An unlabelled time next to an entry claims to be when the
+    /// entry happened; "edited 2:16 AM" cannot be misread that way, which is what makes it
+    /// safe to show a modification time at all next to somebody's evening.
+    let edited: String
     let preview: String
     let thumbnails: [Thumb]
     let hiddenThumbnailCount: Int
@@ -65,7 +72,9 @@ extension DraftSummary {
             .split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
-            .joined(separator: "  ")
+            // One space, not two. Two was meant to hint at the paragraph break it replaced and
+            // just reads as a typo at preview size.
+            .joined(separator: " ")
     }
 
     /// Snapshots a live draft. Only ever called on the main actor while the model is valid.
@@ -85,20 +94,25 @@ extension DraftSummary {
         self.id = draft.id
         self.entryDateKey = draft.entryDateKey
         self.title = resolvedTitle
-        // A bare time is only honest when it belongs to the day the card is filed under.
-        //
-        // This is `createdAt` - when the entry was started - while the heading above it is
-        // `entryDateKey`, the day the entry is *about*. Those are usually the same day and
-        // the time then reads exactly as it should: which entry came first that evening.
-        //
-        // They come apart the moment somebody backfills. Write up last Tuesday today and the
-        // card sits under Tuesday showing a time from this afternoon, which is not ambiguous
-        // so much as wrong - it looks like a timestamp for Tuesday. So when the two disagree
-        // the card says when it was *added* instead, with the date, and stops pretending.
-        let startedOn = CalendarDay(date: draft.createdAt)
-        self.time = startedOn.rawValue == draft.entryDateKey
-            ? draft.createdAt.formatted(date: .omitted, time: .shortened)
-            : "added \(draft.createdAt.formatted(.dateTime.month(.abbreviated).day()))"
+        // Same day: the time is enough. Otherwise the date, because "edited 2:16 AM" on an
+        // entry last touched in March is worse than no timestamp.
+        let editedOn = CalendarDay(date: draft.updatedAt)
+        let editedLabel: String = {
+            let today = CalendarDay.today()
+            if editedOn == today {
+                return draft.updatedAt.formatted(date: .omitted, time: .shortened)
+            }
+            if editedOn == today.adding(days: -1) { return "yesterday" }
+            // The year only when it is not this one — same rule the day headings follow.
+            let calendar = Calendar.current
+            if calendar.component(.year, from: draft.updatedAt)
+                == calendar.component(.year, from: Date()) {
+                return draft.updatedAt.formatted(.dateTime.month(.abbreviated).day())
+            }
+            return draft.updatedAt.formatted(.dateTime.month(.abbreviated).day().year())
+        }()
+        self.edited = "edited \(editedLabel)"
+
         // What the preview is *for* is recognising an entry, not reading it - so it gets the
         // part the title did not already say, flattened onto one run of lines.
         //
@@ -109,6 +123,7 @@ extension DraftSummary {
         self.preview = Self.preview(
             of: rawText, titleWasDerived: (draft.content.title ?? "").isEmpty
         )
+
         self.thumbnails = media.prefix(thumbnailLimit).map {
             Thumb(id: $0.id, relativePath: $0.relativePath, isVideo: $0.kind == .video)
         }

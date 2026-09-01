@@ -1,14 +1,16 @@
 import CodenamePromiseCore
 import SwiftUI
 
-/// The photos from a day, as one picture rather than a row of stamps.
+/// The photos from a day, in one band.
 ///
-/// A strip of small thumbnails says "this record has four attachments". A collage says "that
-/// night" — which is the reaction the list exists to produce. Same data, and the difference
-/// is entirely in how much room it is given.
+/// It was a collage - a big cell beside a stacked column at three, a 2x2 grid at four - which
+/// gave a day's photos real presence but made every entry with pictures most of a screen. A
+/// grid is a gallery idiom: it is for browsing pictures, and browsing pictures is not what
+/// this list is for. A single band is the filmstrip idiom, which is for *recognising* a day,
+/// and it is a row shorter by construction.
 ///
-/// The layout adapts to how many there are, because four cells with two of them empty looks
-/// like a bug, and one photo stretched across a 2x2 grid looks like a mistake.
+/// One photo still gets the full width, because a lone image in a strip of one is just an
+/// image, and cropping it to band height would throw away the one picture there is.
 struct MediaCollage: View {
     let thumbs: [DraftSummary.Thumb]
     let overflow: Int
@@ -21,24 +23,20 @@ struct MediaCollage: View {
 
     var body: some View {
         Group {
-            switch thumbs.count {
-            case 0:
+            if thumbs.isEmpty {
                 EmptyView()
-            case 1:
+            } else if thumbs.count == 1 {
                 cell(thumbs[0])
-            case 2:
-                HStack(spacing: gap) { cell(thumbs[0]); cell(thumbs[1]) }
-            case 3:
+            } else {
                 HStack(spacing: gap) {
-                    cell(thumbs[0])
-                    VStack(spacing: gap) { cell(thumbs[1]); cell(thumbs[2]) }
-                }
-            default:
-                VStack(spacing: gap) {
-                    HStack(spacing: gap) { cell(thumbs[0]); cell(thumbs[1]) }
-                    HStack(spacing: gap) {
-                        cell(thumbs[2])
-                        if overflow > 0 { overflowCell } else { cell(thumbs[3]) }
+                    ForEach(Array(thumbs.enumerated()), id: \.element.id) { index, thumb in
+                        // The count of what is not shown rides on the last cell rather than
+                        // floating beside the strip as a chip of its own.
+                        if overflow > 0, index == thumbs.count - 1 {
+                            overflowCell(thumb)
+                        } else {
+                            cell(thumb)
+                        }
                     }
                 }
             }
@@ -55,22 +53,14 @@ struct MediaCollage: View {
         .clipShape(RoundedRectangle(cornerRadius: corner))
     }
 
-    /// One photo gets a shorter, wider frame; a grid needs the room to be a grid.
+    /// A lone photo can afford to be a photo; a band of them only has to be recognisable.
     ///
-    /// These were 150 / 118 / 176, which made every entry with photos a full screen of its
-    /// own and cost the list the thing it is for. A journal list has two jobs and they pull
-    /// against each other: show enough of a day to recognise it, and show enough days to scan.
-    /// At the old heights the first had eaten the second - three entries filled the screen and
-    /// finding last Tuesday meant scrolling rather than looking.
-    ///
-    /// A third smaller is still plainly a photograph and not a stamp, which is the line worth
-    /// holding. Anyone who wants the gallery has the density toggle in the toolbar.
+    /// A journal list has two jobs that pull against each other - show enough of a day to
+    /// recognise it, and show enough days to scan. The media-first version had let the first
+    /// eat the second: three entries filled a screen, and finding last Tuesday meant scrolling
+    /// rather than looking. Anyone who wants the gallery has the density toggle.
     private var height: CGFloat {
-        switch thumbs.count {
-        case 1: 104
-        case 2: 84
-        default: 116
-        }
+        thumbs.count == 1 ? 104 : 86
     }
 
     private func cell(_ thumb: DraftSummary.Thumb) -> some View {
@@ -78,12 +68,12 @@ struct MediaCollage: View {
     }
 
     /// The last cell counts what is not shown, rather than a chip floating beside the strip.
-    private var overflowCell: some View {
-        CollageTile(thumb: thumbs[3], fileStore: fileStore)
+    private func overflowCell(_ thumb: DraftSummary.Thumb) -> some View {
+        CollageTile(thumb: thumb, fileStore: fileStore)
             .overlay {
                 Rectangle().fill(.black.opacity(0.55))
                 Text("+\(overflow)")
-                    .font(Type.display(21, .semibold))
+                    .font(Type.label(17, .bold))
                     .foregroundStyle(.white)
             }
     }

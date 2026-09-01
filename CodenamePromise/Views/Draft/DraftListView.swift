@@ -227,6 +227,7 @@ struct DraftListView: View {
                         .listRowBackground(
                             RoundedRectangle(cornerRadius: 14)
                                 .fill(Brand.surface)
+                                .strokeBorder(Brand.edge, lineWidth: 1)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 2)
                         )
@@ -458,7 +459,7 @@ struct DraftRow: View {
                     .foregroundStyle(Brand.ink)
                     .lineLimit(1)
                 Spacer(minLength: 4)
-                Text(summary.time)
+                Text(summary.edited)
                     .font(Type.caption(11.5))
                     .foregroundStyle(Brand.muted)
             }
@@ -610,19 +611,17 @@ private struct DayHeader: View {
         .listRowInsets(EdgeInsets(top: 0, leading: 18, bottom: 2, trailing: 16))
     }
 
-    /// "Sat" carries the feel of a day; "8/22/26" carries the fact. Both, once, at the top.
+    /// Written out in full: "Friday, August 14, 2026".
     ///
-    /// Composed rather than asked for as one format style, because a combined weekday-plus-
-    /// numeric-date style renders as "Sat, 8/22/2026" - a comma and four digits of year to
-    /// say the same thing.
+    /// The short numeric form was the right answer when this was a 22pt headline competing
+    /// with the entries under it - it had to be terse to be small. Now that the heading is
+    /// 13pt and muted, terseness buys nothing and costs the thing a journal wants, which is
+    /// for a day to read like a day rather than like a filename. The year stays because a
+    /// journal is read backwards.
     private var headline: String {
         guard let calendarDay = CalendarDay(rawValue: day) else { return label }
-        let date = calendarDay.representativeDate()
-        let weekday = date.formatted(.dateTime.weekday(.abbreviated))
-        let numeric = date.formatted(
-            .dateTime.month(.defaultDigits).day().year(.twoDigits)
-        )
-        return "\(weekday) \(numeric)"
+        return calendarDay.representativeDate()
+            .formatted(.dateTime.weekday(.wide).month(.wide).day().year())
     }
 
     private var isToday: Bool {
