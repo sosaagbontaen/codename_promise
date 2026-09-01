@@ -70,7 +70,7 @@
 	  `Bundle.main.appDisplayName` rather than hard-coding a product name.
 	-->
 	<key>CFBundleDisplayName</key>
-	<string>AutoReflect</string>
+	<string>DumpNotes</string>
 
 	<key>UIAppFonts</key>
 	<array>

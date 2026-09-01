@@ -1,52 +1,56 @@
-# Brand
+# Brand — DumpNotes
 
-Everything here is read off the AutoReflect mark: an azure-to-violet **A** with a voice
-waveform in its counter and a pen nib for a leg, a deep navy **R**, and pale periwinkle
-ripples beneath. Voice, writing, and reflection — the ripples are the pun the whole name
-rests on, so they are the motif worth reusing.
+**Dump anything. Save everything.**
+
+> DumpNotes is an app that lets you quickly capture thoughts, moments, and experiences
+> through text, voice, images, or video, and automatically adds them to your Notion journals.
+
+Read off `logos/DumpNotes Concept.png`: a violet tray with confetti — a mic, an image, a
+doc, a video — flying into it. Energetic and slightly irreverent, but clean.
 
 ## Palette
 
+Sampled from the concept rather than eyeballed.
+
 | Token | Light | Dark | What it is |
 |---|---|---|---|
-| `azure` | `#2F6FEE` | `#5B92FF` | top of the A |
-| `violet` | `#8B3DF5` | `#A970FF` | foot of the A |
-| `ink` | `#151C2C` | `#EEF1F8` | the R |
-| `ripple` | `#C3D2F5` | `#2C3C68` | the water lines |
-| `ground` | `#FCFCFE` | `#0D111C` | the mark sits on white |
+| `violet` | `#603CE4` | `#8265FF` | the tray, the wordmark, "Dump it" |
+| `violetDeep` | `#4A28C4` | `#6B4AE8` | pressed states, gradient tail |
+| `night` | `#090D19` | `#090D19` | the hero ground |
+| `ground` | `#F4F3FB` | `#0B0F1C` | app background |
+| `surface` | `#FFFFFF` | `#141928` | cards |
 
-Gradient: `linear-gradient(118deg, azure, violet)`.
+### Confetti — one per capture mode
+
+`text` `#3B82F6` · `voice` `#8B5CF6` · `photo` `#22C55E` · `video` `#EC4899` ·
+`extra` `#F97316`
+
+That is the whole idea of the mark: things of different kinds, flying into the same tray.
 
 ## The one rule
 
-**The gradient is identity, never status.** It marks the wordmark, section tags and
-progress — things that say "this is AutoReflect". It never encodes meaning.
+**Confetti colours are identity, never status.** Green there means *photo*, never *it
+worked*. Status keeps its own three and never borrows from the set:
 
-Status keeps its own vocabulary, unchanged from the app: green reached the destination,
-amber has not yet, red failed. A colour has to mean the same thing on the phone and in the
-docs, or it means nothing anywhere.
+- green `reached` — it got to Notion
+- amber `waiting` — it hasn't yet, and that's normal
+- red `failed` — it tried and couldn't
 
-## Unresolved: violet is doing two jobs
+## Provenance moved
 
-Inside the app, purple already means **the model touched this** — the `formatted` badge, the
-sparkles. In the mark, violet is now the *brand*. Those collide: a purple chip currently
-reads as "AI", and purple chrome would read as "AutoReflect".
-
-Worth settling before the identity moves into the app. Two ways out:
-
-1. **Keep purple for AI, use azure as the app's chrome accent.** The gradient stays for
-   launch surfaces (icon, landing page, App Store) and does not appear in the UI.
-2. **Give AI a different colour** and let violet be the brand throughout.
-
-Option 1 is cheaper and keeps every existing screen correct.
+Purple used to mean "the model touched this". After the rebrand violet means *the app*, so
+provenance moved to the **voice** confetti colour — adjacent enough to stay familiar,
+different enough not to read as chrome.
 
 ## Type
 
-`Sora` for display, `Manrope` for body, `JetBrains Mono` for labels. Geometric, to match the
-letterforms in the mark; none of them is the default anyone reaches for first.
+`Sora` display, `Manrope` body, both bundled as variable fonts (OFL). See
+`CodenamePromise/Design/Typography.swift` — weights come from the `wght` axis, because iOS
+otherwise serves only a variable font's default instance.
 
-## Where the logo lives
+## Still to do
 
-**Not in the repo yet.** When it lands, `docs/brand/` is its home, and the App Store build
-needs a 1024x1024 PNG with no alpha and no rounded corners — Apple applies the mask itself,
-so a pre-rounded icon gets rounded twice.
+- The app icon: 1024x1024 PNG, **no alpha, no pre-rounded corners** — Apple masks it itself.
+- `PRODUCT_BUNDLE_IDENTIFIER` is still `com.codenamepromise.journal`. It is permanent once
+  shipped and nothing has shipped, so this is the free moment to change it.
+- Trademark search needs redoing for "DumpNotes".
