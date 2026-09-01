@@ -64,11 +64,16 @@ struct DraftListView: View {
                                 editMode = editMode == .active ? .inactive : .active
                             }
                         }
+                        .tint(Brand.ink)
                     }
                 }
                 // Two visible buttons rather than a menu behind a long-press. Importing by
                 // date is one of the more useful things this app does, and nobody discovers a
                 // long-press.
+                // Neutral, all of them. Violet was on the wordmark, Select, three toolbar
+                // icons, the day rule, "Today" and the selected tab at once - at which point
+                // it stops being an accent and becomes the app's grey. It now marks two
+                // things: the brand, and what is selected or pressable *right now*.
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         withAnimation(.easeInOut(duration: 0.22)) { density = density.next }
@@ -76,6 +81,7 @@ struct DraftListView: View {
                     } label: {
                         Label("Density", systemImage: density.next.symbol)
                     }
+                    .tint(Brand.ink)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -83,6 +89,7 @@ struct DraftListView: View {
                     } label: {
                         Label("Import photos by date", systemImage: "photo.stack")
                     }
+                    .tint(Brand.ink)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -90,6 +97,7 @@ struct DraftListView: View {
                     } label: {
                         Label("New entry", systemImage: "square.and.pencil")
                     }
+                    .tint(Brand.ink)
                 }
             }
             // One destination for both tapping a row and creating an entry, resolved by
@@ -145,12 +153,11 @@ struct DraftListView: View {
                     OpenDaysPrompt(mostRecentOpenDay: mostRecentOpenDay) {
                         showingOpenDays = true
                     }
-                    .listRowBackground(
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(Brand.surface)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                    )
+                    // Deliberately no surface behind it. Every element having a background is
+                    // what makes a screen read as a stack of floating panels rather than a
+                    // page, and this one has the least claim to being an object.
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 2, leading: 22, bottom: 0, trailing: 16))
                     .listRowSeparator(.hidden)
                 }
             }
@@ -185,10 +192,10 @@ struct DraftListView: View {
                         // left days and entries separated identically, so the grouping
                         // stopped being readable - a day heading looked like just more list.
                         .listRowBackground(
-                            RoundedRectangle(cornerRadius: 16)
+                            RoundedRectangle(cornerRadius: 14)
                                 .fill(Brand.surface)
                                 .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
+                                .padding(.vertical, 2)
                         )
                         .listRowSeparator(.hidden)
                         // Swipe the opposite way from delete. Duplicating is the safe action,
@@ -211,6 +218,14 @@ struct DraftListView: View {
             }
 
         }
+        // Section spacing is handed to the day heading instead of split between the two.
+        //
+        // A List's own gap plus the heading's top padding meant the distance from the prompt
+        // to the first day was set in two places at once, and came out at roughly a thumb -
+        // enough that the date read as another isolated object rather than as the start of
+        // what is under it. One control point, one number.
+        .listSectionSpacing(0)
+        .contentMargins(.top, 6, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .background(Brand.ground)
         .overlay {
@@ -397,7 +412,7 @@ struct DraftRow: View {
     let fileStore: MediaFileStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 7) {
             // Title and time on one line. The timeline header already said which day this
             // was, so repeating the date here only crowded it.
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -451,7 +466,7 @@ struct DraftRow: View {
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 13)
+        .padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
         .clipped()
         .contentShape(Rectangle())
@@ -555,10 +570,12 @@ private struct DayHeader: View {
             .frame(maxWidth: 190)
         }
         // Much more space above a day than between its entries: that difference is what
-        // makes the grouping legible at a glance.
+        // makes the grouping legible at a glance. The asymmetry is the whole point - the
+        // heading has to sit closer to the entries it owns than to the day above it, or it
+        // reads as one more free-floating object in a column of them.
         .padding(.top, 26)
-        .padding(.bottom, 6)
-        .listRowInsets(EdgeInsets(top: 0, leading: 18, bottom: 8, trailing: 16))
+        .padding(.bottom, 0)
+        .listRowInsets(EdgeInsets(top: 0, leading: 18, bottom: 2, trailing: 16))
     }
 
     /// "Sat" carries the feel of a day; "8/22/26" carries the fact. Both, once, at the top.

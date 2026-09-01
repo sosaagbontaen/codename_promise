@@ -390,25 +390,32 @@ struct OpenDaysPrompt: View {
     let mostRecentOpenDay: CalendarDay?
     let action: () -> Void
 
+    /// A line, not a card.
+    ///
+    /// This was a full surface - icon, title, subtitle, chevron, its own rounded background -
+    /// which put a contextual nudge at the same visual weight as the entries themselves, and
+    /// pushed the first real day heading a long way down an otherwise empty screen. It is a
+    /// footnote about a day you have not written yet, so it now reads like one.
+    ///
+    /// "Fill it in" is the only violet on the row, because it is the only thing here you can
+    /// press. That is the whole rule the palette now follows.
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 10) {
+            HStack(spacing: 6) {
                 Image(systemName: mostRecentOpenDay == nil
                       ? "checkmark.circle.fill" : "calendar.badge.plus")
-                    .foregroundStyle(mostRecentOpenDay == nil ? Brand.reached : Brand.azure)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(title)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.primary)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundStyle(mostRecentOpenDay == nil ? Brand.reached : Brand.muted)
+                Text(title)
+                if mostRecentOpenDay != nil {
+                    Text("·").foregroundStyle(Brand.muted.opacity(0.45))
+                    Text("Fill it in").foregroundStyle(Brand.violet)
                 }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                Spacer(minLength: 0)
             }
+            .font(Type.caption(12.5, .medium))
+            .foregroundStyle(Brand.muted)
+            .lineLimit(1)
             .contentShape(Rectangle())
         }
         .buttonStyle(.row)
@@ -422,9 +429,4 @@ struct OpenDaysPrompt: View {
         return "\(day.representativeDate().formatted(.dateTime.weekday(.wide).month(.abbreviated).day())) is still open"
     }
 
-    private var subtitle: String {
-        mostRecentOpenDay == nil
-            ? "Nothing waiting on you."
-            : "Tap to fill it in, or pick another day."
-    }
 }

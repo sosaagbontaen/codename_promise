@@ -54,6 +54,26 @@ struct HomeView: View {
                 .tag(Tab.settings)
         }
         .tint(Brand.violet)
+        // The bar shrinks to a pill while you are reading and comes back the moment you
+        // reach for it. Standing still it is a wide translucent slab parked on top of
+        // whatever photo happens to be at the bottom of the list, which reads as a second
+        // panel dropped over the app rather than as its navigation.
+        //
+        // This is the system's own answer to that, not a redrawn tab bar: the floating
+        // capsule is iOS 26, and replacing it with a flat fixed bar would cost more than
+        // the crowding does.
+        .modifier(MinimizingTabBar())
         .dumpImpact(impact)
+    }
+}
+
+/// `tabBarMinimizeBehavior` is iOS 26, and the app still deploys to 17.
+private struct MinimizingTabBar: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.tabBarMinimizeBehavior(.onScrollDown)
+        } else {
+            content
+        }
     }
 }
