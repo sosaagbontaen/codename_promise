@@ -609,7 +609,7 @@
         strangers.</p>
         <div class="options">
           <div class="option lean">
-            <span class="opt-name">A / No backend</span>
+            <span class="opt-name">A / No backend &mdash; CHOSEN</span>
             <span>On-device transcription and formatting; Notion OAuth via a thin stateless proxy. Zero per-user cost, no servers to run or breach. AI quality drops; real work to swap providers.</span>
           </div>
           <div class="option">
@@ -621,14 +621,17 @@
             <span>Multi-tenant, accounts, subscriptions, you pay for inference. Months of work and real liability &mdash; and the only shape that becomes a business.</span>
           </div>
         </div>
-        <p class="recommend">Leaning A &mdash; your thesis is local-first, and the most aligned version has no server at all</p>
+        <p class="recommend">Decided: A. The remaining question is only what replaces Groq transcription</p>
       </div>
 
       <div class="decision">
         <div class="decision-head">
           <h3>Do you add analytics?</h3>
-          <span class="badge need">Trade-off</span>
+          <span class="badge shipped">Decided: no, for now</span>
         </div>
+        <p><strong>Answered.</strong> No analytics. "Data not collected" stays truthful on
+        the privacy questionnaire, and a person telling you what broke is worth more than a
+        funnel chart. In its place: an in-app feedback route, shipped.</p>
         <p>You need to know where people fall out of onboarding. <strong>But the moment you
         add analytics, "data not collected" stops being a truthful answer on Apple's privacy
         questionnaire</strong> &mdash; and for a journaling app that answer is one of the
@@ -673,7 +676,7 @@
         <div class="track-head"><h3>Ship-blockers</h3><span class="track-note">submission fails or the product breaks its own promise without these</span></div>
 
         <div class="task">
-          <input type="checkbox" data-task="build-export" id="t-export">
+          <input type="checkbox" checked data-task="build-export" id="t-export">
           <div class="task-body">
             <label class="task-title" for="t-export">Build markdown + media export<span class="badge stop">Blocker</span><span class="badge size">~1 weekend</span></label>
             <p class="task-why">Closes the gap in the notice above, and doubles as the answer
@@ -765,7 +768,7 @@
         </div>
 
         <div class="task">
-          <input type="checkbox" data-task="export-compliance" id="t-enc">
+          <input type="checkbox" checked data-task="export-compliance" id="t-enc">
           <div class="task-body">
             <label class="task-title" for="t-enc">Declare export compliance in the plist<span class="badge need">Required</span><span class="badge size">~10 min</span></label>
             <p class="task-why">You use HTTPS, so you are almost certainly exempt &mdash; but
@@ -874,7 +877,7 @@
         </div>
 
         <div class="task">
-          <input type="checkbox" data-task="version-numbers" id="t-version">
+          <input type="checkbox" checked data-task="version-numbers" id="t-version">
           <div class="task-body">
             <label class="task-title" for="t-version">Fix the version scheme and automate the build number<span class="badge need">Required</span><span class="badge size">~1 hour</span></label>
             <p class="task-why"><code>MARKETING_VERSION</code> is <code>0.1</code>. You will
@@ -895,7 +898,7 @@
         </div>
 
         <div class="task">
-          <input type="checkbox" data-task="feedback-channel" id="t-feedback">
+          <input type="checkbox" checked data-task="feedback-channel" id="t-feedback">
           <div class="task-body">
             <label class="task-title" for="t-feedback">Add an in-app "send feedback" that opens a mail composer<span class="badge later">Later</span><span class="badge size">~2 hours</span></label>
             <p class="task-why">Canny is polished and paid. Ten users do not need a voting

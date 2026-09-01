@@ -16,6 +16,8 @@ struct NotionSettingsView: View {
     @State private var confirmingDisconnect = false
     @State private var serverURL = ""
     @State private var serverSaved = false
+    @State private var showingExport = false
+    @State private var showingFeedback = false
 
     var body: some View {
         NavigationStack {
@@ -30,11 +32,18 @@ struct NotionSettingsView: View {
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
+                        localSections
                     }
                 }
             }
-            .navigationTitle("Notion")
+            .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showingExport) {
+                if let store = services.store, let files = services.files {
+                    ExportView(store: store, fileStore: files)
+                }
+            }
+            .sheet(isPresented: $showingFeedback) { FeedbackView() }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
@@ -85,6 +94,8 @@ struct NotionSettingsView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
+
+            localSections
         }
         .overlay {
             if coordinator.phase == .loading && coordinator.databases.isEmpty {
@@ -101,6 +112,32 @@ struct NotionSettingsView: View {
             }
         } message: {
             Text("Your entries stay on this device. Nothing is deleted from Notion.")
+        }
+    }
+
+    /// Export and feedback sit here regardless of whether a backend is configured, because
+    /// neither needs one. Getting your journal out must never depend on a server being up
+    /// -- that would make the backup fail in exactly the circumstances you need it.
+    @ViewBuilder
+    private var localSections: some View {
+        Section {
+            Button {
+                showingExport = true
+            } label: {
+                Label("Export your journal", systemImage: "square.and.arrow.up.on.square")
+            }
+        } footer: {
+            Text("Markdown and media, saved wherever you like. Works offline and needs nothing else to read it.")
+        }
+
+        Section {
+            Button {
+                showingFeedback = true
+            } label: {
+                Label("Send feedback", systemImage: "envelope")
+            }
+        } footer: {
+            Text("Ideas, problems, or just hello. Nothing from your entries is ever attached.")
         }
     }
 

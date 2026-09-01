@@ -21,6 +21,7 @@ help:
 	@echo "make boot        Boot the simulator (only needed if it's shut down)"
 	@echo "make device      Build and install on a connected iPhone (uses your Mac's LAN IP)"
 	@echo "make stop-server Kill whatever is listening on port $(PORT)"
+	@echo "make preflight   Everything that must pass before a release"
 	@echo "make clean       Remove build output"
 	@echo ""
 	@echo "Override defaults:  make app SIMULATOR='iPhone 17 Pro'"
@@ -49,6 +50,27 @@ server:
 .PHONY: stop-server
 stop-server:
 	@lsof -ti:$(PORT) | xargs kill 2>/dev/null && echo "stopped" || echo "nothing on port $(PORT)"
+
+# --- Release -----------------------------------------------------------------
+
+# The build number is the count of commits: monotonic, never repeats, and needs no state
+# outside the repo. App Store Connect rejects a duplicate, which is the one failure mode a
+# hand-typed number reliably produces.
+.PHONY: build-number
+build-number:
+	@git rev-list --count HEAD
+
+# Everything that must pass before a build is allowed near TestFlight. The migration suite
+# is in here on purpose: it is the one that catches the failure a user sees first.
+.PHONY: preflight
+preflight:
+	@echo "==> Swift"       && cd Core && swift test
+	@echo "==> Python"      && cd backend && .venv/bin/python -m pytest -q
+	@echo "==> App builds"  && xcodebuild -scheme CodenamePromise \
+		-destination 'platform=iOS Simulator,name=$(SIMULATOR)' build 2>&1 | tail -1
+	@echo ""
+	@echo "Build number would be: $$(git rev-list --count HEAD)"
+	@echo "Preflight passed."
 
 # --- iOS app -----------------------------------------------------------------
 

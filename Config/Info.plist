@@ -50,6 +50,15 @@
 		</dict>
 	</array>
 
+	<!--
+	  Export compliance. The app uses HTTPS and the Keychain and nothing else cryptographic,
+	  which is exempt - but the declaration is still required, and without it App Store
+	  Connect asks the same question on every single upload. Verify this answer still holds
+	  if any bespoke crypto is ever added.
+	-->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
