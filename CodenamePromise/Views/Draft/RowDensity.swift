@@ -43,8 +43,10 @@ struct CompactDraftRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
+                // Same rule as the comfortable row: the title is the user's, so it is set
+                // in their voice even when the row is a single line.
                 Text(summary.title)
-                    .font(Type.label(15.5, .semibold))
+                    .font(Type.journal(15.5, 600))
                     .foregroundStyle(Brand.ink)
                     .lineLimit(1)
 

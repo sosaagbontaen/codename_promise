@@ -1,12 +1,27 @@
 import SwiftUI
 import UIKit
 
-/// The app's voice: Poppins, per the brand sheet.
+/// Three voices, and each one only speaks where it belongs.
 ///
-/// One family throughout rather than a display/body pair. Poppins is geometric with circular
-/// bowls and generous counters, which is what makes the brand read as friendly rather than
-/// corporate — and splitting it against a second face would dilute exactly the quality the
-/// mark is trading on.
+/// - **Poppins** is the brand. The wordmark, a day heading — places where the app is being
+///   itself rather than telling you something.
+/// - **The system font** is the app talking: times, statuses, buttons, labels.
+/// - **Literata** is *you*. Anything you wrote or said, wherever it appears.
+///
+/// It used to be Poppins for everything the app said, which was the brand sheet read too
+/// literally. Poppins is a geometric display face — circular bowls, near-uniform strokes,
+/// tight apertures — and those are the qualities that make a wordmark and ruin a icon label.
+/// At 11pt in a dense list it stops being a brand and starts being a font someone picked from
+/// a deck template, which is exactly how the app was reading.
+///
+/// The clash was sharpest inside an entry card, where a Poppins SemiBold title sat directly on
+/// top of a Literata preview: two strong opposed personalities at nearly the same size, in the
+/// same box, fighting. The rule above dissolves it, because a title *is* the user's words. A
+/// card is now one voice — the memory — with quiet system-font metadata around it.
+///
+/// The identity does not live in the UI font. It lives in the mark, the icon, the violet, the
+/// mode colours and the dump. Poppins at caption size was contributing nothing to it and
+/// costing legibility.
 ///
 /// Static weights rather than a variable file: the brand sheet names three (Bold, SemiBold,
 /// Regular), so shipping those plus Medium keeps the bundle honest about what it uses. It
@@ -20,6 +35,15 @@ enum Type {
     enum Weight {
         case regular, medium, semibold, bold
 
+        var systemWeight: Font.Weight {
+            switch self {
+            case .regular: .regular
+            case .medium: .medium
+            case .semibold: .semibold
+            case .bold: .bold
+            }
+        }
+
         var postScriptName: String {
             switch self {
             case .regular: "Poppins-Regular"
@@ -30,25 +54,38 @@ enum Type {
         }
     }
 
-    /// Anything that carries: the wordmark in-app, a day, a sheet heading.
+    // MARK: The brand — Poppins, at sizes where a display face works
+
+    /// Anything that carries: the wordmark in-app, a day heading, a sheet title.
+    ///
+    /// Deliberately has no small sizes. If a call to this drops below about 18pt, the right
+    /// answer is almost always `label` — Poppins does not survive being made small.
     static func display(_ size: CGFloat, _ weight: Weight = .bold) -> Font {
         poppins(size, weight)
     }
 
     static func title(_ size: CGFloat = 22) -> Font { poppins(size, .semibold) }
 
-    /// Poppins is geometric, so long paragraphs want a touch more room than a humanist face
-    /// would. Callers pair this with `lineSpacing` on the writing surface.
-    static func body(_ size: CGFloat = 17, _ weight: Weight = .regular) -> Font {
-        poppins(size, weight)
-    }
+    // MARK: The app talking — the system font
 
+    /// Buttons, labels, anything the app says to you.
+    ///
+    /// System rather than brand because this is interface text, and SF is drawn for exactly
+    /// this: it is legible at small sizes, it carries every weight and optical size Apple
+    /// ships, and it never reads as a font choice. Brand fonts belong on things you look *at*;
+    /// interface text is something you look *through*.
     static func label(_ size: CGFloat = 15, _ weight: Weight = .semibold) -> Font {
-        poppins(size, weight)
+        .system(size: size, weight: weight.systemWeight)
     }
 
+    /// Times, statuses, badges — the quiet layer around content.
     static func caption(_ size: CGFloat = 12.5, _ weight: Weight = .medium) -> Font {
-        poppins(size, weight)
+        .system(size: size, weight: weight.systemWeight)
+    }
+
+    /// App prose: empty states, explanations, settings copy.
+    static func body(_ size: CGFloat = 17, _ weight: Weight = .regular) -> Font {
+        .system(size: size, weight: weight.systemWeight)
     }
 
     // MARK: The user's own words — Literata

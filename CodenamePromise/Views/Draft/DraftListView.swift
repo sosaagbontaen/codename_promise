@@ -449,8 +449,12 @@ struct DraftRow: View {
             // Title and time on one line. The timeline header already said which day this
             // was, so repeating the date here only crowded it.
             HStack(alignment: .firstTextBaseline, spacing: 8) {
+                // Literata, not the UI font. A title is something the person wrote, so it
+                // belongs to the same voice as the entry underneath it - and setting the two
+                // in opposed faces at nearly the same size is what made the card look like a
+                // component rather than a memory.
                 Text(summary.title)
-                    .font(Type.label(17, .semibold))
+                    .font(Type.journal(17, 600))
                     .foregroundStyle(Brand.ink)
                     .lineLimit(1)
                 Spacer(minLength: 4)

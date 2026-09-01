@@ -9,7 +9,6 @@ import SwiftUI
 /// never nags.
 struct NotionSettingsView: View {
     @Environment(AppServices.self) private var services
-    @Environment(\.dismiss) private var dismiss
 
     @State private var coordinator: ConnectionCoordinator?
     @State private var authenticator = WebAuthenticator()
@@ -47,11 +46,10 @@ struct NotionSettingsView: View {
                 }
             }
             .sheet(isPresented: $showingFeedback) { FeedbackView() }
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
+            // No "Done". This screen was a sheet before the tab bar existed, and the button
+            // came along with it - but a tab root has nothing to dismiss, so `dismiss()` was
+            // a no-op and the button did visibly nothing when pressed. You leave Settings by
+            // tapping another tab.
         }
         .task {
             await services.reminders.refreshAuthorization()

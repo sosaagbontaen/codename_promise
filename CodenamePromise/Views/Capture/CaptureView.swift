@@ -60,6 +60,17 @@ struct CaptureView: View {
             }
         .navigationTitle(dayLabel)
         .navigationBarTitleDisplayMode(.inline)
+        // No tab bar while writing.
+        //
+        // Two floating controls were landing in the strip below the action panel and getting
+        // clipped by it: the minimized tab bar on the left, the keyboard's "Done" on the
+        // right. Both anchor to the bottom of the screen, which is where the panel already
+        // is. Insetting cannot fix that - neither one is scroll content.
+        //
+        // Hiding it is the right answer regardless of the collision. This is a drill-down
+        // editing surface reached by pushing from a list, and switching tabs from inside one
+        // is not something anyone does mid-sentence. Going back brings it straight back.
+        .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()

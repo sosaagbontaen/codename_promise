@@ -332,7 +332,10 @@ struct DumpView: View {
                 if status == .dumping {
                     ProgressView().tint(.white)
                 } else {
-                    Text("Dump it").font(Type.label(17, .semibold))
+                    // Poppins here, alone among the buttons. This is the one the app is named
+                    // after and the reason it exists, and at 19pt the geometric face is doing
+                    // what it is good at rather than being shrunk into an interface label.
+                    Text("Dump it").font(Type.display(19, .semibold))
                 }
             }
             .foregroundStyle(.white)
