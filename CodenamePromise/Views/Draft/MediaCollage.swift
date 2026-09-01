@@ -70,15 +70,13 @@ struct MediaCollage: View {
 
     /// The last cell counts what is not shown, rather than a chip floating beside the strip.
     private var overflowCell: some View {
-        ZStack {
-            CollageTile(thumb: thumbs[3], fileStore: fileStore)
-            Rectangle().fill(.black.opacity(0.55))
-            Text("+\(overflow)")
-                .font(Type.display(21, .semibold))
-                .foregroundStyle(.white)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .clipped()
+        CollageTile(thumb: thumbs[3], fileStore: fileStore)
+            .overlay {
+                Rectangle().fill(.black.opacity(0.55))
+                Text("+\(overflow)")
+                    .font(Type.display(21, .semibold))
+                    .foregroundStyle(.white)
+            }
     }
 }
 
@@ -88,32 +86,48 @@ private struct CollageTile: View {
 
     @State private var image: UIImage?
 
+    /// The photo is an *overlay* on a flexible colour, not a sibling in a stack.
+    ///
+    /// This looks like a stylistic preference and is not. `scaledToFill()` reports a size that
+    /// covers whatever it is proposed, which means against a fixed 176pt-tall cell a landscape
+    /// photo reports a **minimum** width of 176 x its aspect ratio - about 235pt. Two of those
+    /// side by side ask for more width than the row has, and `frame(maxWidth: .infinity)` does
+    /// not override a child's minimum, so the collage came out ~50pt wider than the row and
+    /// centred itself on the overflow: the title and preview text hung off the left edge while
+    /// the photos ran past the right. `.clipped()` never helped, because clipping affects
+    /// drawing and this is a sizing problem.
+    ///
+    /// `Color` is flexible down to zero and an overlay is laid out inside its base's frame
+    /// without ever influencing it, so the tile is now exactly the size it is handed and the
+    /// photo crops into it. Same picture, no opinion about width.
+    ///
+    /// Third time this list has been widened from the inside - see `thumbnailLimit` and the
+    /// note on the collage's own frame for the first two.
     var body: some View {
-        ZStack {
-            Brand.surface
-            if let image {
-                Image(uiImage: image).resizable().scaledToFill()
+        Brand.surface
+            .overlay {
+                if let image {
+                    Image(uiImage: image).resizable().scaledToFill()
+                }
             }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .clipped()
-        .overlay(alignment: .bottomLeading) {
-            if thumb.isVideo {
-                Image(systemName: "play.fill")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.white)
-                    .shadow(radius: 3)
-                    .padding(7)
+            .clipped()
+            .overlay(alignment: .bottomLeading) {
+                if thumb.isVideo {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .shadow(radius: 3)
+                        .padding(7)
+                }
             }
-        }
-        .task {
-            if image == nil {
-                // Bigger than the old 140: these are display sizes now, not stamps.
-                image = await ThumbnailCache.shared.thumbnail(
-                    id: thumb.id, relativePath: thumb.relativePath,
-                    isVideo: thumb.isVideo, fileStore: fileStore, maxPixel: 420
-                )
+            .task {
+                if image == nil {
+                    // Bigger than the old 140: these are display sizes now, not stamps.
+                    image = await ThumbnailCache.shared.thumbnail(
+                        id: thumb.id, relativePath: thumb.relativePath,
+                        isVideo: thumb.isVideo, fileStore: fileStore, maxPixel: 420
+                    )
+                }
             }
-        }
     }
 }
