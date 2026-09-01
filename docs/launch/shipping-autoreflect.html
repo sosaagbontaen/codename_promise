@@ -1,31 +1,75 @@
 <title>Shipping AutoReflect</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Karla:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
 
 <style>
-  /* --- The desk after dark. AutoReflect is used at the end of a day, by lamplight, and
-     its own colour language is already fixed inside the app: green means it reached the
-     destination, purple means the AI touched it, amber means it hasn't yet. This document
-     borrows that vocabulary rather than inventing a second one, so a colour means the same
-     thing here as it does on the phone. Single-theme on purpose - every surface painted. */
-  :root {
-    --night:    #0F1219;   /* the room */
-    --panel:    #161A24;   /* the page */
-    --sunken:   #0B0E14;   /* under the page */
-    --rule:     #262C3A;   /* the ruled line */
-    --paper:    #EFEDE6;   /* what you write with */
-    --dim:      #8C93A4;   /* margin notes */
-    --lamp:     #F0B429;   /* the lamp */
-    --lamp-low: #8A6410;
-    --synced:   #4ADE80;   /* app: reached Notion */
-    --ai:       #A78BFA;   /* app: the model touched it */
-    --pending:  #FB923C;   /* app: not yet */
-    --stop:     #F87171;   /* nothing else in the app is this colour */
+  /* --- Drawn from the AutoReflect mark: an azure-to-violet "A" with a voice waveform in
+     its counter and a pen nib for a leg, a deep navy "R", and pale periwinkle ripples
+     beneath the whole thing. Voice, writing, and reflection.
 
-    --display: 'Fraunces', Georgia, 'Times New Roman', serif;
-    --body: 'Karla', 'Helvetica Neue', Arial, sans-serif;
+     The ripples are the structural motif here - section rules taper the way the logo's
+     water lines do. The gradient is reserved for identity (the wordmark, section tags,
+     progress) and never used to carry meaning; status stays green / amber / red so a
+     colour means the same thing here as it does in the app. */
+  :root {
+    --ground:  #FCFCFE;
+    --panel:   #FFFFFF;
+    --sunken:  #F4F6FB;
+    --rule:    #E3E8F4;
+    --rule-2:  #EEF1F8;
+    --ink:     #151C2C;   /* the R */
+    --body-c:  #4A5468;
+    --dim:     #7C8699;
+    --azure:   #2F6FEE;   /* top of the A */
+    --violet:  #8B3DF5;   /* foot of the A */
+    --ripple:  #C3D2F5;   /* the water lines */
+    --synced:  #15803D;
+    --pending: #C2620A;
+    --stop:    #DC2626;
+    --shadow:  0 1px 2px rgba(21,28,44,.05), 0 8px 24px rgba(21,28,44,.05);
+
+    --display: 'Sora', 'Helvetica Neue', Arial, sans-serif;
+    --body: 'Manrope', 'Helvetica Neue', Arial, sans-serif;
     --mono: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    --grad: linear-gradient(118deg, var(--azure), var(--violet));
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:  #0D111C;
+      --panel:   #151B2A;
+      --sunken:  #0A0E18;
+      --rule:    #27314B;
+      --rule-2:  #1C2437;
+      --ink:     #EEF1F8;
+      --body-c:  #AEB8CD;
+      --dim:     #7B8599;
+      --azure:   #5B92FF;
+      --violet:  #A970FF;
+      --ripple:  #2C3C68;
+      --synced:  #4ADE80;
+      --pending: #FB923C;
+      --stop:    #F87171;
+      --shadow:  0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.28);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:  #0D111C;
+    --panel:   #151B2A;
+    --sunken:  #0A0E18;
+    --rule:    #27314B;
+    --rule-2:  #1C2437;
+    --ink:     #EEF1F8;
+    --body-c:  #AEB8CD;
+    --dim:     #7B8599;
+    --azure:   #5B92FF;
+    --violet:  #A970FF;
+    --ripple:  #2C3C68;
+    --synced:  #4ADE80;
+    --pending: #FB923C;
+    --stop:    #F87171;
+    --shadow:  0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.28);
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -36,8 +80,8 @@
   }
 
   body {
-    background: var(--night);
-    color: var(--paper);
+    background: var(--ground);
+    color: var(--body-c);
     font-family: var(--body);
     font-size: 16px;
     line-height: 1.62;
@@ -46,9 +90,9 @@
 
   .wrap { max-width: 940px; margin: 0 auto; padding: 0 26px; }
 
-  a { color: var(--lamp); text-underline-offset: 3px; }
+  a { color: var(--azure); text-underline-offset: 3px; }
   a:focus-visible, button:focus-visible, input:focus-visible {
-    outline: 2px solid var(--lamp); outline-offset: 3px;
+    outline: 2px solid var(--azure); outline-offset: 3px;
   }
 
   /* ---------- hero ---------- */
@@ -56,346 +100,276 @@
   header.hero {
     position: relative;
     overflow: hidden;
-    border-bottom: 1px solid var(--rule);
-    padding: 64px 0 52px;
+    padding: 62px 0 44px;
     background:
-      radial-gradient(900px 380px at 22% -130px, rgba(240, 180, 41, 0.13), transparent 70%),
-      repeating-linear-gradient(180deg, transparent 0 33px, rgba(239, 237, 230, 0.030) 33px 34px),
-      var(--night);
+      radial-gradient(760px 300px at 12% -90px, rgba(47,111,238,.10), transparent 68%),
+      radial-gradient(620px 280px at 52% -60px, rgba(139,61,245,.09), transparent 70%),
+      var(--ground);
+  }
+  /* the mark's water lines, as a base rule */
+  header.hero::after {
+    content: "";
+    position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--ripple) 12%, var(--ripple) 72%, transparent);
   }
 
   .doc-family {
     font-family: var(--mono);
     font-size: 11px;
-    letter-spacing: 0.07em;
+    letter-spacing: 0.06em;
     color: var(--dim);
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px 16px;
-    margin-bottom: 40px;
+    display: flex; flex-wrap: wrap; gap: 5px 16px;
+    margin-bottom: 38px;
   }
   .doc-family span::before { content: "/ "; color: var(--rule); }
-  .doc-family .here { color: var(--lamp); }
+  .doc-family .here { color: var(--violet); font-weight: 500; }
 
   .eyebrow {
     font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--synced);
-    margin-bottom: 16px;
+    font-size: 11.5px; font-weight: 700;
+    letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--azure);
+    margin-bottom: 14px;
   }
 
   h1 {
     font-family: var(--display);
     font-weight: 700;
-    font-size: clamp(46px, 9vw, 86px);
-    line-height: 0.98;
-    letter-spacing: -0.02em;
+    font-size: clamp(44px, 8.4vw, 80px);
+    line-height: 1.02;
+    letter-spacing: -0.035em;
+    color: var(--ink);
     text-wrap: balance;
   }
-  h1 .lamp { color: var(--lamp); }
+  h1 .accent {
+    background: var(--grad);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
+  }
 
   .hero-sub {
-    max-width: 56ch;
-    margin-top: 20px;
-    font-size: 17.5px;
-    color: var(--dim);
+    max-width: 56ch; margin-top: 18px;
+    font-size: 17.5px; color: var(--dim);
   }
-  .hero-sub strong { color: var(--paper); font-weight: 600; }
+  .hero-sub strong { color: var(--ink); font-weight: 600; }
 
   /* ---------- the one notice ---------- */
 
   .notice {
-    margin-top: 44px;
-    border: 1px solid var(--lamp-low);
-    border-radius: 10px;
-    background: linear-gradient(180deg, #1C1704, #131009);
-    padding: 24px 28px 22px;
-    box-shadow: 0 0 44px rgba(240, 180, 41, 0.08), inset 0 0 30px rgba(0, 0, 0, 0.45);
+    position: relative;
+    margin-top: 40px;
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    background: var(--panel);
+    box-shadow: var(--shadow);
+    padding: 24px 28px 22px 30px;
+    overflow: hidden;
+  }
+  .notice::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+    background: linear-gradient(180deg, var(--azure), var(--violet));
   }
   .notice .board-label {
     font-family: var(--mono);
-    font-size: 10.5px;
-    letter-spacing: 0.22em;
-    color: var(--lamp-low);
+    font-size: 10.5px; letter-spacing: 0.2em;
+    color: var(--stop); font-weight: 700;
     margin-bottom: 9px;
   }
   .notice h2 {
-    font-family: var(--display);
-    font-weight: 700;
-    font-size: clamp(22px, 4vw, 32px);
-    line-height: 1.15;
-    color: var(--lamp);
-    margin-bottom: 10px;
-    text-wrap: balance;
+    font-family: var(--display); font-weight: 700;
+    font-size: clamp(21px, 3.7vw, 29px); line-height: 1.2;
+    letter-spacing: -0.02em;
+    color: var(--ink); margin-bottom: 10px; text-wrap: balance;
   }
   .notice p { color: var(--dim); max-width: 66ch; font-size: 15.5px; }
   .notice p + p { margin-top: 9px; }
-  .notice strong { color: var(--paper); font-weight: 600; }
+  .notice strong { color: var(--ink); font-weight: 600; }
+  .notice em { color: var(--ink); font-style: italic; }
 
   /* ---------- progress ---------- */
 
   .progress-bar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 18px;
-    margin-top: 26px;
-    padding: 14px 0 0;
-    border-top: 1px solid var(--rule);
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: 8px 18px; margin-top: 24px; padding-top: 16px;
+    border-top: 1px solid var(--rule-2);
   }
   .progress-count {
-    font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    color: var(--dim);
+    font-family: var(--mono); font-size: 11.5px; font-weight: 700;
+    letter-spacing: 0.09em; text-transform: uppercase; color: var(--dim);
   }
-  .progress-count b { color: var(--synced); }
+  .progress-count b { color: var(--ink); }
   .progress-track {
-    flex: 1 1 12rem;
-    min-width: 9rem;
-    height: 5px;
-    background: var(--sunken);
-    border: 1px solid var(--rule);
-    border-radius: 3px;
-    overflow: hidden;
+    flex: 1 1 12rem; min-width: 9rem; height: 6px;
+    background: var(--sunken); border: 1px solid var(--rule);
+    border-radius: 4px; overflow: hidden;
   }
-  .progress-fill { height: 100%; width: 0; background: var(--synced); transition: width .25s ease; }
+  .progress-fill { height: 100%; width: 0; background: var(--grad); transition: width .25s ease; }
   .progress-reset {
-    font-family: var(--mono);
-    font-size: 10.5px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--dim);
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--dim);
     background: none; border: 0; cursor: pointer;
     text-decoration: underline; text-underline-offset: 3px;
   }
-  .progress-reset:hover { color: var(--paper); }
+  .progress-reset:hover { color: var(--ink); }
 
   /* ---------- sections ---------- */
 
-  main { padding: 8px 0 0; }
-  section.block { padding: 52px 0 4px; }
+  main { padding: 4px 0 0; }
+  section.block { padding: 50px 0 4px; }
 
   .sec-head {
-    display: flex;
-    align-items: baseline;
-    gap: 16px;
-    border-bottom: 2px solid var(--rule);
-    padding-bottom: 10px;
-    margin-bottom: 12px;
+    display: flex; align-items: baseline; gap: 15px;
+    padding-bottom: 11px; margin-bottom: 12px;
+    border-bottom: 1px solid var(--rule);
   }
   .sec-head .tag {
-    font-family: var(--mono);
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.18em;
-    color: var(--lamp);
-    white-space: nowrap;
+    font-family: var(--mono); font-size: 10.5px; font-weight: 700;
+    letter-spacing: 0.18em; white-space: nowrap;
+    background: var(--grad);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
   }
   .sec-head h2 {
-    font-family: var(--display);
-    font-weight: 600;
-    font-size: clamp(23px, 4vw, 33px);
-    line-height: 1.1;
-    letter-spacing: -0.015em;
-    text-wrap: balance;
+    font-family: var(--display); font-weight: 700;
+    font-size: clamp(22px, 3.8vw, 31px); line-height: 1.14;
+    letter-spacing: -0.03em; color: var(--ink); text-wrap: balance;
   }
   .sec-intro { color: var(--dim); max-width: 68ch; margin: 12px 0 26px; font-size: 15.5px; }
-  .sec-intro strong { color: var(--paper); font-weight: 600; }
-  .sec-intro + .sec-intro { margin-top: -14px; }
+  .sec-intro strong { color: var(--ink); font-weight: 600; }
+  .sec-intro em { color: var(--ink); font-style: italic; }
 
   h3.sub {
-    font-family: var(--display);
-    font-weight: 600;
-    font-size: 21px;
-    letter-spacing: -0.01em;
-    margin: 34px 0 10px;
+    font-family: var(--display); font-weight: 600;
+    font-size: 19px; letter-spacing: -0.02em;
+    color: var(--ink); margin: 34px 0 10px;
   }
 
   p.body { color: var(--dim); max-width: 68ch; font-size: 15.5px; margin-bottom: 12px; }
-  p.body strong { color: var(--paper); font-weight: 600; }
-  p.body em { color: var(--paper); font-style: italic; }
+  p.body strong { color: var(--ink); font-weight: 600; }
+  p.body em { color: var(--ink); font-style: italic; }
 
   code {
-    font-family: var(--mono);
-    font-size: 0.86em;
-    background: var(--sunken);
-    border: 1px solid var(--rule);
-    padding: 0.08em 0.36em;
-    border-radius: 3px;
-    color: var(--paper);
+    font-family: var(--mono); font-size: 0.85em;
+    background: var(--sunken); border: 1px solid var(--rule);
+    padding: 0.08em 0.36em; border-radius: 4px; color: var(--ink);
   }
 
   /* ---------- badges ---------- */
 
   .badge {
-    font-family: var(--mono);
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.13em;
-    text-transform: uppercase;
-    padding: 3px 8px 2px;
-    border-radius: 4px;
-    white-space: nowrap;
-    flex-shrink: 0;
+    font-family: var(--mono); font-size: 9.5px; font-weight: 700;
+    letter-spacing: 0.13em; text-transform: uppercase;
+    padding: 3px 8px 2px; border-radius: 5px;
+    white-space: nowrap; flex-shrink: 0;
   }
-  .badge.stop    { background: rgba(248,113,113,.13); color: var(--stop);    border: 1px solid rgba(248,113,113,.42); }
-  .badge.need    { background: rgba(251,146,60,.12);  color: var(--pending); border: 1px solid rgba(251,146,60,.40); }
-  .badge.later   { background: rgba(140,147,164,.10); color: var(--dim);     border: 1px solid var(--rule); }
-  .badge.shipped { background: rgba(74,222,128,.12);  color: var(--synced);  border: 1px solid rgba(74,222,128,.40); }
+  .badge.stop    { background: color-mix(in srgb, var(--stop) 11%, transparent);    color: var(--stop);    border: 1px solid color-mix(in srgb, var(--stop) 34%, transparent); }
+  .badge.need    { background: color-mix(in srgb, var(--pending) 12%, transparent); color: var(--pending); border: 1px solid color-mix(in srgb, var(--pending) 32%, transparent); }
+  .badge.later   { background: var(--sunken); color: var(--dim); border: 1px solid var(--rule); }
+  .badge.shipped { background: color-mix(in srgb, var(--synced) 12%, transparent);  color: var(--synced);  border: 1px solid color-mix(in srgb, var(--synced) 32%, transparent); }
   .badge.size {
     background: transparent; color: var(--dim); border: 1px solid var(--rule);
-    letter-spacing: 0.08em; text-transform: none;
+    letter-spacing: 0.06em; text-transform: none; font-weight: 500;
   }
 
-  /* ---------- the "done" strip ---------- */
+  /* ---------- done strip ---------- */
 
-  .done-strip {
-    display: flex; flex-wrap: wrap; gap: 8px;
-    margin-top: 4px;
-  }
+  .done-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
   .done-chip {
-    font-family: var(--mono);
-    font-size: 11.5px;
-    color: var(--paper);
-    background: var(--panel);
-    border: 1px solid var(--rule);
-    border-left: 2px solid var(--synced);
-    border-radius: 4px;
-    padding: 5px 11px 4px;
+    font-family: var(--mono); font-size: 11.5px; color: var(--ink);
+    background: var(--panel); border: 1px solid var(--rule);
+    border-radius: 999px; padding: 5px 13px 4px;
+    box-shadow: var(--shadow);
   }
+  .done-chip::before { content: "\2713  "; color: var(--synced); font-weight: 700; }
 
   /* ---------- decisions ---------- */
 
   .decision {
-    background: var(--panel);
-    border: 1px solid var(--rule);
-    border-radius: 11px;
-    padding: 22px 24px 20px;
-    margin-bottom: 14px;
+    background: var(--panel); border: 1px solid var(--rule);
+    border-radius: 14px; padding: 22px 24px 20px;
+    margin-bottom: 14px; box-shadow: var(--shadow);
   }
-  .decision-head {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
-    margin-bottom: 10px;
-  }
+  .decision-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; }
   .decision-head h3 {
-    font-family: var(--body);
-    font-weight: 700;
-    font-size: 18px;
-    letter-spacing: 0;
+    font-family: var(--display); font-weight: 600;
+    font-size: 17.5px; letter-spacing: -0.02em; color: var(--ink);
   }
   .decision p { color: var(--dim); font-size: 15px; max-width: 66ch; }
   .decision p + p { margin-top: 9px; }
-  .decision strong { color: var(--paper); font-weight: 600; }
+  .decision strong { color: var(--ink); font-weight: 600; }
 
   .options { display: grid; gap: 8px; margin-top: 14px; }
   .option {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 12px;
-    align-items: baseline;
-    background: var(--sunken);
-    border: 1px solid var(--rule);
-    border-radius: 7px;
-    padding: 11px 14px;
-    font-size: 14.5px;
-    color: var(--dim);
+    display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: baseline;
+    background: var(--sunken); border: 1px solid var(--rule);
+    border-radius: 9px; padding: 11px 14px;
+    font-size: 14.5px; color: var(--dim);
   }
   .option .opt-name {
-    font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    color: var(--paper);
-    white-space: nowrap;
+    font-family: var(--mono); font-size: 11.5px; font-weight: 700;
+    letter-spacing: 0.05em; color: var(--ink); white-space: nowrap;
   }
-  .option.lean { border-color: rgba(240,180,41,.42); background: rgba(240,180,41,.05); }
-  .option.lean .opt-name { color: var(--lamp); }
+  .option.lean {
+    border-color: color-mix(in srgb, var(--violet) 38%, transparent);
+    background: color-mix(in srgb, var(--violet) 6%, transparent);
+  }
+  .option.lean .opt-name { color: var(--violet); }
   .recommend {
-    font-family: var(--mono);
-    font-size: 10.5px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--lamp);
-    margin-top: 12px;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em;
+    text-transform: uppercase; margin-top: 12px;
+    background: var(--grad);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
   }
 
   /* ---------- tasks ---------- */
 
   .track { margin-bottom: 34px; }
   .track-head {
-    display: flex; align-items: baseline; gap: 12px;
-    margin-bottom: 4px;
+    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+    margin-bottom: 2px;
   }
   .track-head h3 {
-    font-family: var(--body);
-    font-weight: 700;
-    font-size: 15px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--lamp);
+    font-family: var(--mono); font-weight: 700; font-size: 12px;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink);
   }
   .track-head .track-note { font-size: 13.5px; color: var(--dim); }
 
   .task {
-    display: grid;
-    grid-template-columns: 22px 1fr;
-    gap: 13px;
-    padding: 15px 0 14px;
-    border-top: 1px solid var(--rule);
+    display: grid; grid-template-columns: 22px 1fr; gap: 13px;
+    padding: 15px 0 14px; border-top: 1px solid var(--rule-2);
   }
-  .task:last-child { border-bottom: 1px solid var(--rule); }
+  .task:last-child { border-bottom: 1px solid var(--rule-2); }
 
   .task input[type="checkbox"] {
     appearance: none; -webkit-appearance: none;
-    width: 19px; height: 19px;
-    margin: 0; margin-top: 3px;
-    border: 1.5px solid var(--dim);
-    border-radius: 4px;
-    background: var(--sunken);
-    cursor: pointer;
-    position: relative;
-    flex: none;
+    width: 19px; height: 19px; margin: 3px 0 0;
+    border: 1.5px solid var(--dim); border-radius: 5px;
+    background: var(--panel); cursor: pointer; position: relative; flex: none;
   }
-  .task input[type="checkbox"]:checked { background: var(--synced); border-color: var(--synced); }
+  .task input[type="checkbox"]:checked { background: var(--grad); border-color: transparent; }
   .task input[type="checkbox"]:checked::after {
-    content: ""; position: absolute;
-    left: 6px; top: 2px; width: 5px; height: 10px;
-    border: solid var(--night); border-width: 0 2px 2px 0;
-    transform: rotate(42deg);
+    content: ""; position: absolute; left: 6px; top: 2px;
+    width: 5px; height: 10px;
+    border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(42deg);
   }
 
   .task-body { min-width: 0; }
   .task-title {
     display: flex; flex-wrap: wrap; align-items: center; gap: 9px;
-    font-weight: 700;
-    font-size: 16px;
-    cursor: pointer;
-    margin-bottom: 5px;
+    font-family: var(--display); font-weight: 600; font-size: 15.5px;
+    letter-spacing: -0.015em; color: var(--ink);
+    cursor: pointer; margin-bottom: 5px;
   }
   .task-why { color: var(--dim); font-size: 14.5px; max-width: 66ch; }
-  .task-why strong { color: var(--paper); font-weight: 600; }
-  .task-why code { font-size: 0.85em; }
+  .task-why strong { color: var(--ink); font-weight: 600; }
+  .task-why em { color: var(--ink); font-style: italic; }
 
   .done-when {
-    font-family: var(--mono);
-    font-size: 12.5px;
-    color: var(--synced);
-    margin-top: 8px;
-    display: block;
-    max-width: 66ch;
-    line-height: 1.55;
+    font-family: var(--mono); font-size: 12px; color: var(--synced);
+    margin-top: 8px; display: block; max-width: 66ch; line-height: 1.55;
   }
-  .done-when::before {
-    content: "DONE WHEN ";
-    color: var(--dim);
-    letter-spacing: 0.1em;
-  }
+  .done-when::before { content: "DONE WHEN "; color: var(--dim); letter-spacing: 0.1em; }
 
   .task.is-done .task-title { color: var(--dim); text-decoration: line-through; text-decoration-color: var(--rule); }
   .task.is-done .task-why, .task.is-done .done-when, .task.is-done .badge { opacity: .5; }
@@ -404,91 +378,77 @@
 
   .scroll { overflow-x: auto; margin: 18px 0 6px; }
   table { border-collapse: collapse; width: 100%; min-width: 32rem; font-size: 14.5px; }
-  th, td { text-align: left; padding: 11px 14px 11px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th, td { text-align: left; padding: 11px 14px 11px 0; border-bottom: 1px solid var(--rule-2); vertical-align: top; }
   thead th {
-    font-family: var(--mono); font-size: 10.5px; font-weight: 700;
+    font-family: var(--mono); font-size: 10px; font-weight: 700;
     letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim);
+    border-bottom: 1px solid var(--rule);
   }
-  tbody th { font-weight: 700; color: var(--paper); padding-right: 18px; white-space: nowrap; }
+  tbody th { font-weight: 700; color: var(--ink); padding-right: 18px; white-space: nowrap; }
   td { color: var(--dim); }
 
   .pull {
-    font-family: var(--mono);
-    font-size: 13px;
-    line-height: 1.75;
-    background: var(--sunken);
-    border: 1px solid var(--rule);
-    border-left: 2px solid var(--ai);
-    border-radius: 6px;
-    padding: 16px 18px;
-    color: var(--dim);
-    margin: 16px 0;
-    max-width: 76ch;
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.75;
+    background: var(--sunken); border: 1px solid var(--rule);
+    border-left: 3px solid var(--violet); border-radius: 8px;
+    padding: 16px 18px; color: var(--body-c); margin: 16px 0; max-width: 76ch;
   }
 
   .listing {
-    background: var(--panel);
-    border: 1px solid var(--rule);
-    border-left: 2px solid var(--lamp);
-    border-radius: 8px;
-    padding: 22px 24px 20px;
-    margin: 16px 0 6px;
-    max-width: 70ch;
+    background: var(--panel); border: 1px solid var(--rule);
+    border-radius: 14px; padding: 24px 26px 22px;
+    margin: 16px 0 6px; max-width: 70ch;
+    box-shadow: var(--shadow);
   }
   .listing .listing-head {
-    font-family: var(--display);
-    font-weight: 700;
-    font-size: 19px;
-    color: var(--paper);
-    margin-bottom: 12px;
+    font-family: var(--display); font-weight: 700; font-size: 20px;
+    letter-spacing: -0.025em; color: var(--ink); margin-bottom: 12px;
   }
   .listing p { color: var(--dim); font-size: 15px; }
   .listing p + p { margin-top: 11px; }
-  .listing .tagline { color: var(--paper); font-weight: 600; }
+  .listing .tagline { color: var(--ink); font-weight: 600; }
   .listing ul { list-style: none; margin-top: 14px; }
-  .listing li {
-    color: var(--dim); font-size: 14.5px;
-    padding: 4px 0 4px 20px; position: relative;
-  }
-  .listing li::before {
-    content: "\2022"; position: absolute; left: 4px; color: var(--lamp);
-  }
+  .listing li { color: var(--dim); font-size: 14.5px; padding: 4px 0 4px 20px; position: relative; }
+  .listing li::before { content: "\2022"; position: absolute; left: 4px; color: var(--violet); }
 
   ul.plain { list-style: none; margin: 12px 0; max-width: 68ch; }
-  ul.plain li {
-    color: var(--dim); font-size: 15px;
-    padding: 7px 0 7px 22px; position: relative;
-  }
+  ul.plain li { color: var(--dim); font-size: 15px; padding: 7px 0 7px 24px; position: relative; }
   ul.plain li::before {
-    content: "\2715"; position: absolute; left: 0; top: 7px;
-    color: var(--stop); font-size: 12px;
+    content: "\2715"; position: absolute; left: 2px; top: 7px;
+    color: var(--stop); font-size: 12px; font-weight: 700;
   }
-  ul.plain li strong { color: var(--paper); font-weight: 600; }
+  ul.plain li strong { color: var(--ink); font-weight: 600; }
 
-  /* ---------- footer ---------- */
+  /* ---------- footer: the ripples ---------- */
 
   footer.close {
-    margin-top: 76px;
-    border-top: 1px solid var(--rule);
-    background:
-      repeating-linear-gradient(180deg, transparent 0 33px, rgba(239,237,230,.028) 33px 34px),
-      var(--sunken);
-    padding: 58px 0 66px;
-    text-align: center;
+    margin-top: 72px; padding: 56px 0 64px; text-align: center;
+    border-top: 1px solid var(--rule); background: var(--sunken);
   }
+  .ripples { display: flex; flex-direction: column; align-items: center; gap: 7px; margin-bottom: 30px; }
+  .ripples i { display: block; height: 5px; border-radius: 999px; background: var(--ripple); }
+  .ripples i:nth-child(1) { width: 210px; opacity: .95; }
+  .ripples i:nth-child(2) { width: 140px; opacity: .75; }
+  .ripples i:nth-child(3) { width: 82px;  opacity: .55; }
+  .ripples i:nth-child(4) { width: 40px;  opacity: .38; }
+
   footer .kicker {
-    font-family: var(--mono); font-size: 11px; letter-spacing: 0.22em;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.2em;
     text-transform: uppercase; color: var(--dim); margin-bottom: 16px;
   }
   footer .closing {
     font-family: var(--display); font-weight: 700;
-    font-size: clamp(24px, 5vw, 40px); line-height: 1.15;
-    text-wrap: balance;
+    font-size: clamp(22px, 4.4vw, 36px); line-height: 1.22;
+    letter-spacing: -0.03em; color: var(--ink); text-wrap: balance;
   }
-  footer .closing .lamp { color: var(--lamp); }
-  footer .meta { font-family: var(--mono); font-size: 11.5px; color: var(--dim); margin-top: 24px; }
+  footer .closing .accent {
+    background: var(--grad);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
+  }
+  footer .meta { font-family: var(--mono); font-size: 11px; color: var(--dim); margin-top: 24px; }
 
-  ::selection { background: var(--lamp); color: var(--night); }
+  ::selection { background: color-mix(in srgb, var(--violet) 22%, transparent); }
 </style>
 
 <header class="hero">
@@ -500,7 +460,7 @@
     </div>
 
     <div class="eyebrow">Release readiness &middot; v0.1 to 1.0</div>
-    <h1>Shipping<br><span class="lamp">AutoReflect</span></h1>
+    <h1>Shipping<br><span class="accent">AutoReflect</span></h1>
     <p class="hero-sub">What stands between a build that runs on your phone and a product
     other people trust with <strong>six years of their life</strong>.</p>
 
@@ -1033,8 +993,9 @@
 
 <footer class="close">
   <div class="wrap">
+    <div class="ripples"><i></i><i></i><i></i><i></i></div>
     <div class="kicker">The thing to hold on to</div>
-    <div class="closing">Most people ship the features<br>and find the foundations later.<br><span class="lamp">You did it the other way round.</span></div>
+    <div class="closing">Most people ship the features<br>and find the foundations later.<br><span class="accent">You did it the other way round.</span></div>
     <div class="meta">AUTOREFLECT &middot; LAUNCH DOC &middot; docs/launch/shipping-autoreflect.html</div>
   </div>
 </footer>
