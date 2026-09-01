@@ -490,17 +490,18 @@ struct DumpView: View {
                 flightPhase = .falling
                 charging = true
 
-                // They converge for most of the flight; the button is winding up throughout.
-                try? await Task.sleep(for: .milliseconds(430))
+                // They converge while the button winds up. Shorter than it was: past about
+                // a third of a second the charge stops building tension and starts being a
+                // wait.
+                try? await Task.sleep(for: .milliseconds(330))
                 Haptics.thud()
                 impact.blast()
                 charging = false
                 flightPhase = .impact
 
-                // Short tail. The old 320ms held a still screen after the bang and then cut,
-                // which read as a hang; leaving while the shockwave is still expanding
-                // carries the motion into the push instead.
-                try? await Task.sleep(for: .milliseconds(150))
+                // Leave *on* the blast rather than after it. The flash and swell live on the
+                // root view, not this screen, so they keep playing across the tab change -
+                // the transition rides the explosion instead of waiting for it to finish.
                 syncStagedCount()
                 onDumped(created)
 

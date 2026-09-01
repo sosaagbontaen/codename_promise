@@ -17,28 +17,22 @@ struct MediaCollage: View {
     private let gap: CGFloat = 3
     private let corner: CGFloat = 14
 
+
+
     var body: some View {
         Group {
             switch thumbs.count {
             case 0:
                 EmptyView()
             case 1:
-                // One photo gets a wide frame: it is the memory, not a thumbnail of it.
-                // .fit, not .fill: fill lets the cell exceed the ratio, and one photo was
-                // eating most of the screen.
-                cell(thumbs[0]).aspectRatio(16/10, contentMode: .fit)
+                cell(thumbs[0])
             case 2:
-                HStack(spacing: gap) {
-                    cell(thumbs[0]); cell(thumbs[1])
-                }
-                .aspectRatio(16/9, contentMode: .fit)
+                HStack(spacing: gap) { cell(thumbs[0]); cell(thumbs[1]) }
             case 3:
                 HStack(spacing: gap) {
                     cell(thumbs[0])
                     VStack(spacing: gap) { cell(thumbs[1]); cell(thumbs[2]) }
-                        .frame(maxWidth: .infinity)
                 }
-                .aspectRatio(16/10, contentMode: .fit)
             default:
                 VStack(spacing: gap) {
                     HStack(spacing: gap) { cell(thumbs[0]); cell(thumbs[1]) }
@@ -47,10 +41,27 @@ struct MediaCollage: View {
                         if overflow > 0 { overflowCell } else { cell(thumbs[3]) }
                     }
                 }
-                .aspectRatio(1.15, contentMode: .fit)
             }
         }
+        // A fixed height and a width that can only ever be the row's.
+        //
+        // The previous version used aspectRatio(.fit), which is free to compute a width
+        // *wider* than what it was offered - and a child wider than its row does not clip,
+        // it widens the row, pushing the title and text off the left edge. This is the
+        // second time that has happened here, so the layout is now dimensionally incapable
+        // of it rather than merely tuned not to.
+        .frame(maxWidth: .infinity)
+        .frame(height: thumbs.isEmpty ? 0 : height)
         .clipShape(RoundedRectangle(cornerRadius: corner))
+    }
+
+    /// One photo gets a shorter, wider frame; a grid needs the room to be a grid.
+    private var height: CGFloat {
+        switch thumbs.count {
+        case 1: 150
+        case 2: 118
+        default: 176
+        }
     }
 
     private func cell(_ thumb: DraftSummary.Thumb) -> some View {

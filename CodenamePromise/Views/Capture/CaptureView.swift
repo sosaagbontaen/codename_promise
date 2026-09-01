@@ -47,11 +47,17 @@ struct CaptureView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            editor
-            syncProgressBar
-            actionPanel
-        }
+        // safeAreaInset rather than a VStack: a VStack just parks the panel on top of the
+        // scroll view, so the last of the content - the media selection bar, "Open in
+        // Notion" - sat underneath it, visible but untappable. An inset tells the scroll
+        // view the panel is there, so content scrolls clear of it.
+        editor
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                VStack(spacing: 0) {
+                    syncProgressBar
+                    actionPanel
+                }
+            }
         .navigationTitle(dayLabel)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

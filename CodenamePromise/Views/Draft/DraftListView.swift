@@ -14,6 +14,7 @@ struct DraftListView: View {
     @State private var loadError: String?
     @State private var showingImport = false
     @State private var showingOpenDays = false
+    @AppStorage(RowDensity.storageKey) private var density: RowDensity = .comfortable
     /// Recomputed on every reload; drives the prompt row at the top of the list.
     @State private var mostRecentOpenDay: CalendarDay?
     @State private var selection = Set<UUID>()
@@ -68,6 +69,14 @@ struct DraftListView: View {
                 // Two visible buttons rather than a menu behind a long-press. Importing by
                 // date is one of the more useful things this app does, and nobody discovers a
                 // long-press.
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.22)) { density = density.next }
+                        Haptics.picked()
+                    } label: {
+                        Label("Density", systemImage: density.next.symbol)
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showingImport = true
@@ -159,7 +168,11 @@ struct DraftListView: View {
                         Button {
                             path.append(OpeningDraft(id: draft.id))
                         } label: {
-                            DraftRow(summary: draft, fileStore: files)
+                            if density == .compact {
+                                CompactDraftRow(summary: draft)
+                            } else {
+                                DraftRow(summary: draft, fileStore: files)
+                            }
                         }
                         .buttonStyle(.row)
                         .listRowBackground(Color.clear)
@@ -408,18 +421,20 @@ struct DraftRow: View {
                     Text(statusLabel)
                     if summary.pendingRecordings > 0 {
                         Text("\u{00B7} \(summary.pendingRecordings) to transcribe")
+                            .foregroundStyle(Brand.waiting)
                     }
                     if summary.isFormatted {
                         Text("\u{00B7} structured")
+                            .foregroundStyle(Brand.ai)
                     }
                 }
-                .font(Type.caption(10.5, .medium))
+                .font(Type.caption(10.5, .semibold))
                 .foregroundStyle(statusTint)
-                .opacity(0.85)
             }
         }
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .clipped()
         .contentShape(Rectangle())
     }
 
@@ -445,11 +460,19 @@ struct DraftRow: View {
         }
     }
 
+    /// Colour-coded, and small.
+    ///
+    /// Greying everything but failures was an overcorrection: colour is what marks this as a
+    /// *different channel* from the entry's own words, and losing it made status read as more
+    /// body text. What made it shout before was its size and weight, not its hue - so it
+    /// keeps the colour and gives up the size.
     private var statusTint: Color {
         switch summary.sync {
         case .failed: Brand.failed
         case .synced: Brand.reached
-        default: Brand.muted
+        case .syncing: Brand.violet
+        case .unsyncedChanges, .notSynced: Brand.waiting
+        case .hidden: Brand.muted
         }
     }
 }

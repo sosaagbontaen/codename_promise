@@ -23,6 +23,8 @@ struct DraftSummary: Identifiable, Hashable {
     let preview: String
     let thumbnails: [Thumb]
     let hiddenThumbnailCount: Int
+    /// Everything attached, not just what the collage shows.
+    let mediaCount: Int
     let pendingRecordings: Int
     let isFormatted: Bool
     let isEmpty: Bool
@@ -72,6 +74,7 @@ extension DraftSummary {
             Thumb(id: $0.id, relativePath: $0.relativePath, isVideo: $0.kind == .video)
         }
         self.hiddenThumbnailCount = max(0, media.count - thumbnailLimit)
+        self.mediaCount = media.count
         self.pendingRecordings = draft.audioCaptures.filter { !$0.isSafeToDelete }.count
         self.isFormatted = draft.content.formattedText != nil
         self.isEmpty = draft.content.isEmpty

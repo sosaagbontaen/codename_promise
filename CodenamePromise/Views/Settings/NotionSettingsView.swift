@@ -37,6 +37,8 @@ struct NotionSettingsView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Brand.ground)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showingExport) {
@@ -122,6 +124,8 @@ struct NotionSettingsView: View {
     /// -- that would make the backup fail in exactly the circumstances you need it.
     @ViewBuilder
     private var localSections: some View {
+        AppIconPicker()
+
         Section {
             Picker(selection: $appearance) {
                 ForEach(Appearance.allCases) { Text($0.label).tag($0) }
