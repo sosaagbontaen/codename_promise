@@ -13,8 +13,10 @@ import SwiftUI
 /// nothing about the store, sync, export or the day-grouped journal had to change to support
 /// it. The compose state below is deliberately the only new concept.
 struct DumpView: View {
+    /// Called with the draft a finished dump created, so the caller can open it.
+    let onDumped: (UUID) -> Void
+
     @Environment(AppServices.self) private var services
-    @Environment(\.dismiss) private var dismiss
 
     @State private var text = ""
     @State private var recorder = AudioRecorder()
@@ -23,6 +25,10 @@ struct DumpView: View {
     @State private var pendingAudio: (data: Data, duration: TimeInterval)?
     @State private var showingPhotos = false
     @State private var showingVideos = false
+    @State private var showingDestination = false
+    /// An existing Notion page to append to, instead of making a new one.
+    @State private var appendTo: NotionPage?
+    @State private var connection: NotionConnectionStatus?
     @State private var status: Status = .composing
     @FocusState private var writing: Bool
 
@@ -52,6 +58,7 @@ struct DumpView: View {
             VStack(spacing: 22) {
                 composer
                 modeButtons
+                destinationRow
                 dumpButton
                 statusLine
             }
@@ -209,6 +216,72 @@ struct DumpView: View {
         .opacity(recorder.isRecording ? 0.4 : 1)
     }
 
+    // MARK: - Destination
+
+    /// Where this dump is going, before it goes.
+    ///
+    /// The concept did not have this because it did not know the app already supports
+    /// appending to a page you pick rather than always making a new one. Choosing after the
+    /// fact means going and finding the entry again; choosing here is one tap and it is
+    /// visible without being asked for.
+    private var destinationRow: some View {
+        Button {
+            showingDestination = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: appendTo == nil ? "doc.badge.plus" : "text.append")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Brand.violet)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(destinationTitle)
+                        .font(Type.caption(13, .semibold))
+                        .foregroundStyle(Brand.ink)
+                        .lineLimit(1)
+                    Text(destinationDetail)
+                        .font(Type.caption(11.5))
+                        .foregroundStyle(Brand.muted)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 6)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Brand.muted)
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 52)
+            .background(Brand.surface, in: RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $showingDestination) {
+            DumpDestinationSheet(
+                connection: connection,
+                appendTo: $appendTo,
+                connectionService: services.connectionService
+            )
+        }
+        .task {
+            // Read once per appearance rather than per keystroke; the answer only changes
+            // in Settings.
+            connection = try? await services.connectionService?.status()
+        }
+    }
+
+    private var destinationTitle: String {
+        if let appendTo { return "Add to \u{201C}\(appendTo.title)\u{201D}" }
+        guard let connection, connection.ready else { return "Saved on this device" }
+        return connection.databaseTitle ?? "Your Notion database"
+    }
+
+    private var destinationDetail: String {
+        if appendTo != nil { return "Appends to that page instead of making a new one" }
+        guard let connection else { return "Checking Notion\u{2026}" }
+        if !connection.configurable { return "Notion isn\u{2019}t set up on the server" }
+        if !connection.connected { return "Connect Notion in Settings to sync" }
+        if !connection.ready { return "Pick a database in Settings" }
+        return "A new page, each dump its own"
+    }
+
     // MARK: - Dump
 
     private var dumpButton: some View {
@@ -313,31 +386,31 @@ struct DumpView: View {
                 )
             }
 
+            if let appendTo {
+                draft.syncState(for: .notion)
+                    .attachToExistingPage(appendTo.id, title: appendTo.title)
+                try store.flush()
+            }
+
             Haptics.landed()
-            let carried = summary(hadAudio: pendingAudio != nil, media: staged.count)
+            let created = draft.id
             text = ""
             staged = []
             pendingAudio = nil
+            appendTo = nil
             writing = false
-            withAnimation { status = .dumped(carried) }
+            status = .composing
 
             // Everything below here is optional and may fail freely.
             Task { await services.drainTranscriptions() }
 
-            Task {
-                try? await Task.sleep(for: .seconds(3))
-                if case .dumped = status { withAnimation { status = .composing } }
-            }
+            // Land them on what they just made. An empty box gives no sign anything
+            // happened, and the entry is where syncing and editing already live.
+            onDumped(created)
         } catch {
             Haptics.failed()
             status = .failed(error.localizedDescription)
         }
     }
 
-    private func summary(hadAudio: Bool, media: Int) -> String {
-        var parts: [String] = []
-        if hadAudio { parts.append("recording") }
-        if media > 0 { parts.append("\(media) attachment\(media == 1 ? "" : "s")") }
-        return parts.isEmpty ? "Dumped" : "Dumped with " + parts.joined(separator: " and ")
-    }
 }

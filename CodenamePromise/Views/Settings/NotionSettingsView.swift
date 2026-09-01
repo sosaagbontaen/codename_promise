@@ -16,6 +16,7 @@ struct NotionSettingsView: View {
     @State private var confirmingDisconnect = false
     @State private var serverURL = ""
     @State private var serverSaved = false
+    @AppStorage(Appearance.storageKey) private var appearance: Appearance = .dark
     @State private var showingExport = false
     @State private var showingFeedback = false
 
@@ -121,6 +122,17 @@ struct NotionSettingsView: View {
     /// -- that would make the backup fail in exactly the circumstances you need it.
     @ViewBuilder
     private var localSections: some View {
+        Section {
+            Picker(selection: $appearance) {
+                ForEach(Appearance.allCases) { Text($0.label).tag($0) }
+            } label: {
+                Label("Appearance", systemImage: "circle.lefthalf.filled")
+            }
+            .pickerStyle(.menu)
+        } footer: {
+            Text("Dark by default \u{2014} the brand was drawn that way, and most dumping happens at the end of a day.")
+        }
+
         Section {
             Button {
                 showingExport = true

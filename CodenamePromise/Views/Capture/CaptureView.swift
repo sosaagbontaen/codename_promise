@@ -248,6 +248,9 @@ struct CaptureView: View {
             .padding(.horizontal, 16)
             .padding(.top, 12)
         }
+        // Otherwise this screen falls back to the system ground, which is pure black in dark
+        // mode and does not match anything else in the app.
+        .background(Brand.ground)
     }
 
     private var mediaStrip: some View {

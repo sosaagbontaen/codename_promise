@@ -6,10 +6,12 @@ import SwiftUI
 /// Nothing here is called "done" or "published" — every entry is a draft, and syncing is a
 /// side effect shown as a badge rather than a state the entry graduates into.
 struct DraftListView: View {
+    /// A draft the Dump tab just created and wants opened. Cleared once acted on.
+    var openEntry: Binding<UUID?> = .constant(nil)
+
     @Environment(AppServices.self) private var services
     @State private var drafts: [DraftSummary] = []
     @State private var loadError: String?
-    @State private var showingSettings = false
     @State private var showingImport = false
     @State private var showingOpenDays = false
     /// Recomputed on every reload; drives the prompt row at the top of the list.
@@ -48,12 +50,6 @@ struct DraftListView: View {
                                 confirmingBulkDelete = true
                             }
                         }
-                    } else {
-                        Button {
-                            showingSettings = true
-                        } label: {
-                            Label("Settings", systemImage: "gearshape")
-                        }
                     }
                 }
                 ToolbarItem(placement: .topBarLeading) {
@@ -84,9 +80,6 @@ struct DraftListView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showingSettings) {
-                NotionSettingsView()
-            }
             // One destination for both tapping a row and creating an entry, resolved by
             // UUID rather than by holding a model — so a draft deleted underneath it
             // resolves to nothing instead of trapping (ADR-009a).
@@ -115,7 +108,11 @@ struct DraftListView: View {
                     PhotoImportView(store: store, fileStore: files) { reload() }
                 }
             }
-            .task { reload() }
+            .task { reload(); consumeOpenRequest() }
+            // Both, on purpose. A dump sets the id and switches tab in the same update, and
+            // whether this view is alive to observe the change depends on whether the tab has
+            // been visited before - so the request is also drained on appear.
+            .onChange(of: openEntry.wrappedValue) { _, _ in consumeOpenRequest() }
             .confirmationDialog(
                 "Delete \(selection.count) \(selection.count == 1 ? "entry" : "entries")?",
                 isPresented: $confirmingBulkDelete,
@@ -246,6 +243,14 @@ struct DraftListView: View {
 
     /// The window the prompt row talks about. The sheet itself can widen it.
     private static let promptWindowDays = 30
+
+    /// Opens a draft the Dump tab just created, once.
+    private func consumeOpenRequest() {
+        guard let id = openEntry.wrappedValue else { return }
+        openEntry.wrappedValue = nil
+        reload()
+        path = [OpeningDraft(id: id)]
+    }
 
     private func reload() {
         guard let store = services.store else { return }

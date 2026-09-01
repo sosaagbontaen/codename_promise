@@ -11,11 +11,13 @@ struct CodenamePromiseApp: App {
 
     @State private var services = AppServices()
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(Appearance.storageKey) private var appearance: Appearance = .dark
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(services)
+                .preferredColorScheme(appearance.scheme)
                 .task { await services.drainTranscriptions() }
         }
         .onChange(of: scenePhase) { _, phase in

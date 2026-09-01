@@ -45,14 +45,18 @@ enum Brand {
         static let extra = Color(light: 0xFFB02E, dark: 0xFFC15C)  // amber
     }
 
-    /// The ground everything sits on. `systemGroupedBackground` is the single most
-    /// recognisable signature of a stock iOS app; the sheet's own light grey is not.
-    static let ground = Color(light: 0xF2F4F7, dark: 0x0F1115)
-    static let surface = Color(light: 0xFFFFFF, dark: 0x181B22)
+    /// The ground everything sits on.
+    ///
+    /// `systemGroupedBackground` is the single most recognisable signature of a stock iOS
+    /// app, so neither theme uses it. Dark is a blue-black in the Palenight family rather
+    /// than the mark's flat #0F1115: a true near-black flattens the confetti and makes the
+    /// violet look like it is floating, where a ground with blue already in it holds them.
+    static let ground = Color(light: 0xF2F4F7, dark: 0x161925)
+    static let surface = Color(light: 0xFFFFFF, dark: 0x1F2331)
 
-    static let ink = Color(light: 0x0F1115, dark: 0xF2F4F7)
+    static let ink = Color(light: 0x0F1115, dark: 0xEDEFF6)
     /// The sheet's grey, for anything secondary.
-    static let muted = Color(light: 0x6B7280, dark: 0x9AA2B1)
+    static let muted = Color(light: 0x6B7280, dark: 0x8B93A7)
     /// Kept as an alias so call sites meaning "the app's accent" read that way.
     static let azure = violet
     static let ripple = Color(light: 0xDDD6FF, dark: 0x2A2350)
