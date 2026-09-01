@@ -207,14 +207,14 @@
 <main>
   <div class="wrap">
     <h2 class="sec">Everything, by track</h2>
-    <details class="track" open>
+    <details class="track" open data-track="Ship-blockers">
       <summary>
         <span class="track-name">Ship-blockers</span>
         <span class="track-note">submission fails, or the product breaks its own promise</span>
         <span class="track-count">3 left</span>
       </summary>
       <div class="track-body">
-      <div class="task">
+      <div class="task" data-kind="stop" data-title="Build markdown + media export" data-done="an entry's text and photos land in Files, and reopen correctly somewhere else.">
         <input type="checkbox" checked data-task="build-export" id="i-build-export">
         <div class="task-body">
           <label class="task-title" for="i-build-export">Build markdown + media export<span class="badge stop">Blocker</span><span class="badge size">~1 weekend</span></label>
@@ -223,8 +223,8 @@
             product and the biggest objection to it at once.</p><span class="done-when">an entry's text and photos land in Files, and reopen correctly somewhere else.</span>
         </div>
       </div>
-      <div class="task">
-        <input type="checkbox" data-task="app-icon" id="i-app-icon">
+      <div class="task" data-kind="stop" data-title="Draw a 1024&times;1024 icon and add an asset catalog" data-done="an archive validates in Xcode with no icon warnings.">
+        <input type="checkbox" checked data-task="app-icon" id="i-app-icon">
         <div class="task-body">
           <label class="task-title" for="i-app-icon">Draw a 1024&times;1024 icon and add an asset catalog<span class="badge stop">Blocker</span><span class="badge size">~half a day</span></label>
           <p class="task-why">There is no asset catalog in the target at all. App Store
@@ -232,14 +232,14 @@
             gets deferred until it blocks you at midnight.</p><span class="done-when">an archive validates in Xcode with no icon warnings.</span>
         </div>
       </div>
-      <div class="task">
+      <div class="task" data-kind="stop" data-title="Set the display name and settle the bundle id" data-done="the icon on the home screen says DumpNotes.">
         <input type="checkbox" checked data-task="display-name" id="i-display-name">
         <div class="task-body">
           <label class="task-title" for="i-display-name">Set the display name and settle the bundle id<span class="badge stop">Blocker</span><span class="badge size">~1 hour</span></label>
-          <p class="task-why"><strong>Done.</strong> <code>CFBundleDisplayName</code> is DumpNotes and every screen reads it through <code>Bundle.main.appDisplayName</code>. The bundle id is still <code>com.codenamepromise.journal</code> and is permanent once shipped &mdash; change it before the first upload.</p><span class="done-when">the icon on the home screen says AutoReflect.</span>
+          <p class="task-why"><strong>Done.</strong> <code>CFBundleDisplayName</code> is DumpNotes and every screen reads it through <code>Bundle.main.appDisplayName</code>. The bundle id is still <code>com.codenamepromise.journal</code> and is permanent once shipped &mdash; change it before the first upload.</p><span class="done-when">the icon on the home screen says DumpNotes.</span>
         </div>
       </div>
-      <div class="task">
+      <div class="task" data-kind="stop" data-title="Write the privacy policy and put it at a public URL" data-done="the URL loads for a logged-out stranger.">
         <input type="checkbox" data-task="privacy-policy" id="i-privacy-policy">
         <div class="task-body">
           <label class="task-title" for="i-privacy-policy">Write the privacy policy and put it at a public URL<span class="badge stop">Blocker</span><span class="badge size">~2 hours</span></label>
@@ -247,7 +247,7 @@
             will not approve a public integration without one. Two gates, one document.</p><span class="done-when">the URL loads for a logged-out stranger.</span>
         </div>
       </div>
-      <div class="task">
+      <div class="task" data-kind="need" data-title="Build a first run that explains itself" data-done="someone who has never seen it reaches their first saved entry without you speaking.">
         <input type="checkbox" data-task="onboarding" id="i-onboarding">
         <div class="task-body">
           <label class="task-title" for="i-onboarding">Build a first run that explains itself<span class="badge need">Needed</span><span class="badge size">~2 days</span></label>
@@ -260,14 +260,14 @@
       </div>
     </details>
 
-    <details class="track">
+    <details class="track" data-track="Queues you don't control">
       <summary>
         <span class="track-name">Queues you don't control</span>
         <span class="track-note">start early &mdash; these wait on other people</span>
         <span class="track-count">3 left</span>
       </summary>
       <div class="track-body">
-      <div class="task">
+      <div class="task" data-kind="need" data-title="Submit the Notion integration for public review" data-done="submitted. Approval is theirs, not yours.">
         <input type="checkbox" data-task="notion-review" id="i-notion-review">
         <div class="task-body">
           <label class="task-title" for="i-notion-review">Submit the Notion integration for public review<span class="badge need">Needed</span><span class="badge size">queue</span></label>
@@ -276,14 +276,14 @@
             plus a privacy policy and terms URL.</p><span class="done-when">submitted. Approval is theirs, not yours.</span>
         </div>
       </div>
-      <div class="task">
+      <div class="task" data-kind="need" data-title="Search the trademark register for the name" data-done="you have checked USPTO and the App Store and written down what you found.">
         <input type="checkbox" data-task="trademark" id="i-trademark">
         <div class="task-body">
           <label class="task-title" for="i-trademark">Search the trademark register for the name<span class="badge need">Needed</span><span class="badge size">~1 hour</span></label>
           <p class="task-why">Redo for <strong>DumpNotes</strong>. AutoReflect was taken, which is exactly why this comes before anything with the name on it.</p><span class="done-when">you have checked USPTO and the App Store and written down what you found.</span>
         </div>
       </div>
-      <div class="task">
+      <div class="task" data-kind="need" data-title="Get five external testers into TestFlight" data-done="five people who are not you have opened it on their own phones.">
         <input type="checkbox" data-task="testflight" id="i-testflight">
         <div class="task-body">
           <label class="task-title" for="i-testflight">Get five external testers into TestFlight<span class="badge need">Needed</span><span class="badge size">~1 day + review</span></label>
@@ -292,7 +292,7 @@
             build, so it starts earlier than feels necessary.</p><span class="done-when">five people who are not you have opened it on their own phones.</span>
         </div>
       </div>
-      <div class="task">
+      <div class="task" data-kind="need" data-title="Declare export compliance in the plist" data-done="an upload completes without the encryption question.">
         <input type="checkbox" checked data-task="export-compliance" id="i-export-compliance">
         <div class="task-body">
           <label class="task-title" for="i-export-compliance">Declare export compliance in the plist<span class="badge need">Needed</span><span class="badge size">~10 min</span></label>
@@ -304,21 +304,21 @@
       </div>
     </details>
 
-    <details class="track">
+    <details class="track" data-track="Being findable">
       <summary>
         <span class="track-name">Being findable</span>
         <span class="track-note">the App Store is a checkout counter, not a discovery engine</span>
         <span class="track-count">4 left</span>
       </summary>
       <div class="track-body">
-      <div class="task">
+      <div class="task" data-kind="stop" data-title="Commit to one sentence and stop rewriting it" data-done="the same sentence appears in the subtitle and on the landing page.">
         <input type="checkbox" checked data-task="one-sentence" id="i-one-sentence">
         <div class="task-body">
           <label class="task-title" for="i-one-sentence">Commit to one sentence and stop rewriting it<span class="badge stop">Blocker</span><span class="badge size">~1 hour</span></label>
           <p class="task-why"><strong>Answered.</strong> "DumpNotes is an app that lets you quickly capture thoughts, moments, and experiences through text, voice, images, or video, and automatically adds them to your Notion journals." Tagline: <em>Dump anything. Save everything.</em></p><span class="done-when">the same sentence appears in the subtitle and on the landing page.</span>
         </div>
       </div>
-      <div class="task">
+      <div class="task" data-kind="need" data-title="Have twenty conversations with people who journal" data-done="twenty, counted. Not &quot;a few&quot;.">
         <input type="checkbox" data-task="conversations" id="i-conversations">
         <div class="task-body">
           <label class="task-title" for="i-conversations">Have twenty conversations with people who journal<span class="badge need">Needed</span><span class="badge size">~2 weeks</span></label>
@@ -328,7 +328,7 @@
             that while it was still cheap.</p><span class="done-when">twenty, counted. Not "a few".</span>
         </div>
       </div>
-      <div class="task">
+      <div class="task" data-kind="need" data-title="Put up a landing page with email capture" data-done="the URL is live and has captured at least one email that isn't yours.">
         <input type="checkbox" data-task="landing-page" id="i-landing-page">
         <div class="task-body">
           <label class="task-title" for="i-landing-page">Put up a landing page with email capture<span class="badge need">Needed</span><span class="badge size">~1 day</span></label>
@@ -338,7 +338,7 @@
             audience time, and the waitlist is the only list you will have on day one.</p><span class="done-when">the URL is live and has captured at least one email that isn't yours.</span>
         </div>
       </div>
-      <div class="task">
+      <div class="task" data-kind="need" data-title="Shoot the App Store screenshots" data-done="five captioned screenshots uploaded, each showing the product doing the thing the sentence promises.">
         <input type="checkbox" data-task="screenshots" id="i-screenshots">
         <div class="task-body">
           <label class="task-title" for="i-screenshots">Shoot the App Store screenshots<span class="badge need">Needed</span><span class="badge size">~1 day</span></label>
@@ -347,7 +347,7 @@
             import: they are the visible half of the claim.</p><span class="done-when">five captioned screenshots uploaded, each showing the product doing the thing the sentence promises.</span>
         </div>
       </div>
-      <div class="task">
+      <div class="task" data-kind="need" data-title="Join three communities you will actually post in" data-done="you have posted something useful and unrelated to your app in all three.">
         <input type="checkbox" data-task="three-communities" id="i-three-communities">
         <div class="task-body">
           <label class="task-title" for="i-three-communities">Join three communities you will actually post in<span class="badge need">Needed</span><span class="badge size">~ongoing</span></label>
@@ -360,14 +360,14 @@
       </div>
     </details>
 
-    <details class="track">
+    <details class="track" data-track="Keeping it shipping">
       <summary>
         <span class="track-name">Keeping it shipping</span>
         <span class="track-note">so release two is not as hard as release one</span>
         <span class="track-count">6 left</span>
       </summary>
       <div class="track-body">
-      <div class="task">
+      <div class="task" data-kind="need" data-title="Add crash reporting" data-done="a deliberate test crash shows up in the dashboard.">
         <input type="checkbox" data-task="crash-reporting" id="i-crash-reporting">
         <div class="task-body">
           <label class="task-title" for="i-crash-reporting">Add crash reporting<span class="badge need">Needed</span><span class="badge size">~2 hours</span></label>
@@ -375,7 +375,7 @@
             Without this you will be debugging from one-star reviews.</p><span class="done-when">a deliberate test crash shows up in the dashboard.</span>
         </div>
       </div>
-      <div class="task">
+      <div class="task" data-kind="need" data-title="Wire both suites into CI" data-done="a deliberately broken test blocks a merge.">
         <input type="checkbox" data-task="ci" id="i-ci">
         <div class="task-body">
           <label class="task-title" for="i-ci">Wire both suites into CI<span class="badge need">Needed</span><span class="badge size">~half a day</span></label>
@@ -384,7 +384,7 @@
             user finding it. The migration suite in particular should gate everything.</p><span class="done-when">a deliberately broken test blocks a merge.</span>
         </div>
       </div>
-      <div class="task">
+      <div class="task" data-kind="need" data-title="Capture a store fixture from the shipped build" data-done="the fixture is committed and MigrationTests opens it.">
         <input type="checkbox" data-task="store-fixture" id="i-store-fixture">
         <div class="task-body">
           <label class="task-title" for="i-store-fixture">Capture a store fixture from the shipped build<span class="badge need">Needed</span><span class="badge size">~1 hour</span></label>
@@ -393,7 +393,7 @@
             next migration is untested in exactly the way the last one was.</p><span class="done-when">the fixture is committed and MigrationTests opens it.</span>
         </div>
       </div>
-      <div class="task">
+      <div class="task" data-kind="need" data-title="Fix the version scheme and automate the build number" data-done="two uploads in a row succeed without touching the number by hand.">
         <input type="checkbox" checked data-task="version-numbers" id="i-version-numbers">
         <div class="task-body">
           <label class="task-title" for="i-version-numbers">Fix the version scheme and automate the build number<span class="badge need">Needed</span><span class="badge size">~1 hour</span></label>
@@ -401,7 +401,7 @@
             upload a lot of builds and App Store Connect rejects duplicate build numbers.</p><span class="done-when">two uploads in a row succeed without touching the number by hand.</span>
         </div>
       </div>
-      <div class="task">
+      <div class="task" data-kind="need" data-title="Write the release checklist down" data-done="it exists in the repo and you have followed it once.">
         <input type="checkbox" data-task="release-checklist" id="i-release-checklist">
         <div class="task-body">
           <label class="task-title" for="i-release-checklist">Write the release checklist down<span class="badge need">Needed</span><span class="badge size">~1 hour</span></label>
@@ -410,7 +410,7 @@
             steps from memory at 1am, and that is exactly when the schema breaks.</p><span class="done-when">it exists in the repo and you have followed it once.</span>
         </div>
       </div>
-      <div class="task">
+      <div class="task" data-kind="later" data-title="Add an in-app "send feedback" that opens a mail composer" data-done="a tap opens a pre-addressed draft with the app version in it.">
         <input type="checkbox" checked data-task="feedback-channel" id="i-feedback-channel">
         <div class="task-body">
           <label class="task-title" for="i-feedback-channel">Add an in-app "send feedback" that opens a mail composer<span class="badge later">Later</span><span class="badge size">~2 hours</span></label>
@@ -419,7 +419,7 @@
             list you keep by hand.</p><span class="done-when">a tap opens a pre-addressed draft with the app version in it.</span>
         </div>
       </div>
-      <div class="task">
+      <div class="task" data-kind="later" data-title="Use a local notification for the inactivity nudge" data-done="a nudge arrives after the set idle period on a real device.">
         <input type="checkbox" data-task="local-notification" id="i-local-notification">
         <div class="task-body">
           <label class="task-title" for="i-local-notification">Use a local notification for the inactivity nudge<span class="badge later">Later</span><span class="badge size">~half a day</span></label>
@@ -432,7 +432,7 @@
             done-condition needs a real device and five idle days.</p><span class="done-when">a nudge arrives after the set idle period on a real device.</span>
         </div>
       </div>
-      <div class="task">
+      <div class="task" data-kind="later" data-title="Publish a security contact" data-done="it is on the landing page.">
         <input type="checkbox" data-task="security-contact" id="i-security-contact">
         <div class="task-body">
           <label class="task-title" for="i-security-contact">Publish a security contact<span class="badge later">Later</span><span class="badge size">~30 min</span></label>
@@ -443,14 +443,14 @@
       </div>
     </details>
 
-    <details class="track">
+    <details class="track" data-track="Product">
       <summary>
         <span class="track-name">Product</span>
         <span class="track-note">what makes the demo work</span>
         <span class="track-count">0 left</span>
       </summary>
       <div class="track-body">
-      <div class="task">
+      <div class="task" data-kind="shipped" data-title="Show which days are still open" data-done="shipped, verified live against the real Notion database.">
         <input type="checkbox" checked data-task="gap-view" id="i-gap-view">
         <div class="task-body">
           <label class="task-title" for="i-gap-view">Show which days are still open<span class="badge shipped">Shipped</span></label>
@@ -460,14 +460,14 @@
             is no streak.</p><span class="done-when">shipped, verified live against the real Notion database.</span>
         </div>
       </div>
-      <div class="task">
+      <div class="task" data-kind="need" data-title="Make the entry screen feel like something" data-done="a tester describes using it with an adjective, unprompted.">
         <input type="checkbox" checked data-task="feel-like-something" id="i-feel-like-something">
         <div class="task-body">
           <label class="task-title" for="i-feel-like-something">Make the entry screen feel like something<span class="badge need">Needed</span><span class="badge size">~2 days</span></label>
           <p class="task-why"><strong>Done.</strong> Poppins throughout, the brand palette, a live waveform while recording, and capture-first with a tab bar.</p><span class="done-when">a tester describes using it with an adjective, unprompted.</span>
         </div>
       </div>
-      <div class="task">
+      <div class="task" data-kind="later" data-title="Align the colour language across the app" data-done="no screen uses the same colour for a failure and a normal state.">
         <input type="checkbox" checked data-task="colour-language" id="i-colour-language">
         <div class="task-body">
           <label class="task-title" for="i-colour-language">Align the colour language across the app<span class="badge later">Later</span><span class="badge size">~1 hour</span></label>
@@ -488,6 +488,7 @@
       <div class="ref-body">
         <p><strong>The sentence:</strong></p>
         <div class="quote">DumpNotes is an app that lets you quickly capture thoughts, moments, and experiences through text, voice, images, or video, and automatically adds them to your Notion journals.</div>
+        <p><strong>Still needed:</strong> a subtitle. The App Store caps it at 30 characters, so the sentence above is the description's opening line, not the subtitle. "Dump anything. Save everything." is 31 &mdash; one over.</p>
         <p>Tagline: <em>Dump anything. Save everything.</em></p>
         <p>One practical note: the App Store <strong>subtitle is capped at 30 characters</strong>, so that sentence is the opening line of the description, not the subtitle. The subtitle needs its own short phrase.</p>
 
@@ -555,18 +556,80 @@
     else if(state[b.dataset.task])b.checked=true;
     paint(b);
   });
+  var ORDER = ["Ship-blockers","Queues you don't control","Being findable",
+               "Keeping it shipping","Product"];
+  var RANK = { stop: 0, need: 1, later: 2, shipped: 3 };
+
+  // Both of these used to be written into the page when it was generated, which meant the
+  // "do these next" list still named a task the moment after you ticked it. Computed from
+  // live state instead, so the doc cannot go stale between edits.
+  function refreshSummaries(){
+    var open = [];
+    document.querySelectorAll("details.track").forEach(function(track){
+      var name = track.dataset.track || "";
+      var tasks = [].slice.call(track.querySelectorAll(".task"));
+      var left = tasks.filter(function(t){ return !t.querySelector("input").checked; });
+      var c = track.querySelector(".track-count");
+      if (c) c.textContent = left.length + " left";
+      left.forEach(function(t){
+        open.push({
+          kind: t.dataset.kind || "later",
+          title: t.dataset.title || "",
+          done: t.dataset.done || "",
+          track: ORDER.indexOf(name)
+        });
+      });
+    });
+
+    open.sort(function(a,b){
+      return (RANK[a.kind] - RANK[b.kind]) || (a.track - b.track);
+    });
+
+    var list = document.querySelector("ol.next");
+    if (list) {
+      list.innerHTML = "";
+      open.slice(0,3).forEach(function(item, i){
+        var li = document.createElement("li");
+        var n = document.createElement("span");
+        n.className = "next-n"; n.textContent = String(i+1);
+        var wrap = document.createElement("div");
+        var title = document.createElement("span");
+        title.className = "next-title"; title.textContent = item.title;
+        var when = document.createElement("span");
+        when.className = "next-when"; when.textContent = item.done;
+        wrap.appendChild(title); wrap.appendChild(when);
+        li.appendChild(n); li.appendChild(wrap);
+        list.appendChild(li);
+      });
+      if (!open.length) {
+        var li = document.createElement("li");
+        li.innerHTML = '<span class="next-n">\u2713</span><div><span class="next-title">Nothing left on this list</span></div>';
+        list.appendChild(li);
+      }
+    }
+
+    var stages = document.querySelectorAll(".stage");
+    ORDER.forEach(function(name, i){
+      var track = document.querySelector('details.track[data-track="' + name + '"]');
+      var stage = stages[i];
+      if (!track || !stage) return;
+      var tasks = [].slice.call(track.querySelectorAll(".task input"));
+      var done = tasks.filter(function(b){ return b.checked; }).length;
+      stage.querySelector(".stage-count").textContent = done + "/" + tasks.length;
+      stage.querySelector(".stage-bar span").style.width =
+        tasks.length ? (done / tasks.length * 100) + "%" : "0%";
+      stage.classList.toggle("stage-done", done === tasks.length);
+    });
+  }
+
   function tally(){
     var d=boxes.filter(function(b){return b.checked}).length;
     document.getElementById("done-count").textContent=d;
     document.getElementById("total-count").textContent=boxes.length;
     document.getElementById("fill").style.width=boxes.length?(d/boxes.length*100).toFixed(1)+"%":"0%";
-    // keep each track's "N left" honest as things get ticked
-    document.querySelectorAll("details.track").forEach(function(t){
-      var left=[].slice.call(t.querySelectorAll("input[data-task]")).filter(function(b){return !b.checked}).length;
-      var c=t.querySelector(".track-count");
-      if(c)c.textContent=left+" left";
-    });
+    refreshSummaries();
   }
+
   boxes.forEach(function(b){
     b.addEventListener("change",function(){
       if(b.checked)state[b.dataset.task]=true;else delete state[b.dataset.task];
