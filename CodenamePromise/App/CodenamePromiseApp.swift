@@ -41,7 +41,7 @@ struct RootView: View {
     var body: some View {
         switch services.state {
         case .ready:
-            DraftListView()
+            HomeView()
         case .failed(let message):
             StoreUnavailableView(message: message)
         }

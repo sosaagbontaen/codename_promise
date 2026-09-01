@@ -1,0 +1,343 @@
+import CodenamePromiseCore
+import PhotosUI
+import SwiftUI
+
+/// The front door: put a thing in the tray.
+///
+/// The concept's insight is that the fastest capture is one where you do not first have to
+/// decide what you are making. There is no "new entry" step here — you talk, or type, or pick
+/// a photo, and hit Dump it.
+///
+/// Structurally this is a thin shell over what already existed. A dump *is* an `EntryDraft`,
+/// which has always allowed several per day with its own destination page (ADR-006), so
+/// nothing about the store, sync, export or the day-grouped journal had to change to support
+/// it. The compose state below is deliberately the only new concept.
+struct DumpView: View {
+    @Environment(AppServices.self) private var services
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var text = ""
+    @State private var recorder = AudioRecorder()
+    @State private var picked: [PhotosPickerItem] = []
+    @State private var staged: [StagedMedia] = []
+    @State private var pendingAudio: (data: Data, duration: TimeInterval)?
+    @State private var showingPhotos = false
+    @State private var showingVideos = false
+    @State private var status: Status = .composing
+    @FocusState private var writing: Bool
+
+    /// Media chosen but not yet committed to a draft. Held as bytes so "Dump it" is the
+    /// moment anything is written — before that, nothing has been created.
+    struct StagedMedia: Identifiable {
+        let id = UUID()
+        let url: URL
+        let kind: MediaKind
+    }
+
+    enum Status: Equatable {
+        case composing
+        case dumping
+        case dumped(String)
+        case failed(String)
+    }
+
+    private var hasSomethingToDump: Bool {
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !staged.isEmpty
+            || pendingAudio != nil
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 22) {
+                composer
+                modeButtons
+                dumpButton
+                statusLine
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, 32)
+        }
+        .background(Brand.ground)
+        .scrollDismissesKeyboard(.interactively)
+        .photosPicker(isPresented: $showingPhotos, selection: $picked,
+                      maxSelectionCount: nil, matching: .images)
+        .photosPicker(isPresented: $showingVideos, selection: $picked,
+                      maxSelectionCount: nil, matching: .videos)
+        .onChange(of: picked) { _, items in
+            guard !items.isEmpty else { return }
+            Task { await stage(items) }
+        }
+    }
+
+    // MARK: - Composer
+
+    private var composer: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ZStack(alignment: .topLeading) {
+                if text.isEmpty {
+                    Text("What's on your mind?")
+                        .font(Type.body(17))
+                        .foregroundStyle(Brand.muted)
+                        .padding(.top, 14)
+                        .padding(.leading, 16)
+                        .allowsHitTesting(false)
+                }
+                TextEditor(text: $text)
+                    .font(Type.body(17))
+                    .lineSpacing(5)
+                    .scrollContentBackground(.hidden)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .focused($writing)
+            }
+            .frame(minHeight: 132)
+            .background(Brand.surface, in: RoundedRectangle(cornerRadius: 18))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18)
+                    .strokeBorder(writing ? Brand.violet.opacity(0.5) : Color.clear, lineWidth: 2)
+            )
+            .animation(.easeOut(duration: 0.15), value: writing)
+
+            if recorder.isRecording { recordingBar }
+            if !staged.isEmpty || pendingAudio != nil { stagedStrip }
+        }
+    }
+
+    private var recordingBar: some View {
+        Button {
+            Haptics.committed()
+            stopRecording()
+        } label: {
+            HStack(spacing: 12) {
+                LiveWaveform(levels: recorder.levels, tint: .white)
+                    .frame(height: 24)
+                    .frame(maxWidth: .infinity)
+                Text(elapsed).font(Type.mono(14)).foregroundStyle(.white)
+                Image(systemName: "stop.fill").font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 48)
+            .background(Brand.gradient, in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// What is about to be dumped, and nothing is written until it is.
+    private var stagedStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                if pendingAudio != nil {
+                    stagedChip(icon: "waveform", tint: Brand.Mode.voice, label: "Recording") {
+                        pendingAudio = nil
+                    }
+                }
+                ForEach(staged) { item in
+                    stagedChip(
+                        icon: item.kind == .video ? "video.fill" : "photo.fill",
+                        tint: item.kind == .video ? Brand.Mode.video : Brand.Mode.photo,
+                        label: item.kind == .video ? "Video" : "Photo"
+                    ) {
+                        staged.removeAll { $0.id == item.id }
+                        try? FileManager.default.removeItem(at: item.url)
+                    }
+                }
+            }
+            .padding(.horizontal, 2)
+        }
+    }
+
+    private func stagedChip(
+        icon: String, tint: Color, label: String, remove: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: icon).font(.system(size: 12, weight: .semibold))
+            Text(label).font(Type.caption(12.5))
+            Button(action: remove) {
+                Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
+            }
+            .buttonStyle(.plain)
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 12)
+        .frame(height: 34)
+        .background(tint.opacity(0.12), in: Capsule())
+    }
+
+    // MARK: - Modes
+
+    /// One confetti colour each, which is the mark's whole idea: different kinds of thing,
+    /// same tray.
+    private var modeButtons: some View {
+        HStack(spacing: 14) {
+            modeButton("Text", "text.alignleft", Brand.Mode.text) {
+                writing = true
+            }
+            modeButton("Voice", "mic.fill", Brand.Mode.voice) {
+                Haptics.committed()
+                Task { await recorder.start() }
+            }
+            modeButton("Photo", "photo.fill", Brand.Mode.photo) {
+                showingPhotos = true
+            }
+            modeButton("Video", "video.fill", Brand.Mode.video) {
+                showingVideos = true
+            }
+        }
+    }
+
+    private func modeButton(
+        _ title: String, _ symbol: String, _ tint: Color, action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 56, height: 56)
+                    .background(tint.opacity(0.13), in: Circle())
+                Text(title)
+                    .font(Type.caption(12, .medium))
+                    .foregroundStyle(Brand.muted)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+        .disabled(recorder.isRecording)
+        .opacity(recorder.isRecording ? 0.4 : 1)
+    }
+
+    // MARK: - Dump
+
+    private var dumpButton: some View {
+        Button {
+            dump()
+        } label: {
+            Group {
+                if status == .dumping {
+                    ProgressView().tint(.white)
+                } else {
+                    Text("Dump it").font(Type.label(17, .semibold))
+                }
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .frame(height: 54)
+            .background(
+                hasSomethingToDump ? AnyShapeStyle(Brand.gradient)
+                                   : AnyShapeStyle(Brand.muted.opacity(0.25)),
+                in: RoundedRectangle(cornerRadius: 16)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(!hasSomethingToDump || status == .dumping)
+        .animation(.easeOut(duration: 0.18), value: hasSomethingToDump)
+    }
+
+    @ViewBuilder
+    private var statusLine: some View {
+        switch status {
+        case .composing:
+            // Says where it goes before you commit, not after.
+            // States what is guaranteed, not what is hoped for. Saving is local and
+            // certain; reaching Notion is neither, and the journal says so per entry.
+            Label("Saved here first, then sent to Notion", systemImage: "tray.and.arrow.down")
+                .font(Type.caption(12.5))
+                .foregroundStyle(Brand.muted)
+        case .dumping:
+            EmptyView()
+        case .dumped(let message):
+            Label(message, systemImage: "checkmark.circle.fill")
+                .font(Type.caption(13, .semibold))
+                .foregroundStyle(Brand.reached)
+                .transition(.opacity)
+        case .failed(let message):
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .font(Type.caption(13, .semibold))
+                .foregroundStyle(Brand.failed)
+        }
+    }
+
+    // MARK: - Actions
+
+    private var elapsed: String {
+        let total = Int(recorder.elapsed)
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+
+    private func stopRecording() {
+        guard let finished = recorder.stop() else { return }
+        pendingAudio = (finished.data, finished.duration)
+    }
+
+    private func stage(_ items: [PhotosPickerItem]) async {
+        for item in items {
+            if let movie = try? await item.loadTransferable(type: PickedMovie.self) {
+                staged.append(StagedMedia(url: movie.url, kind: .video))
+            } else if let data = try? await item.loadTransferable(type: Data.self) {
+                let url = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("dump-\(UUID().uuidString).jpg")
+                if (try? data.write(to: url, options: .atomic)) != nil {
+                    staged.append(StagedMedia(url: url, kind: .photo))
+                }
+            }
+        }
+        picked = []
+    }
+
+    /// The only moment anything is written.
+    ///
+    /// Order matters and follows the same discipline as everywhere else: the draft and its
+    /// bytes are committed first, and anything that can fail — transcription, sync — happens
+    /// afterwards and can never cost the capture (ADR-001, ADR-002).
+    private func dump() {
+        guard let store = services.store, let files = services.files else { return }
+        status = .dumping
+
+        do {
+            let draft = try store.createDraft()
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { try store.updateRawText(trimmed, for: draft) }
+
+            for item in staged {
+                _ = try store.attachMedia(from: item.url, kind: item.kind, to: draft, fileStore: files)
+                try? FileManager.default.removeItem(at: item.url)
+            }
+
+            if let pendingAudio {
+                try store.attachAudioCapture(
+                    data: pendingAudio.data, fileExtension: "m4a",
+                    durationSeconds: pendingAudio.duration, to: draft, fileStore: files
+                )
+            }
+
+            Haptics.landed()
+            let carried = summary(hadAudio: pendingAudio != nil, media: staged.count)
+            text = ""
+            staged = []
+            pendingAudio = nil
+            writing = false
+            withAnimation { status = .dumped(carried) }
+
+            // Everything below here is optional and may fail freely.
+            Task { await services.drainTranscriptions() }
+
+            Task {
+                try? await Task.sleep(for: .seconds(3))
+                if case .dumped = status { withAnimation { status = .composing } }
+            }
+        } catch {
+            Haptics.failed()
+            status = .failed(error.localizedDescription)
+        }
+    }
+
+    private func summary(hadAudio: Bool, media: Int) -> String {
+        var parts: [String] = []
+        if hadAudio { parts.append("recording") }
+        if media > 0 { parts.append("\(media) attachment\(media == 1 ? "" : "s")") }
+        return parts.isEmpty ? "Dumped" : "Dumped with " + parts.joined(separator: " and ")
+    }
+}
