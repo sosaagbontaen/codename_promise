@@ -1,1133 +1,1092 @@
 <title>Shipping AutoReflect</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Karla:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
 
 <style>
+  /* --- The desk after dark. AutoReflect is used at the end of a day, by lamplight, and
+     its own colour language is already fixed inside the app: green means it reached the
+     destination, purple means the AI touched it, amber means it hasn't yet. This document
+     borrows that vocabulary rather than inventing a second one, so a colour means the same
+     thing here as it does on the phone. Single-theme on purpose - every surface painted. */
   :root {
-    --paper:      #F5F6F5;
-    --surface:    #FFFFFF;
-    --ink:        #14181B;
-    --ink-soft:   #3D4643;
-    --muted:      #667069;
-    --rule:       #DCE0DD;
-    --rule-soft:  #E9ECE9;
-    --accent:     #0E6E5B;
-    --accent-bg:  #E3EDE9;
-    --critical:   #A63421;
-    --critical-bg:#F6E4E0;
-    --warn:       #8A6516;
-    --warn-bg:    #F4EBDC;
-    --done:       #4A6B4F;
-    --done-bg:    #E6EDE6;
+    --night:    #0F1219;   /* the room */
+    --panel:    #161A24;   /* the page */
+    --sunken:   #0B0E14;   /* under the page */
+    --rule:     #262C3A;   /* the ruled line */
+    --paper:    #EFEDE6;   /* what you write with */
+    --dim:      #8C93A4;   /* margin notes */
+    --lamp:     #F0B429;   /* the lamp */
+    --lamp-low: #8A6410;
+    --synced:   #4ADE80;   /* app: reached Notion */
+    --ai:       #A78BFA;   /* app: the model touched it */
+    --pending:  #FB923C;   /* app: not yet */
+    --stop:     #F87171;   /* nothing else in the app is this colour */
 
-    --measure: 68ch;
-    --step--1: 0.8125rem;
-    --step-0:  1.0625rem;
-    --step-1:  1.25rem;
-    --step-2:  1.5rem;
-    --step-3:  2rem;
-    --step-4:  2.75rem;
-
-    --sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", sans-serif;
-    --serif: "Newsreader", ui-serif, Georgia, "Times New Roman", serif;
-    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --display: 'Fraunces', Georgia, 'Times New Roman', serif;
+    --body: 'Karla', 'Helvetica Neue', Arial, sans-serif;
+    --mono: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
   }
 
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --paper:      #0F1312;
-      --surface:    #161B1A;
-      --ink:        #E4E9E6;
-      --ink-soft:   #B4BDB8;
-      --muted:      #838E88;
-      --rule:       #2A312F;
-      --rule-soft:  #212725;
-      --accent:     #57C4A3;
-      --accent-bg:  #142A25;
-      --critical:   #E08976;
-      --critical-bg:#2E1B17;
-      --warn:       #D6A85C;
-      --warn-bg:    #2A2317;
-      --done:       #8FB394;
-      --done-bg:    #1B2620;
-    }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { transition: none !important; }
   }
-
-  :root[data-theme="dark"] {
-    --paper:      #0F1312;
-    --surface:    #161B1A;
-    --ink:        #E4E9E6;
-    --ink-soft:   #B4BDB8;
-    --muted:      #838E88;
-    --rule:       #2A312F;
-    --rule-soft:  #212725;
-    --accent:     #57C4A3;
-    --accent-bg:  #142A25;
-    --critical:   #E08976;
-    --critical-bg:#2E1B17;
-    --warn:       #D6A85C;
-    --warn-bg:    #2A2317;
-    --done:       #8FB394;
-    --done-bg:    #1B2620;
-  }
-
-  * { box-sizing: border-box; }
 
   body {
-    background: var(--paper);
-    color: var(--ink);
-    font-family: var(--sans);
-    font-size: var(--step-0);
-    line-height: 1.65;
-    margin: 0;
-    padding: clamp(2rem, 6vw, 5rem) clamp(1.1rem, 5vw, 2rem) 6rem;
+    background: var(--night);
+    color: var(--paper);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.62;
     -webkit-font-smoothing: antialiased;
   }
 
-  .wrap { max-width: var(--measure); margin: 0 auto; }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 0 26px; }
 
-  /* ---------- masthead ---------- */
+  a { color: var(--lamp); text-underline-offset: 3px; }
+  a:focus-visible, button:focus-visible, input:focus-visible {
+    outline: 2px solid var(--lamp); outline-offset: 3px;
+  }
 
-  .masthead { display: flex; flex-direction: column; gap: 1.1rem; }
+  /* ---------- hero ---------- */
 
-  .kicker {
+  header.hero {
+    position: relative;
+    overflow: hidden;
+    border-bottom: 1px solid var(--rule);
+    padding: 64px 0 52px;
+    background:
+      radial-gradient(900px 380px at 22% -130px, rgba(240, 180, 41, 0.13), transparent 70%),
+      repeating-linear-gradient(180deg, transparent 0 33px, rgba(239, 237, 230, 0.030) 33px 34px),
+      var(--night);
+  }
+
+  .doc-family {
     font-family: var(--mono);
-    font-size: var(--step--1);
-    letter-spacing: 0.14em;
+    font-size: 11px;
+    letter-spacing: 0.07em;
+    color: var(--dim);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px 16px;
+    margin-bottom: 40px;
+  }
+  .doc-family span::before { content: "/ "; color: var(--rule); }
+  .doc-family .here { color: var(--lamp); }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
     text-transform: uppercase;
-    color: var(--accent);
+    color: var(--synced);
+    margin-bottom: 16px;
   }
 
   h1 {
-    font-family: var(--serif);
-    font-weight: 500;
-    font-size: clamp(2.25rem, 7vw, var(--step-4));
-    line-height: 1.08;
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: clamp(46px, 9vw, 86px);
+    line-height: 0.98;
     letter-spacing: -0.02em;
-    margin: 0;
     text-wrap: balance;
   }
+  h1 .lamp { color: var(--lamp); }
 
-  .standfirst {
-    font-family: var(--serif);
-    font-size: var(--step-1);
-    line-height: 1.5;
-    color: var(--ink-soft);
-    margin: 0;
-    max-width: 58ch;
+  .hero-sub {
+    max-width: 56ch;
+    margin-top: 20px;
+    font-size: 17.5px;
+    color: var(--dim);
   }
+  .hero-sub strong { color: var(--paper); font-weight: 600; }
 
-  .masthead-rule {
-    border: 0;
-    border-top: 2px solid var(--ink);
-    margin: 2rem 0 0;
+  /* ---------- the one notice ---------- */
+
+  .notice {
+    margin-top: 44px;
+    border: 1px solid var(--lamp-low);
+    border-radius: 10px;
+    background: linear-gradient(180deg, #1C1704, #131009);
+    padding: 24px 28px 22px;
+    box-shadow: 0 0 44px rgba(240, 180, 41, 0.08), inset 0 0 30px rgba(0, 0, 0, 0.45);
   }
+  .notice .board-label {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.22em;
+    color: var(--lamp-low);
+    margin-bottom: 9px;
+  }
+  .notice h2 {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: clamp(22px, 4vw, 32px);
+    line-height: 1.15;
+    color: var(--lamp);
+    margin-bottom: 10px;
+    text-wrap: balance;
+  }
+  .notice p { color: var(--dim); max-width: 66ch; font-size: 15.5px; }
+  .notice p + p { margin-top: 9px; }
+  .notice strong { color: var(--paper); font-weight: 600; }
+
+  /* ---------- progress ---------- */
+
+  .progress-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 18px;
+    margin-top: 26px;
+    padding: 14px 0 0;
+    border-top: 1px solid var(--rule);
+  }
+  .progress-count {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  .progress-count b { color: var(--synced); }
+  .progress-track {
+    flex: 1 1 12rem;
+    min-width: 9rem;
+    height: 5px;
+    background: var(--sunken);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .progress-fill { height: 100%; width: 0; background: var(--synced); transition: width .25s ease; }
+  .progress-reset {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--dim);
+    background: none; border: 0; cursor: pointer;
+    text-decoration: underline; text-underline-offset: 3px;
+  }
+  .progress-reset:hover { color: var(--paper); }
 
   /* ---------- sections ---------- */
 
-  section { margin-top: 3.5rem; }
+  main { padding: 8px 0 0; }
+  section.block { padding: 52px 0 4px; }
 
-  .phase-head {
+  .sec-head {
     display: flex;
     align-items: baseline;
-    gap: 0.9rem;
-    padding-bottom: 0.6rem;
-    border-bottom: 1px solid var(--rule);
-    margin-bottom: 1.6rem;
+    gap: 16px;
+    border-bottom: 2px solid var(--rule);
+    padding-bottom: 10px;
+    margin-bottom: 12px;
   }
-
-  .phase-num {
+  .sec-head .tag {
     font-family: var(--mono);
-    font-size: var(--step--1);
-    font-weight: 600;
-    color: var(--muted);
-    letter-spacing: 0.08em;
-    flex: none;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    color: var(--lamp);
+    white-space: nowrap;
   }
-
-  h2 {
-    font-family: var(--serif);
-    font-weight: 500;
-    font-size: var(--step-3);
-    line-height: 1.15;
+  .sec-head h2 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: clamp(23px, 4vw, 33px);
+    line-height: 1.1;
     letter-spacing: -0.015em;
-    margin: 0;
     text-wrap: balance;
   }
+  .sec-intro { color: var(--dim); max-width: 68ch; margin: 12px 0 26px; font-size: 15.5px; }
+  .sec-intro strong { color: var(--paper); font-weight: 600; }
+  .sec-intro + .sec-intro { margin-top: -14px; }
 
-  h3 {
-    font-family: var(--serif);
+  h3.sub {
+    font-family: var(--display);
     font-weight: 600;
-    font-size: var(--step-2);
-    line-height: 1.25;
-    margin: 2.5rem 0 0.75rem;
-    text-wrap: balance;
+    font-size: 21px;
+    letter-spacing: -0.01em;
+    margin: 34px 0 10px;
   }
 
-  p { margin: 0 0 1rem; }
-  p:last-child { margin-bottom: 0; }
-
-  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
-  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
-
-  strong { font-weight: 600; }
-  em { font-style: italic; }
+  p.body { color: var(--dim); max-width: 68ch; font-size: 15.5px; margin-bottom: 12px; }
+  p.body strong { color: var(--paper); font-weight: 600; }
+  p.body em { color: var(--paper); font-style: italic; }
 
   code {
     font-family: var(--mono);
-    font-size: 0.87em;
-    background: var(--rule-soft);
-    padding: 0.1em 0.35em;
-    border-radius: 3px;
-    word-break: break-word;
-  }
-
-  /* ---------- the lede callout ---------- */
-
-  .lede {
-    background: var(--surface);
+    font-size: 0.86em;
+    background: var(--sunken);
     border: 1px solid var(--rule);
-    border-top: 3px solid var(--critical);
-    padding: 1.5rem clamp(1.1rem, 4vw, 1.9rem);
-    margin-top: 2.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.9rem;
-  }
-
-  .lede h2 { font-size: var(--step-2); }
-
-  /* ---------- checklist items ---------- */
-
-  .items { display: flex; flex-direction: column; }
-
-  .item {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    padding: 1.35rem 0;
-    border-top: 1px solid var(--rule-soft);
-  }
-  .item:first-child { border-top: 1px solid var(--rule); }
-
-  .item-head {
-    display: flex;
-    align-items: baseline;
-    gap: 0.7rem;
-    flex-wrap: wrap;
-  }
-
-  .item-title {
-    font-family: var(--sans);
-    font-weight: 600;
-    font-size: var(--step-0);
-    line-height: 1.4;
-    margin: 0;
-  }
-
-  .chip {
-    font-family: var(--mono);
-    font-size: 0.6875rem;
-    font-weight: 600;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    padding: 0.2em 0.5em;
-    border-radius: 2px;
-    white-space: nowrap;
-    flex: none;
-  }
-
-  .chip-blocker  { background: var(--critical-bg); color: var(--critical); }
-  .chip-required { background: var(--warn-bg);     color: var(--warn); }
-  .chip-decide   { background: var(--accent-bg);   color: var(--accent); }
-  .chip-later    { background: var(--rule-soft);   color: var(--muted); }
-  .chip-done     { background: var(--done-bg);     color: var(--done); }
-
-  .item p { color: var(--ink-soft); margin: 0; }
-  .item p + p { margin-top: 0.6rem; }
-
-  .where {
-    font-family: var(--mono);
-    font-size: var(--step--1);
-    color: var(--muted);
-  }
-
-  /* ---------- table ---------- */
-
-  .scroll { overflow-x: auto; margin: 1.5rem 0; }
-
-  table {
-    border-collapse: collapse;
-    width: 100%;
-    min-width: 34rem;
-    font-size: var(--step--1);
-  }
-
-  th, td {
-    text-align: left;
-    padding: 0.75rem 0.9rem 0.75rem 0;
-    border-bottom: 1px solid var(--rule-soft);
-    vertical-align: top;
-  }
-
-  thead th {
-    font-family: var(--mono);
-    font-weight: 600;
-    font-size: 0.6875rem;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    color: var(--muted);
-    border-bottom: 1px solid var(--rule);
-  }
-
-  tbody th {
-    font-family: var(--sans);
-    font-weight: 600;
-    color: var(--ink);
-    padding-right: 1.2rem;
-  }
-
-  td { color: var(--ink-soft); }
-
-  .rec {
-    font-family: var(--mono);
-    font-size: 0.6875rem;
-    font-weight: 600;
-    letter-spacing: 0.09em;
-    color: var(--accent);
-    display: block;
-    margin-top: 0.3rem;
-  }
-
-  /* ---------- done list ---------- */
-
-  .done-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-    gap: 0.4rem 2rem;
-    margin: 1.25rem 0 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .done-grid li {
-    display: flex;
-    gap: 0.6rem;
-    align-items: baseline;
-    padding: 0.35rem 0;
-    color: var(--ink-soft);
-    font-size: var(--step--1);
-  }
-
-  .done-grid li::before {
-    content: "\2713";
-    color: var(--done);
-    font-weight: 600;
-    flex: none;
-  }
-
-  /* ---------- next steps ---------- */
-
-  ol.steps {
-    counter-reset: step;
-    list-style: none;
-    padding: 0;
-    margin: 1.5rem 0 0;
-    display: flex;
-    flex-direction: column;
-    gap: 1.1rem;
-  }
-
-  ol.steps li {
-    counter-increment: step;
-    display: grid;
-    grid-template-columns: 2.1rem 1fr;
-    gap: 0.8rem;
-    align-items: baseline;
-  }
-
-  ol.steps li::before {
-    content: counter(step, decimal-leading-zero);
-    font-family: var(--mono);
-    font-size: var(--step--1);
-    font-weight: 600;
-    color: var(--accent);
-  }
-
-  ol.steps p { color: var(--ink-soft); }
-  ol.steps strong { color: var(--ink); }
-
-  /* ---------- closing ---------- */
-
-  .closing {
-    margin-top: 4rem;
-    padding-top: 2rem;
-    border-top: 2px solid var(--ink);
-    font-family: var(--serif);
-    font-size: var(--step-1);
-    line-height: 1.55;
-    color: var(--ink-soft);
-  }
-
-  .closing p { margin-bottom: 1rem; }
-
-  /* ---------- checkable items ---------- */
-
-  .item-head {
-    cursor: pointer;
-    user-select: none;
-  }
-
-  .item-head input[type="checkbox"] {
-    appearance: none;
-    -webkit-appearance: none;
-    flex: none;
-    width: 1.15rem;
-    height: 1.15rem;
-    margin: 0;
-    border: 1.5px solid var(--muted);
+    padding: 0.08em 0.36em;
     border-radius: 3px;
-    background: var(--surface);
-    position: relative;
-    top: 0.2rem;
-    cursor: pointer;
-    transition: background 0.12s ease, border-color 0.12s ease;
+    color: var(--paper);
   }
 
-  .item-head input[type="checkbox"]:checked {
-    background: var(--done);
-    border-color: var(--done);
-  }
+  /* ---------- badges ---------- */
 
-  .item-head input[type="checkbox"]:checked::after {
-    content: "";
-    position: absolute;
-    left: 0.34rem;
-    top: 0.12rem;
-    width: 0.28rem;
-    height: 0.6rem;
-    border: solid var(--surface);
-    border-width: 0 2px 2px 0;
-    transform: rotate(42deg);
-  }
-
-  .item-head input[type="checkbox"]:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
-
-  .item.is-done .item-title {
-    text-decoration: line-through;
-    text-decoration-thickness: 1px;
-    text-decoration-color: var(--muted);
-    color: var(--muted);
-  }
-
-  .item.is-done p,
-  .item.is-done .chip {
-    opacity: 0.55;
-  }
-
-  /* ---------- progress meter ---------- */
-
-  .progress {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0.5rem 1rem;
-    margin-top: 2rem;
-    padding: 0.9rem 0;
-    border-top: 1px solid var(--rule);
-    border-bottom: 1px solid var(--rule);
-  }
-
-  .progress-count {
+  .badge {
     font-family: var(--mono);
-    font-size: var(--step--1);
-    font-weight: 600;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    padding: 3px 8px 2px;
+    border-radius: 4px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .badge.stop    { background: rgba(248,113,113,.13); color: var(--stop);    border: 1px solid rgba(248,113,113,.42); }
+  .badge.need    { background: rgba(251,146,60,.12);  color: var(--pending); border: 1px solid rgba(251,146,60,.40); }
+  .badge.later   { background: rgba(140,147,164,.10); color: var(--dim);     border: 1px solid var(--rule); }
+  .badge.shipped { background: rgba(74,222,128,.12);  color: var(--synced);  border: 1px solid rgba(74,222,128,.40); }
+  .badge.size {
+    background: transparent; color: var(--dim); border: 1px solid var(--rule);
+    letter-spacing: 0.08em; text-transform: none;
+  }
+
+  /* ---------- the "done" strip ---------- */
+
+  .done-strip {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    margin-top: 4px;
+  }
+  .done-chip {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--paper);
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-left: 2px solid var(--synced);
+    border-radius: 4px;
+    padding: 5px 11px 4px;
+  }
+
+  /* ---------- decisions ---------- */
+
+  .decision {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 11px;
+    padding: 22px 24px 20px;
+    margin-bottom: 14px;
+  }
+  .decision-head {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    margin-bottom: 10px;
+  }
+  .decision-head h3 {
+    font-family: var(--body);
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: 0;
+  }
+  .decision p { color: var(--dim); font-size: 15px; max-width: 66ch; }
+  .decision p + p { margin-top: 9px; }
+  .decision strong { color: var(--paper); font-weight: 600; }
+
+  .options { display: grid; gap: 8px; margin-top: 14px; }
+  .option {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 12px;
+    align-items: baseline;
+    background: var(--sunken);
+    border: 1px solid var(--rule);
+    border-radius: 7px;
+    padding: 11px 14px;
+    font-size: 14.5px;
+    color: var(--dim);
+  }
+  .option .opt-name {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--paper);
+    white-space: nowrap;
+  }
+  .option.lean { border-color: rgba(240,180,41,.42); background: rgba(240,180,41,.05); }
+  .option.lean .opt-name { color: var(--lamp); }
+  .recommend {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--lamp);
+    margin-top: 12px;
+  }
+
+  /* ---------- tasks ---------- */
+
+  .track { margin-bottom: 34px; }
+  .track-head {
+    display: flex; align-items: baseline; gap: 12px;
+    margin-bottom: 4px;
+  }
+  .track-head h3 {
+    font-family: var(--body);
+    font-weight: 700;
+    font-size: 15px;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--ink);
+    color: var(--lamp);
   }
+  .track-head .track-note { font-size: 13.5px; color: var(--dim); }
 
-  .progress-count b { color: var(--accent); font-weight: 600; }
-
-  .progress-track {
-    flex: 1 1 10rem;
-    height: 4px;
-    background: var(--rule-soft);
-    border-radius: 2px;
-    overflow: hidden;
-    min-width: 8rem;
-  }
-
-  .progress-fill {
-    height: 100%;
-    width: 0%;
-    background: var(--accent);
-    transition: width 0.25s ease;
-  }
-
-  .progress-reset {
-    font-family: var(--mono);
-    font-size: 0.6875rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--muted);
-    background: none;
-    border: 0;
-    padding: 0.2em 0;
-    cursor: pointer;
-    text-decoration: underline;
-    text-underline-offset: 3px;
-  }
-  .progress-reset:hover { color: var(--ink); }
-  .progress-reset:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-  .living-note {
-    font-family: var(--mono);
-    font-size: var(--step--1);
-    color: var(--muted);
-    margin-top: 0.9rem;
-  }
-
-  ol.steps li.is-done p { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--muted); }
-
-  ol.steps label {
+  .task {
     display: grid;
-    grid-template-columns: 1.15rem 1fr;
-    gap: 0.7rem;
-    align-items: baseline;
-    cursor: pointer;
+    grid-template-columns: 22px 1fr;
+    gap: 13px;
+    padding: 15px 0 14px;
+    border-top: 1px solid var(--rule);
   }
+  .task:last-child { border-bottom: 1px solid var(--rule); }
 
-  ol.steps input[type="checkbox"] {
-    appearance: none;
-    -webkit-appearance: none;
-    width: 1.15rem;
-    height: 1.15rem;
-    margin: 0;
-    border: 1.5px solid var(--muted);
-    border-radius: 3px;
-    background: var(--surface);
-    position: relative;
-    top: 0.2rem;
+  .task input[type="checkbox"] {
+    appearance: none; -webkit-appearance: none;
+    width: 19px; height: 19px;
+    margin: 0; margin-top: 3px;
+    border: 1.5px solid var(--dim);
+    border-radius: 4px;
+    background: var(--sunken);
     cursor: pointer;
+    position: relative;
+    flex: none;
   }
-  ol.steps input[type="checkbox"]:checked { background: var(--done); border-color: var(--done); }
-  ol.steps input[type="checkbox"]:checked::after {
-    content: "";
-    position: absolute;
-    left: 0.34rem; top: 0.12rem;
-    width: 0.28rem; height: 0.6rem;
-    border: solid var(--surface);
-    border-width: 0 2px 2px 0;
+  .task input[type="checkbox"]:checked { background: var(--synced); border-color: var(--synced); }
+  .task input[type="checkbox"]:checked::after {
+    content: ""; position: absolute;
+    left: 6px; top: 2px; width: 5px; height: 10px;
+    border: solid var(--night); border-width: 0 2px 2px 0;
     transform: rotate(42deg);
   }
-  ol.steps input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  @media (prefers-reduced-motion: reduce) {
-    * { animation: none !important; transition: none !important; }
+  .task-body { min-width: 0; }
+  .task-title {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 9px;
+    font-weight: 700;
+    font-size: 16px;
+    cursor: pointer;
+    margin-bottom: 5px;
   }
+  .task-why { color: var(--dim); font-size: 14.5px; max-width: 66ch; }
+  .task-why strong { color: var(--paper); font-weight: 600; }
+  .task-why code { font-size: 0.85em; }
+
+  .done-when {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--synced);
+    margin-top: 8px;
+    display: block;
+    max-width: 66ch;
+    line-height: 1.55;
+  }
+  .done-when::before {
+    content: "DONE WHEN ";
+    color: var(--dim);
+    letter-spacing: 0.1em;
+  }
+
+  .task.is-done .task-title { color: var(--dim); text-decoration: line-through; text-decoration-color: var(--rule); }
+  .task.is-done .task-why, .task.is-done .done-when, .task.is-done .badge { opacity: .5; }
+
+  /* ---------- tables ---------- */
+
+  .scroll { overflow-x: auto; margin: 18px 0 6px; }
+  table { border-collapse: collapse; width: 100%; min-width: 32rem; font-size: 14.5px; }
+  th, td { text-align: left; padding: 11px 14px 11px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  thead th {
+    font-family: var(--mono); font-size: 10.5px; font-weight: 700;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim);
+  }
+  tbody th { font-weight: 700; color: var(--paper); padding-right: 18px; white-space: nowrap; }
+  td { color: var(--dim); }
+
+  .pull {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.75;
+    background: var(--sunken);
+    border: 1px solid var(--rule);
+    border-left: 2px solid var(--ai);
+    border-radius: 6px;
+    padding: 16px 18px;
+    color: var(--dim);
+    margin: 16px 0;
+    max-width: 76ch;
+  }
+
+  .listing {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-left: 2px solid var(--lamp);
+    border-radius: 8px;
+    padding: 22px 24px 20px;
+    margin: 16px 0 6px;
+    max-width: 70ch;
+  }
+  .listing .listing-head {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 19px;
+    color: var(--paper);
+    margin-bottom: 12px;
+  }
+  .listing p { color: var(--dim); font-size: 15px; }
+  .listing p + p { margin-top: 11px; }
+  .listing .tagline { color: var(--paper); font-weight: 600; }
+  .listing ul { list-style: none; margin-top: 14px; }
+  .listing li {
+    color: var(--dim); font-size: 14.5px;
+    padding: 4px 0 4px 20px; position: relative;
+  }
+  .listing li::before {
+    content: "\2022"; position: absolute; left: 4px; color: var(--lamp);
+  }
+
+  ul.plain { list-style: none; margin: 12px 0; max-width: 68ch; }
+  ul.plain li {
+    color: var(--dim); font-size: 15px;
+    padding: 7px 0 7px 22px; position: relative;
+  }
+  ul.plain li::before {
+    content: "\2715"; position: absolute; left: 0; top: 7px;
+    color: var(--stop); font-size: 12px;
+  }
+  ul.plain li strong { color: var(--paper); font-weight: 600; }
+
+  /* ---------- footer ---------- */
+
+  footer.close {
+    margin-top: 76px;
+    border-top: 1px solid var(--rule);
+    background:
+      repeating-linear-gradient(180deg, transparent 0 33px, rgba(239,237,230,.028) 33px 34px),
+      var(--sunken);
+    padding: 58px 0 66px;
+    text-align: center;
+  }
+  footer .kicker {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--dim); margin-bottom: 16px;
+  }
+  footer .closing {
+    font-family: var(--display); font-weight: 700;
+    font-size: clamp(24px, 5vw, 40px); line-height: 1.15;
+    text-wrap: balance;
+  }
+  footer .closing .lamp { color: var(--lamp); }
+  footer .meta { font-family: var(--mono); font-size: 11.5px; color: var(--dim); margin-top: 24px; }
+
+  ::selection { background: var(--lamp); color: var(--night); }
 </style>
 
-<div class="wrap">
+<header class="hero">
+  <div class="wrap">
+    <div class="doc-family">
+      <span>CLAUDE.md &middot; the rules</span>
+      <span>docs/architecture/decisions.md &middot; every ADR</span>
+      <span class="here">docs/launch/ &middot; this page</span>
+    </div>
 
-  <header class="masthead">
-    <div class="kicker">Release readiness &middot; v0.1 &rarr; 1.0</div>
-    <h1>Shipping AutoReflect</h1>
-    <p class="standfirst">What stands between a build that runs on your phone and a product other people trust with six years of their life.</p>
-  </header>
-  <hr class="masthead-rule">
+    <div class="eyebrow">Release readiness &middot; v0.1 to 1.0</div>
+    <h1>Shipping<br><span class="lamp">AutoReflect</span></h1>
+    <p class="hero-sub">What stands between a build that runs on your phone and a product
+    other people trust with <strong>six years of their life</strong>.</p>
 
-  <div class="progress">
-    <span class="progress-count"><b id="done-count">0</b> of <span id="total-count">0</span> done</span>
-    <span class="progress-track"><span class="progress-fill" id="progress-fill"></span></span>
-    <button type="button" class="progress-reset" id="reset-ticks">Clear my ticks</button>
+    <div class="notice">
+      <div class="board-label">READ THIS ONE FIRST</div>
+      <h2>Your first tenet stops at the edge of the device</h2>
+      <p><strong>Never lose what the user said or wrote.</strong> The code honours that:
+      explicit flushes, audio durable before transcription, resumable sync, a migration suite
+      that opens real stores. All of it survives process death, interrupted syncs and
+      restore-from-backup.</p>
+      <p>None of it survives a lost phone. There is no account, no cloud copy, no export. And
+      the person who loses everything will have chosen you <em>because</em> you promised they
+      wouldn't.</p>
+      <p>It is invisible from inside the repo, because the code is correct. It is glaring
+      from outside it.</p>
+    </div>
+
+    <div class="progress-bar">
+      <span class="progress-count"><b id="done-count">0</b> / <span id="total-count">0</span> tasks done</span>
+      <span class="progress-track"><span class="progress-fill" id="progress-fill"></span></span>
+      <button type="button" class="progress-reset" id="reset-ticks">Clear my ticks</button>
+    </div>
   </div>
-  <p class="living-note">A working checklist. Tick anything off yourself &mdash; it is remembered in this browser. Items already ticked when you open it are ones that are done and committed.</p>
+</header>
 
-  <div class="lede">
-    <div class="kicker" style="color: var(--critical)">Read this one first</div>
-    <h2>Your first tenet stops at the edge of the device</h2>
-    <p><strong>Never lose what the user said or wrote.</strong> The code honors that beautifully &mdash; explicit flushes, durable audio before transcription, resumable sync, a migration suite that now opens real stores. All of it protects against process death, interrupted syncs, and restore-from-backup.</p>
-    <p>None of it protects against a lost phone. There is no account, no cloud copy, no export. A user who drops their iPhone in a lake loses everything, and they will have chosen your app <em>specifically</em> because you promised they wouldn't.</p>
-    <p>That gap is invisible from inside the codebase, because the code is correct. It is glaring from outside it. Whatever else you do, do not ship a durability-first journal with no way to get the journal back.</p>
+<main>
+
+  <!-- ============ WHAT IS DONE ============ -->
+  <section class="block">
+    <div class="wrap">
+      <div class="sec-head"><span class="tag">STATE</span><h2>Already standing</h2></div>
+      <p class="sec-intro">Most first apps ship without any of this, and it is why the list
+      below is as short as it is. Not tasks &mdash; things that are finished.</p>
+      <div class="done-strip">
+        <span class="done-chip">Durability model + adversarial tests</span>
+        <span class="done-chip">Versioned schema, migrations verified on real stores</span>
+        <span class="done-chip">Idempotent resumable sync</span>
+        <span class="done-chip">Notion OAuth, tokens server-side only</span>
+        <span class="done-chip">Word guard: AI cannot rewrite you</span>
+        <span class="done-chip">Photo import routed by capture date</span>
+        <span class="done-chip">Open-days check across device + Notion</span>
+        <span class="done-chip">Decision register (ADRs)</span>
+        <span class="done-chip">Mic + photo usage strings</span>
+        <span class="done-chip">Apple Developer team configured</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ WHAT IT IS ============ -->
+  <section class="block">
+    <div class="wrap">
+      <div class="sec-head"><span class="tag">IDENTITY</span><h2>What this actually is</h2></div>
+      <p class="sec-intro">Nothing below is a task. It is the thing you have to be able to
+      say before the listing, the screenshots and half the roadmap can be written.</p>
+
+      <h3 class="sub">Why it is hard to name</h3>
+      <p class="body">The journal does not live in this app. It lives in Notion. That makes
+      AutoReflect a thing that sits <em>in front of</em> another product, and those are always
+      harder to name than products that simply are a thing. "A notes app" needs no
+      explanation; "the place your notes start before they reach your notes app" does.</p>
+      <p class="body">Solved problem, good precedent. <strong>Drafts</strong> holds exactly
+      this position for text and named itself out of the corner in four words &mdash;
+      <em>Where Text Starts</em>. It does not claim to be your writing app. It claims to be
+      the doorway. That framing built a real business in a category everyone called full.</p>
+      <p class="body">So the category is <strong>a capture app</strong>: fast, forgiving, and
+      pointed somewhere else. Say the destination out loud &mdash; naming Notion is what makes
+      a stranger understand you in one sentence instead of three.</p>
+
+      <h3 class="sub">Say it like this</h3>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Asked by</th><th>Say</th></tr></thead>
+          <tbody>
+            <tr><th>A stranger</th><td>"Talk about your day. It writes it up and files it in Notion."</td></tr>
+            <tr><th>Someone technical</th><td>"It's Drafts, but for journaling into Notion."</td></tr>
+            <tr><th>Another journaler</th><td>"I journaled daily for six years and my tooling kept eating my dictation, so I built one that can't &mdash; and that files each day into Notion for me."</td></tr>
+            <tr><th>Who it is for</th><td>"People who already journal, would rather talk than type, and keep their journal in Notion."</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="body" style="margin-top:18px">And the paste-able one, when a model or a spec needs the mechanics:</p>
+      <div class="pull">AutoReflect is an iOS journaling app that acts as a capture layer in front of Notion. You speak or type an entry; the audio is saved to disk before transcription is even attempted, so nothing is ever lost. It structures your text into a bullet hierarchy without changing your words &mdash; enforced by a word-level diff, not just a prompt. Photos and videos are routed to the day they were taken. It shows which days still have no entry, checked against both the phone and the Notion database. Finished entries sync to Notion as their own page, resumably and idempotently. The journal lives in Notion; the app is the fast, reliable front door to it.</div>
+
+      <h3 class="sub">Draft listing copy</h3>
+      <p class="body">A working draft for the App Store description. It does the important
+      thing in its first line &mdash; names Notion &mdash; so a stranger knows within six
+      words whether this is for them.</p>
+
+      <div class="listing">
+        <div class="listing-head">Your journal, without the friction.</div>
+        <p><span class="tagline">AutoReflect is a fast, reliable journaling app built for Notion.</span></p>
+        <p>Speak or type your thoughts, and AutoReflect takes care of the rest. Your original
+        audio is saved before transcription begins, your words are preserved while your entry
+        is organized into a clean bullet hierarchy, and your photos and videos are
+        automatically connected to the day they were captured.</p>
+        <p>When you're done, your entry syncs to Notion as its own page.</p>
+        <p class="tagline">Capture quickly. Keep everything. Let Notion be your journal.</p>
+        <ul>
+          <li>Voice or text journaling</li>
+          <li>Automatic organization without changing your words</li>
+          <li>Photos and videos organized by capture date</li>
+          <li>See which days are still missing entries</li>
+          <li>Reliable, resumable syncing to Notion</li>
+          <li>Your Notion workspace remains the home of your journal</li>
+        </ul>
+      </div>
+
+      <p class="body">One thing to weigh before it ships: it leads with <em>friction</em>,
+      which is a feeling, and keeps the two genuinely unusual things &mdash; photos routed by
+      capture date, and knowing which days are missing &mdash; down in the bullets. Those are
+      the lines nobody else can write. Worth testing a version that opens on one of them.</p>
+
+      <h3 class="sub">The trap to avoid</h3>
+      <p class="body"><strong>"Never lose your work" is the truest thing about this app and
+      the weakest thing to lead with.</strong> Every competitor implicitly claims it, a
+      stranger cannot verify it from a listing, and it is only felt on the day it saves them.
+      It is a reason to stay, not a reason to try.</p>
+      <p class="body">Lead with something visible: <strong>assembly, not storage</strong>.
+      The fastest path from "something happened" to "it is written down, on the right day,
+      with the photos". Photo-import-by-date and the open-days check make that literal, and
+      together they are a fifteen-second demo.</p>
+
+      <h3 class="sub">Knowing whether it landed</h3>
+      <p class="body"><strong>"How does it know which day the photos belong to?"</strong>
+      &mdash; you have them. The demo follows naturally.</p>
+      <p class="body"><strong>"Oh, like Day One?"</strong> &mdash; you have lost them. Lead
+      harder on Notion. Day One is a destination; you are a doorway.</p>
+    </div>
+  </section>
+
+  <!-- ============ DECISIONS ============ -->
+  <section class="block">
+    <div class="wrap">
+      <div class="sec-head"><span class="tag">DECIDE</span><h2>Open questions</h2></div>
+      <p class="sec-intro">Choices, not chores &mdash; which is why none of these have a
+      checkbox. Each one changes what the tasks below even are, so they come first.</p>
+
+      <div class="decision">
+        <div class="decision-head">
+          <h3>What shape does 1.0 ship in?</h3>
+          <span class="badge stop">Blocks everything</span>
+        </div>
+        <p>The backend today is honestly single-tenant: one Notion token in one JSON file, one
+        shared Groq key, an in-memory idempotency store. Fine for one person, cannot serve
+        strangers.</p>
+        <div class="options">
+          <div class="option lean">
+            <span class="opt-name">A / No backend</span>
+            <span>On-device transcription and formatting; Notion OAuth via a thin stateless proxy. Zero per-user cost, no servers to run or breach. AI quality drops; real work to swap providers.</span>
+          </div>
+          <div class="option">
+            <span class="opt-name">B / Bring your own key</span>
+            <span>Users paste their own Groq key. Near-zero cost, brutal onboarding, caps you at a few hundred technical users.</span>
+          </div>
+          <div class="option">
+            <span class="opt-name">C / Full SaaS</span>
+            <span>Multi-tenant, accounts, subscriptions, you pay for inference. Months of work and real liability &mdash; and the only shape that becomes a business.</span>
+          </div>
+        </div>
+        <p class="recommend">Leaning A &mdash; your thesis is local-first, and the most aligned version has no server at all</p>
+      </div>
+
+      <div class="decision">
+        <div class="decision-head">
+          <h3>Do you add analytics?</h3>
+          <span class="badge need">Trade-off</span>
+        </div>
+        <p>You need to know where people fall out of onboarding. <strong>But the moment you
+        add analytics, "data not collected" stops being a truthful answer on Apple's privacy
+        questionnaire</strong> &mdash; and for a journaling app that answer is one of the
+        strongest things you can say.</p>
+        <p>If yes: events only. Never entry text, titles, transcripts, or counts specific
+        enough to fingerprint a person.</p>
+      </div>
+
+      <div class="decision">
+        <div class="decision-head">
+          <h3>Company, or your own name?</h3>
+          <span class="badge later">Before you charge</span>
+        </div>
+        <p>Shipping as an individual puts your legal name on the listing, publicly. An LLC
+        costs a few hundred dollars and separates personal assets from a product holding
+        other people's private journals &mdash; worth more here than usual.</p>
+      </div>
+
+      <div class="decision">
+        <div class="decision-head">
+          <h3>What does it cost, and what does that cost you?</h3>
+          <span class="badge later">After shape</span>
+        </div>
+        <p>On path C every dictated minute costs you money. Measure your own usage for a
+        month and price against a <strong>heavy</strong> user, not an average one &mdash;
+        journalers are not average, and the people who love this most will use it daily.</p>
+        <p>A flat subscription against a variable cost is how indie apps quietly lose money
+        on their best customers. On path A the problem does not exist.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ THE WORK ============ -->
+  <section class="block">
+    <div class="wrap">
+      <div class="sec-head"><span class="tag">DO</span><h2>The work</h2></div>
+      <p class="sec-intro">Everything here is a real task: it starts with a verb, and it has
+      a condition that tells you when to tick it. If something has no "done when", it belongs
+      in a section above, not this one.</p>
+
+      <div class="track">
+        <div class="track-head"><h3>Ship-blockers</h3><span class="track-note">submission fails or the product breaks its own promise without these</span></div>
+
+        <div class="task">
+          <input type="checkbox" data-task="build-export" id="t-export">
+          <div class="task-body">
+            <label class="task-title" for="t-export">Build markdown + media export<span class="badge stop">Blocker</span><span class="badge size">~1 weekend</span></label>
+            <p class="task-why">Closes the gap in the notice above, and doubles as the answer
+            to "I don't use Notion" &mdash; so one weekend fixes the biggest hole in the
+            product and the biggest objection to it at once.</p>
+            <span class="done-when">an entry's text and photos land in Files, and reopen correctly somewhere else.</span>
+          </div>
+        </div>
+
+        <div class="task">
+          <input type="checkbox" data-task="app-icon" id="t-icon">
+          <div class="task-body">
+            <label class="task-title" for="t-icon">Draw a 1024&times;1024 icon and add an asset catalog<span class="badge stop">Blocker</span><span class="badge size">~half a day</span></label>
+            <p class="task-why">There is no asset catalog in the target at all. App Store
+            Connect rejects the upload without one, and it is the kind of boring thing that
+            gets deferred until it blocks you at midnight.</p>
+            <span class="done-when">an archive validates in Xcode with no icon warnings.</span>
+          </div>
+        </div>
+
+        <div class="task">
+          <input type="checkbox" data-task="display-name" id="t-name">
+          <div class="task-body">
+            <label class="task-title" for="t-name">Set the display name and settle the bundle id<span class="badge stop">Blocker</span><span class="badge size">~1 hour</span></label>
+            <p class="task-why"><code>PRODUCT_NAME</code> is <code>$(TARGET_NAME)</code>, so
+            the home screen currently reads <strong>CodenamePromise</strong>. The bundle id
+            is permanent once you ship, so decide now whether it stays
+            <code>com.codenamepromise.journal</code>.</p>
+            <span class="done-when">the icon on the home screen says AutoReflect.</span>
+          </div>
+        </div>
+
+        <div class="task">
+          <input type="checkbox" data-task="privacy-policy" id="t-privacy">
+          <div class="task-body">
+            <label class="task-title" for="t-privacy">Write the privacy policy and put it at a public URL<span class="badge stop">Blocker</span><span class="badge size">~2 hours</span></label>
+            <p class="task-why">Apple will not accept a submission without one, and Notion
+            will not approve a public integration without one. Two gates, one document.</p>
+            <span class="done-when">the URL loads for a logged-out stranger.</span>
+          </div>
+        </div>
+
+        <div class="task">
+          <input type="checkbox" data-task="onboarding" id="t-onboarding">
+          <div class="task-body">
+            <label class="task-title" for="t-onboarding">Build a first run that explains itself<span class="badge need">Required</span><span class="badge size">~2 days</span></label>
+            <p class="task-why">A new user opens an empty list. In twenty seconds they need
+            to learn that capture is instant, Notion is optional, and their words stay on the
+            device unless they say otherwise. That last point is your differentiator &mdash;
+            say it out loud.</p>
+            <span class="done-when">someone who has never seen it reaches their first saved entry without you speaking.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="track">
+        <div class="track-head"><h3>Queues you don't control</h3><span class="track-note">start early &mdash; these wait on other people</span></div>
+
+        <div class="task">
+          <input type="checkbox" data-task="notion-review" id="t-notion">
+          <div class="task-body">
+            <label class="task-title" for="t-notion">Submit the Notion integration for public review<span class="badge need">Required</span><span class="badge size">queue</span></label>
+            <p class="task-why">Your OAuth integration is internal to your own workspace.
+            Reaching other people's workspaces needs it public, which needs Notion's review
+            plus a privacy policy and terms URL.</p>
+            <span class="done-when">submitted. Approval is theirs, not yours.</span>
+          </div>
+        </div>
+
+        <div class="task">
+          <input type="checkbox" data-task="trademark" id="t-tm">
+          <div class="task-body">
+            <label class="task-title" for="t-tm">Search the trademark register for the name<span class="badge need">Required</span><span class="badge size">~1 hour</span></label>
+            <p class="task-why">Do it before spending anything on branding. "AutoReflect" is
+            plausible-sounding, which is exactly the kind that turns out to be taken.</p>
+            <span class="done-when">you have checked USPTO and the App Store and written down what you found.</span>
+          </div>
+        </div>
+
+        <div class="task">
+          <input type="checkbox" data-task="testflight" id="t-tf">
+          <div class="task-body">
+            <label class="task-title" for="t-tf">Get five external testers into TestFlight<span class="badge need">Required</span><span class="badge size">~1 day + review</span></label>
+            <p class="task-why">Not marketing. You cannot see your own onboarding &mdash; you
+            know where everything is. External testing needs a review pass on the first
+            build, so it starts earlier than feels necessary.</p>
+            <span class="done-when">five people who are not you have opened it on their own phones.</span>
+          </div>
+        </div>
+
+        <div class="task">
+          <input type="checkbox" data-task="export-compliance" id="t-enc">
+          <div class="task-body">
+            <label class="task-title" for="t-enc">Declare export compliance in the plist<span class="badge need">Required</span><span class="badge size">~10 min</span></label>
+            <p class="task-why">You use HTTPS, so you are almost certainly exempt &mdash; but
+            it must still be declared. Setting
+            <code>ITSAppUsesNonExemptEncryption</code> stops it asking on every upload.</p>
+            <span class="done-when">an upload completes without the encryption question.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="track">
+        <div class="track-head"><h3>Being findable</h3><span class="track-note">the App Store is a checkout counter, not a discovery engine</span></div>
+
+        <div class="task">
+          <input type="checkbox" data-task="one-sentence" id="t-sentence">
+          <div class="task-body">
+            <label class="task-title" for="t-sentence">Commit to one sentence and stop rewriting it<span class="badge stop">Blocker</span><span class="badge size">~1 hour</span></label>
+            <p class="task-why">It goes on the landing page, in the App Store subtitle, and
+            at the top of every post. There are four candidates written above &mdash; pick
+            one, do not compose a fifth.</p>
+            <span class="done-when">the same sentence appears in the subtitle and on the landing page.</span>
+          </div>
+        </div>
+
+        <div class="task">
+          <input type="checkbox" data-task="conversations" id="t-convos">
+          <div class="task-body">
+            <label class="task-title" for="t-convos">Have twenty conversations with people who journal<span class="badge need">Required</span><span class="badge size">~2 weeks</span></label>
+            <p class="task-why">Do not pitch &mdash; ask what breaks in their current setup.
+            If "I take photos all week and can't remember which day was which" comes back
+            unprompted, your listing is written for you. If it never comes up, you learned
+            that while it was still cheap.</p>
+            <span class="done-when">twenty, counted. Not "a few".</span>
+          </div>
+        </div>
+
+        <div class="task">
+          <input type="checkbox" data-task="landing-page" id="t-landing">
+          <div class="task-body">
+            <label class="task-title" for="t-landing">Put up a landing page with email capture<span class="badge need">Required</span><span class="badge size">~1 day</span></label>
+            <p class="task-why">The sentence, three screenshots, an email field, and links to
+            privacy, terms and support. Framer is fine; so is a static page on a free host.
+            Put it up <em>while review is pending</em> &mdash; that waiting week is free
+            audience time, and the waitlist is the only list you will have on day one.</p>
+            <span class="done-when">the URL is live and has captured at least one email that isn't yours.</span>
+          </div>
+        </div>
+
+        <div class="task">
+          <input type="checkbox" data-task="screenshots" id="t-shots">
+          <div class="task-body">
+            <label class="task-title" for="t-shots">Shoot the App Store screenshots<span class="badge need">Required</span><span class="badge size">~1 day</span></label>
+            <p class="task-why">Screenshots are the entire conversion funnel &mdash; most
+            people never read the description. Lead with the open-days check and photo
+            import: they are the visible half of the claim.</p>
+            <span class="done-when">five captioned screenshots uploaded, each showing the product doing the thing the sentence promises.</span>
+          </div>
+        </div>
+
+        <div class="task">
+          <input type="checkbox" data-task="three-communities" id="t-comms">
+          <div class="task-body">
+            <label class="task-title" for="t-comms">Join three communities you will actually post in<span class="badge need">Required</span><span class="badge size">~ongoing</span></label>
+            <p class="task-why">Notion people, journaling people, indie-dev people. Join
+            weeks before launch so you are a member rather than a drive-by advert. Arriving
+            on launch day to a community you have never posted in is the single most common
+            way a first launch goes nowhere.</p>
+            <span class="done-when">you have posted something useful and unrelated to your app in all three.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="track">
+        <div class="track-head"><h3>Keeping it shipping</h3><span class="track-note">the release cycle you asked for</span></div>
+
+        <div class="task">
+          <input type="checkbox" data-task="crash-reporting" id="t-crash">
+          <div class="task-body">
+            <label class="task-title" for="t-crash">Add crash reporting<span class="badge need">Required</span><span class="badge size">~2 hours</span></label>
+            <p class="task-why">You currently learn about bugs because you are the only user.
+            Without this you will be debugging from one-star reviews.</p>
+            <span class="done-when">a deliberate test crash shows up in the dashboard.</span>
+          </div>
+        </div>
+
+        <div class="task">
+          <input type="checkbox" data-task="ci" id="t-ci">
+          <div class="task-body">
+            <label class="task-title" for="t-ci">Wire both suites into CI<span class="badge need">Required</span><span class="badge size">~half a day</span></label>
+            <p class="task-why">181 Swift and 132 Python tests run in under three seconds
+            combined. That is a gift &mdash; make a red build stop a release rather than a
+            user finding it. The migration suite in particular should gate everything.</p>
+            <span class="done-when">a deliberately broken test blocks a merge.</span>
+          </div>
+        </div>
+
+        <div class="task">
+          <input type="checkbox" data-task="store-fixture" id="t-fixture">
+          <div class="task-body">
+            <label class="task-title" for="t-fixture">Capture a store fixture from the shipped build<span class="badge need">Required</span><span class="badge size">~1 hour</span></label>
+            <p class="task-why">Specific to you, and you have lived through why. The moment a
+            version ships, capture a store written by it and check it in &mdash; otherwise the
+            next migration is untested in exactly the way the last one was.</p>
+            <span class="done-when">the fixture is committed and MigrationTests opens it.</span>
+          </div>
+        </div>
+
+        <div class="task">
+          <input type="checkbox" data-task="version-numbers" id="t-version">
+          <div class="task-body">
+            <label class="task-title" for="t-version">Fix the version scheme and automate the build number<span class="badge need">Required</span><span class="badge size">~1 hour</span></label>
+            <p class="task-why"><code>MARKETING_VERSION</code> is <code>0.1</code>. You will
+            upload a lot of builds and App Store Connect rejects duplicate build numbers.</p>
+            <span class="done-when">two uploads in a row succeed without touching the number by hand.</span>
+          </div>
+        </div>
+
+        <div class="task">
+          <input type="checkbox" data-task="release-checklist" id="t-checklist">
+          <div class="task-body">
+            <label class="task-title" for="t-checklist">Write the release checklist down<span class="badge need">Required</span><span class="badge size">~1 hour</span></label>
+            <p class="task-why">Bump, run both suites, migration-test against a fixture from
+            the <em>previous shipped build</em>, TestFlight, soak, submit, tag. You will skip
+            steps from memory at 1am, and that is exactly when the schema breaks.</p>
+            <span class="done-when">it exists in the repo and you have followed it once.</span>
+          </div>
+        </div>
+
+        <div class="task">
+          <input type="checkbox" data-task="feedback-channel" id="t-feedback">
+          <div class="task-body">
+            <label class="task-title" for="t-feedback">Add an in-app "send feedback" that opens a mail composer<span class="badge later">Later</span><span class="badge size">~2 hours</span></label>
+            <p class="task-why">Canny is polished and paid. Ten users do not need a voting
+            system, they need a way to reach you. Fider is self-hostable when you outgrow a
+            list you keep by hand.</p>
+            <span class="done-when">a tap opens a pre-addressed draft with the app version in it.</span>
+          </div>
+        </div>
+
+        <div class="task">
+          <input type="checkbox" data-task="local-notification" id="t-notif">
+          <div class="task-body">
+            <label class="task-title" for="t-notif">Use a local notification for the inactivity nudge<span class="badge later">Later</span><span class="badge size">~half a day</span></label>
+            <p class="task-why">A "seven days inactive" <em>email</em> means holding an
+            account and tracking usage server-side, undoing the whole no-backend position. A
+            local notification needs no account, knows nothing worth protecting, works
+            offline &mdash; and fires at the hour they usually write.</p>
+            <span class="done-when">a nudge arrives after the set idle period on a real device.</span>
+          </div>
+        </div>
+
+        <div class="task">
+          <input type="checkbox" data-task="security-contact" id="t-sec">
+          <div class="task-body">
+            <label class="task-title" for="t-sec">Publish a security contact<span class="badge later">Later</span><span class="badge size">~30 min</span></label>
+            <p class="task-why">An address and a stated response time. It costs nothing and
+            is the difference between a researcher emailing you and a researcher tweeting.</p>
+            <span class="done-when">it is on the landing page.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="track">
+        <div class="track-head"><h3>Product</h3><span class="track-note">what makes the demo work</span></div>
+
+        <div class="task">
+          <input type="checkbox" checked data-task="gap-view" id="t-gaps">
+          <div class="task-body">
+            <label class="task-title" for="t-gaps">Show which days are still open<span class="badge shipped">Shipped</span></label>
+            <p class="task-why">Checked against the device <em>and</em> the Notion database,
+            grouped by month over a year, with the colour-coded check status and a retry.
+            Framed as an invitation &mdash; nothing before your first entry counts, and there
+            is no streak.</p>
+            <span class="done-when">shipped, verified live against the real Notion database.</span>
+          </div>
+        </div>
+
+        <div class="task">
+          <input type="checkbox" data-task="feel-like-something" id="t-feel">
+          <div class="task-body">
+            <label class="task-title" for="t-feel">Make the entry screen feel like something<span class="badge need">Required</span><span class="badge size">~2 days</span></label>
+            <p class="task-why">Not fun exactly &mdash; this is somebody's private life, and
+            jokes and confetti curdle fast. Warmth and responsiveness: haptics on commit, a
+            save state that reassures rather than reports, real transitions, copy written by
+            a person. One deliberate flourish beats twenty, and the moment worth spending it
+            on is right after you stop talking and the words appear.</p>
+            <span class="done-when">a tester describes using it with an adjective, unprompted.</span>
+          </div>
+        </div>
+
+        <div class="task">
+          <input type="checkbox" data-task="colour-language" id="t-colour">
+          <div class="task-body">
+            <label class="task-title" for="t-colour">Align the colour language across the app<span class="badge later">Later</span><span class="badge size">~1 hour</span></label>
+            <p class="task-why">The open-days banner now uses red for failure, but the draft
+            list still uses orange for both "sync failed" and "not synced yet" &mdash; so a
+            failure and a perfectly normal pending state look identical. Red for failed,
+            amber for pending, green for done, everywhere.</p>
+            <span class="done-when">no screen uses the same colour for a failure and a normal state.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ DO NOT ============ -->
+  <section class="block">
+    <div class="wrap">
+      <div class="sec-head"><span class="tag">AVOID</span><h2>Deliberately not doing</h2></div>
+      <p class="sec-intro">Not tasks. Things that feel like progress and are not &mdash;
+      listed so that skipping them is a decision rather than an oversight.</p>
+      <ul class="plain">
+        <li><strong>Paid ads</strong> before you know who converts.</li>
+        <li><strong>Press releases.</strong> No journalist reads them.</li>
+        <li><strong>Influencer outreach</strong> for an app at this price.</li>
+        <li><strong>A Discord server</strong> with no members in it.</li>
+        <li><strong>Product Hunt as an opening move.</strong> It rewards an audience you already have &mdash; it is a second launch, not a first.</li>
+        <li><strong>A second deep integration.</strong> Export answers "I don't use Notion" for most people; being an integration layer is a commodity position, one roadmap item from being absorbed.</li>
+        <li><strong>Rebuilding the landing page a fourth time</strong> because it is more comfortable than talking to people. This is the one that will actually get you &mdash; polishing is work that feels productive and reaches nobody.</li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<footer class="close">
+  <div class="wrap">
+    <div class="kicker">The thing to hold on to</div>
+    <div class="closing">Most people ship the features<br>and find the foundations later.<br><span class="lamp">You did it the other way round.</span></div>
+    <div class="meta">AUTOREFLECT &middot; LAUNCH DOC &middot; docs/launch/shipping-autoreflect.html</div>
   </div>
-
-  <section>
-    <div class="phase-head">
-      <span class="phase-num">00</span>
-      <h2>Where you actually are</h2>
-    </div>
-    <p>More of the hard part is done than you probably think. This is not flattery &mdash; most first apps ship without any of the following, and it is the reason the gap list below is as short as it is.</p>
-    <ul class="done-grid">
-      <li>Durability model with adversarial tests</li>
-      <li>Versioned schema + verified migrations</li>
-      <li>Idempotent, resumable sync</li>
-      <li>Notion OAuth, tokens server-side only</li>
-      <li>Documented decision register</li>
-      <li>Microphone + photo usage strings</li>
-      <li>Apple Developer team configured</li>
-      <li>Offline-first with no backend required</li>
-    </ul>
-  </section>
-
-  <section>
-    <div class="phase-head">
-      <span class="phase-num">01</span>
-      <h2>What you are actually selling</h2>
-    </div>
-
-    <p>This is upstream of every other decision in this document. You cannot write an App Store subtitle, shoot a screenshot, or choose a community to post in without it &mdash; and it is the thing that nearly made you kill the project, so it gets its own phase.</p>
-
-    <h3>The lesson from the silly apps is not the one it looks like</h3>
-    <p>A height-predictor app clearing six figures a month does not prove that value is irrelevant. It proves something narrower and more useful: <strong>legibility beats sophistication.</strong> That app answers one question, in three words, that a specific person is already anxious about and already typing into a search box.</p>
-    <p>You have the inverse problem. The engineering is genuinely unusual &mdash; adversarial durability tests, a word guard that stops the model rewriting you, a migration suite that opens real stores &mdash; and none of it is legible in three seconds. Steal the legibility, not the emptiness. Building something you find contemptible is a bad plan even when it works, because you will not have the stamina to keep shipping it.</p>
-
-    <h3>The invisible-benefit trap</h3>
-    <p>"Never lose your work" is the truest thing about this app and the weakest thing to lead with. Every competitor implicitly claims it, a stranger cannot verify it from a listing, and a user only feels it on the day it saves them &mdash; which may be never. It is a <em>reason to stay</em>, not a reason to try.</p>
-    <p>Lead with something a person can see happening.</p>
-
-    <h3>The claim that is actually differentiated</h3>
-    <p>Not storage &mdash; <strong>assembly</strong>. The fastest path from "something happened" to "it is written down, on the right day, with the photos."</p>
-    <p>Two features you already have or nearly have make that literal rather than aspirational: importing a week of photos and routing each to the day it was taken, and showing which days are still blank. Nobody else does the first one. Together they are a fifteen-second demo, which is exactly what a screenshot and a listing need.</p>
-    <p>The second claim, and the one that earns the trust: <strong>it structures what you said without rewriting it.</strong> Anyone who has pasted their own writing into a chatbot has felt it come back flattened. That is a remembered, specific annoyance, and you are the only journaling app that enforces the fix rather than promising it.</p>
-
-    <h3>Why it is hard to name, and the fix</h3>
-    <p>The journal does not live in this app. It lives in Notion. That makes AutoReflect a thing that sits <em>in front of</em> another product, and products in that position are always harder to name than products that simply are a thing &mdash; "a notes app" needs no explanation, "the place your notes start before they go to your notes app" does.</p>
-    <p>This is a solved problem, and the precedent is worth studying: <strong>Drafts</strong> occupies exactly this position for text, and named itself out of the corner with four words &mdash; <em>Where Text Starts.</em> It does not claim to be your writing app. It claims to be the doorway. That framing built a real business in a category people said was already full.</p>
-    <p>So the category is <strong>a capture app</strong>: fast, reliable, forgiving, and pointed at somewhere else. Say the destination out loud, because naming Notion is what makes a stranger understand you in one sentence instead of three.</p>
-
-    <h3>Say it like this</h3>
-    <p>Four registers, same product. Pick by who is asking.</p>
-
-    <div class="scroll">
-      <table>
-        <thead>
-          <tr><th>Asked by</th><th>Say</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <th>A stranger, App&nbsp;Store subtitle</th>
-            <td>"Talk about your day. It writes it up and files it in Notion."</td>
-          </tr>
-          <tr>
-            <th>Someone technical</th>
-            <td>"It's Drafts, but for journaling into Notion."</td>
-          </tr>
-          <tr>
-            <th>Someone who journals</th>
-            <td>"I journaled daily for six years and my tooling kept eating my dictation, so I built one that can't &mdash; and that files each day into Notion for me."</td>
-          </tr>
-          <tr>
-            <th>What it is <em>for</em></th>
-            <td>"People who already journal, would rather talk than type, and keep their journal in Notion."</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <p>And the paste-able one, for a model or a doc that needs the mechanics:</p>
-    <p style="font-family: var(--mono); font-size: var(--step--1); background: var(--rule-soft); padding: 1rem; border-radius: 4px; line-height: 1.6;">AutoReflect is an iOS journaling app that acts as a capture layer in front of Notion. You speak or type an entry; the audio is saved to disk before transcription is even attempted, so nothing is ever lost. It structures your text into a bullet hierarchy without changing your words &mdash; enforced by a word-level diff, not just a prompt. Photos and videos are routed to the day they were taken. It shows which days in a range still have no entry, checked against both the phone and the Notion database. Finished entries sync to Notion as their own page, resumably and idempotently. The journal lives in Notion; the app is the fast, reliable front door to it.</p>
-
-    <h3>Knowing whether it landed</h3>
-    <p>Say the one-liner and listen for which question comes back.</p>
-    <p><strong>"How does it know which day the photos belong to?"</strong> &mdash; you have them. That is the assembly claim doing its job, and the demo follows naturally.</p>
-    <p><strong>"Oh, like Day One?"</strong> &mdash; you have lost them, and the fix is to lead harder on Notion. Day One is a destination; you are a doorway. Anyone who hears "journaling app" without hearing "into Notion" files you next to fifty apps you are not competing with.</p>
-
-    <div class="items">
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="name-the-person-not-the-market"><span class="chip chip-blocker">Blocker</span><span class="item-title">Name the person, not the market</span></label>
-        <p>"People who journal" is not an audience you can reach. "People who already journal most days, prefer talking to typing, and keep their life in Notion" is a person you can find in three specific places this week.</p>
-        <p>Small and high-intent beats large and vague. People who have journaled daily for years are unusual, passionate, and easy to identify &mdash; and they are the only ones who will feel the durability work at all.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="the-wedge-is-assembly"><span class="chip chip-decide">Decide</span><span class="item-title">Commit to the assembly claim</span></label>
-        <p>Pick it and let it govern the roadmap. Everything that shortens "something happened" to "it is filed properly" is the product; everything else is a feature you happen to have.</p>
-        <p>It also tells you what to demo, and demo-ability is the whole listing.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="export-is-the-universal-integration"><span class="chip chip-decide">Decide</span><span class="item-title">Export is the integration layer &mdash; do not build a second one yet</span></label>
-        <p>Being "the thing that gets notes into X" is a commodity position: you are one roadmap item away from X shipping it themselves, and a second integration doubles the OAuth, block-model, chunking and idempotency work you already know the cost of.</p>
-        <p>Markdown-plus-media export answers "I do not use Notion" for most people, and it is <em>already the top blocker in this document</em> for a completely different reason. One weekend closes the biggest hole in the product and the biggest objection to it at the same time. Add a second deep integration when users tell you which one, with their wallets.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="write-the-one-sentence"><span class="chip chip-blocker">Blocker</span><span class="item-title">Write the one sentence, and stop rewriting it</span></label>
-        <p>What it is and who it is for. It goes on the landing page, in the App Store subtitle, and at the top of every post. If you cannot write it, you do not yet know what you are selling &mdash; and that is a product problem wearing a marketing costume.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="twenty-conversations-before-building-more"><span class="chip chip-required">Required</span><span class="item-title">Twenty conversations before you build for the answer</span></label>
-        <p>Find twenty people who journal regularly and ask what breaks in their current setup. Do not pitch. If "I take photos all week and cannot remember which day was which" comes back unprompted, you have your listing written for you. If it never comes up, you have learned that cheaply and can aim somewhere else while it is still cheap.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="accept-the-honest-ceiling"><span class="chip chip-decide">Decide</span><span class="item-title">Decide what a win looks like</span></label>
-        <p>This is a real product for a real niche. Whether that niche is a business is genuinely unknown, and anyone who tells you otherwise is guessing. Decide now what would count &mdash; a hundred people who use it weekly, a thousand, a full-time income &mdash; because "it did not become GoTall" is not a verdict on anything.</p>
-      </div>
-
-    </div>
-  </section>
-
-  <section>
-    <div class="phase-head">
-      <span class="phase-num">02</span>
-      <h2>Decide the shape before you build anything</h2>
-    </div>
-    <p>Almost every item further down changes depending on this one choice, so make it first. Your backend today is explicitly single-tenant &mdash; one Notion token in one JSON file, one shared Groq key, an in-memory idempotency store. That is honest for one person and cannot serve strangers. You have three ways out.</p>
-
-    <div class="scroll">
-      <table>
-        <thead>
-          <tr><th>Shape</th><th>What it means</th><th>Cost to you</th><th>Trade</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <th>A &middot; No backend<span class="rec">Recommended for 1.0</span></th>
-            <td>On-device transcription and formatting. Notion OAuth via a thin stateless proxy that holds nothing.</td>
-            <td>Zero per-user cost. No servers to run, breach, or scale.</td>
-            <td>AI quality below Groq. Real engineering to swap the providers.</td>
-          </tr>
-          <tr>
-            <th>B &middot; Bring your own key</th>
-            <td>Each user pastes their own Groq key; you never touch inference.</td>
-            <td>Near zero. No inference bill, no shared quota.</td>
-            <td>Brutal onboarding. Caps you at a few hundred technical users.</td>
-          </tr>
-          <tr>
-            <th>C &middot; Full SaaS</th>
-            <td>Multi-tenant backend, accounts, subscriptions, you pay for inference.</td>
-            <td>Months of work, ongoing ops, real liability.</td>
-            <td>The only shape that becomes a business. Also the only one that can bankrupt you on a bad month.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <p><strong>My honest read:</strong> ship A. Your product thesis is <em>local-first</em>, and the most aligned version of it has no server at all. It removes multi-tenancy, inference cost, key theft, GDPR data-processor obligations, and uptime from your first release simultaneously. You can add C later once you know people want it &mdash; you cannot easily un-ship a server holding strangers' journals.</p>
-    <p>Concretely: Apple's on-device speech recognition handles dictation, and on newer devices Apple's on-device language model can do the structuring pass your <code>wordguard</code> already polices. Keep the guard &mdash; it becomes even more important when the model is smaller.</p>
-  </section>
-
-  <section>
-    <div class="phase-head">
-      <span class="phase-num">03</span>
-      <h2>Blockers in the code</h2>
-    </div>
-
-    <div class="items">
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="backup-export-and-restore"><span class="chip chip-blocker">Blocker</span><span class="item-title">Backup, export, and restore</span></label>
-        <p>The lede above. Minimum viable version: CloudKit sync (you deliberately kept the schema compatible &mdash; ADR&#8209;008b) plus a plain "export everything" that writes markdown and media to Files. The export alone is a weekend and closes the worst of it.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="the-app-is-called-codenamepromise-on-the-hom"><span class="chip chip-blocker">Blocker</span><span class="item-title">The app is called CodenamePromise on the home screen</span></label>
-        <p><code>PRODUCT_NAME</code> is <code>$(TARGET_NAME)</code>, so the icon label is your codename. Set a display name, and decide whether the bundle id stays <code>com.codenamepromise.journal</code> &mdash; it is permanent once you ship and cannot be changed afterward.</p>
-        <p class="where">CodenamePromise.xcodeproj &middot; Config/Info.plist</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="there-is-no-app-icon"><span class="chip chip-blocker">Blocker</span><span class="item-title">There is no app icon</span></label>
-        <p>No asset catalog exists in the target at all. App Store Connect rejects submissions without a 1024&times;1024 icon. This is a hard stop and easy to forget until the upload fails.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="shared-api-key-baked-into-the-app"><span class="chip chip-blocker">Blocker</span><span class="item-title">Shared API key baked into the app</span></label>
-        <p>Only relevant if you keep a backend. <code>CP_API_KEY</code> is one shared secret; anyone can pull it out of the binary in minutes and spend your Groq quota. A shared secret in a distributed client is not authentication.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" checked data-task="show-the-gaps-in-the-week"><span class="chip chip-required">Required</span><span class="item-title">Show which days are still blank</span></label>
-        <p>A date range with the days that have no entry, each tappable to start it. Cheap to build, and it does three jobs at once: it is the retention hook, it is half the assembly claim, and it is a screenshot.</p>
-        <p><strong>Frame it as an invitation, not a report card.</strong> Streaks work for language learning because missing a day really is a failure. In a reflection app, guilt is the thing that makes people delete it. "Tuesday and Thursday are still open, and here are the photos from them" is warm; "you broke your 14-day streak" is why people stop journaling.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="make-it-feel-like-something"><span class="chip chip-required">Required</span><span class="item-title">Make it feel like something</span></label>
-        <p>Not fun exactly &mdash; this is somebody's private life, and jokes and confetti curdle fast. Aim for <em>warmth and responsiveness</em>: haptics on commit, a save state that reassures rather than reports, real transitions, copy written by a person. The interior of an entry is where all the time is spent and it currently looks like a form.</p>
-        <p>One deliberate flourish beats twenty scattered ones. The moment worth spending it on is right after you stop talking and the words appear.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="onboarding-and-a-first-run-that-explains-its"><span class="chip chip-required">Required</span><span class="item-title">Onboarding, and a first-run that explains itself</span></label>
-        <p>Right now a new user opens an empty list. They need to learn in about twenty seconds that capture is instant, that Notion is optional, and that their words never leave the device unless they say so. That last point is your differentiator &mdash; say it out loud.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="crash-reporting-and-a-way-to-hear-about-fail"><span class="chip chip-required">Required</span><span class="item-title">Crash reporting and a way to hear about failures</span></label>
-        <p>You currently learn about bugs because you are the only user. Add crash reporting before strangers arrive, or you will be debugging from one-star reviews.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="version-numbers-that-mean-something"><span class="chip chip-required">Required</span><span class="item-title">Version numbers that mean something</span></label>
-        <p><code>MARKETING_VERSION</code> is <code>0.1</code>. Pick a scheme now and automate the build number, because you will be uploading a lot of builds and App Store Connect rejects duplicates.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="multi-tenancy-and-the-in-memory-idempotency-"><span class="chip chip-later">If you keep a backend</span><span class="item-title">Multi-tenancy and the in-memory idempotency store</span></label>
-        <p>Per-user rows, encrypted token column, and Redis or Postgres behind the idempotency cache &mdash; your own README already flags both. Only on path C.</p>
-        <p class="where">backend/app/connections.py &middot; backend/app/idempotency.py</p>
-      </div>
-
-    </div>
-  </section>
-
-  <section>
-    <div class="phase-head">
-      <span class="phase-num">04</span>
-      <h2>Legal and compliance</h2>
-    </div>
-    <p>This is the part first-time founders skip and then scramble on during review. None of it is hard; all of it takes calendar time.</p>
-
-    <div class="items">
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="privacy-policy-at-a-public-url"><span class="chip chip-blocker">Blocker</span><span class="item-title">Privacy policy at a public URL</span></label>
-        <p>Every app needs one, no exceptions, and the URL goes in App Store Connect before you can submit. It must actually describe what you do &mdash; including, if you keep a backend, that journal text and audio are sent to a third-party inference provider.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="app-privacy-questionnaire"><span class="chip chip-blocker">Blocker</span><span class="item-title">App privacy questionnaire</span></label>
-        <p>Apple's privacy labels. Answer honestly and narrowly &mdash; "data not collected" is a genuine competitive advantage for a journal, and it is only available to you on path A. Getting this wrong is a compliance problem, not a marketing one.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="notion-public-integration-review"><span class="chip chip-required">Required</span><span class="item-title">Notion public integration review</span></label>
-        <p>Your OAuth integration is currently internal to your own workspace. Distributing to other people's workspaces means making it public, which requires a privacy policy URL, terms URL, and Notion's own review. Start this early &mdash; it is a queue you do not control.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="export-compliance-declaration"><span class="chip chip-required">Required</span><span class="item-title">Export compliance declaration</span></label>
-        <p>You use HTTPS, so you are almost certainly in the exempt category, but you must still declare it. Set <code>ITSAppUsesNonExemptEncryption</code> in the plist so you are not answering the question on every single upload.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="a-company-or-your-own-name"><span class="chip chip-decide">Decide</span><span class="item-title">A company, or your own name</span></label>
-        <p>You can ship as an individual &mdash; the App Store then displays your legal name publicly, which some people mind. An LLC costs a few hundred dollars, puts a business name on the listing, and separates your personal assets from the product. For a journaling app holding sensitive personal data, that separation is worth more than usual.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="trademark-search-on-the-name"><span class="chip chip-decide">Decide</span><span class="item-title">Trademark search on the name</span></label>
-        <p>Before you spend anything on branding, search the trademark register and the App Store. "AutoReflect" is a plausible-sounding name, which is exactly the kind that turns out to be taken. Finding out after launch is expensive.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="gdpr-and-the-inference-provider"><span class="chip chip-later">If EU users</span><span class="item-title">GDPR and the inference provider</span></label>
-        <p>On path C you become a data controller processing sensitive personal data, and Groq becomes your processor &mdash; which needs a data processing agreement and a real answer on retention. Read their terms before you promise anything in yours. On path A this row disappears entirely, which tells you something.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="in-app-account-deletion"><span class="chip chip-later">If accounts</span><span class="item-title">In-app account deletion</span></label>
-        <p>If you ever offer account creation, Apple requires deletion from inside the app &mdash; not an email to support. Another row that only exists on path C.</p>
-      </div>
-
-    </div>
-  </section>
-
-  <section>
-    <div class="phase-head">
-      <span class="phase-num">05</span>
-      <h2>Security</h2>
-    </div>
-    <p>You are already ahead here &mdash; tokens never touch the device, the API key lives in the Keychain, media is contained. What is left is mostly about the transition from one user to many.</p>
-
-    <div class="items">
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="decide-whether-the-journal-is-encrypted-at-r"><span class="chip chip-required">Required</span><span class="item-title">Decide whether the journal is encrypted at rest</span></label>
-        <p>SwiftData files inherit iOS file protection, which is meaningful but tied to the device passcode. For a product whose pitch is "your private journal," being able to state your encryption position clearly is part of the pitch. Decide it deliberately rather than inheriting a default.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="a-way-for-someone-to-report-a-vulnerability"><span class="chip chip-required">Required</span><span class="item-title">A way for someone to report a vulnerability</span></label>
-        <p>A security contact and a stated response commitment. It costs nothing and is the difference between a researcher emailing you and a researcher tweeting.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="rate-limiting-log-hygiene-dependency-scannin"><span class="chip chip-later">If you keep a backend</span><span class="item-title">Rate limiting, log hygiene, dependency scanning</span></label>
-        <p>Per-user rate limits so one account cannot drain your inference budget; an audit that journal text never reaches your logs; automated dependency alerts. Also run your own <code>/security-review</code> against the diff before each release.</p>
-      </div>
-
-    </div>
-  </section>
-
-  <section>
-    <div class="phase-head">
-      <span class="phase-num">06</span>
-      <h2>Getting it in front of people</h2>
-    </div>
-
-    <h3>Is any of this actually necessary?</h3>
-    <p>Two piles, and they get confused with each other constantly. One is <em>required</em> &mdash; you cannot ship without it, and it has nothing to do with marketing. The other is <em>how anyone finds out</em>, which is optional in the sense that you can skip it and launch to silence.</p>
-
-    <div class="scroll">
-      <table>
-        <thead>
-          <tr><th>Thing</th><th>Really necessary?</th><th>Why</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <th>Landing page</th>
-            <td><strong>Yes &mdash; but not for marketing</strong></td>
-            <td>Apple needs a privacy policy URL to accept the submission. Notion needs a privacy policy <em>and</em> terms URL to approve a public integration. You need a page whether or not a single visitor ever reads it.</td>
-          </tr>
-          <tr>
-            <th>Beta testers</th>
-            <td><strong>Yes</strong></td>
-            <td>Not a marketing activity. You cannot see your own onboarding &mdash; you know where everything is. Five people who are not you will find things you are structurally blind to.</td>
-          </tr>
-          <tr>
-            <th>Outreach</th>
-            <td>Optional, and it decides everything</td>
-            <td>Skip it and you will get roughly zero installs. The App Store is a checkout counter, not a discovery engine. Nobody browses it for journaling apps.</td>
-          </tr>
-          <tr>
-            <th>Brand identity, logo system, ads</th>
-            <td>No</td>
-            <td>An icon and one consistent colour is a brand at this stage. Paid ads before you know who wants this is setting money on fire.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <h3>Positioning is the whole game</h3>
-    <p>The journaling category is enormous and mostly undifferentiated. You are not competing on features &mdash; you are competing on one specific promise nobody else makes credibly, which is that the app will not lose what you said. You have the receipts: an adversarial test suite, a decision register, a migration suite that opens real stores.</p>
-    <p>Lead with the failure, not the feature. "Never lose a thought mid-sentence" beats "AI-powered journaling with Notion sync" in every channel, and it is the sentence that will make a certain kind of person immediately understand you built this for yourself.</p>
-    <p>If you take the no-backend path, your second sentence is <strong>"your journal never leaves your phone"</strong> &mdash; which is a marketing message and a compliance answer at the same time, and almost nobody in this category can say it truthfully.</p>
-
-    <div class="items">
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="landing-page-compliance-first"><span class="chip chip-blocker">Blocker</span><span class="item-title">Landing page, because two reviews demand one</span></label>
-        <p>Minimum viable version is one page: the sentence, three screenshots, a "notify me" email field, and links to privacy policy, terms, and a support email. A static page on a free host is fine. This is a Saturday, not a project.</p>
-        <p>It blocks both the Apple submission and the Notion integration review, so it is genuinely first &mdash; ahead of anything else in this phase. Framer is fine, so is a static page on a free host; the tool is not the hard part.</p>
-        <p>Put it up <em>while review is pending</em> rather than after. That waiting week is free audience-building time, and the waitlist is the only list you will have on launch day.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="five-to-ten-beta-testers"><span class="chip chip-required">Required</span><span class="item-title">Five to ten beta testers who are not you</span></label>
-        <p>TestFlight internal testing needs no review and is nearly instant; external testing reaches up to 10,000 people but the first build needs a review pass, so start it earlier than feels necessary.</p>
-        <p><strong>Watch a first run without helping.</strong> Say nothing, take notes, and count the seconds before they understand what to do. Every instinct will scream at you to explain &mdash; the moment you explain, you have destroyed the only data you were going to get.</p>
-        <p>Do not ask "do you like it". Ask what they expected to happen, where they got stuck, and whether they would use it tomorrow. "I like it" is politeness; "I did not know what to tap" is gold.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="app-store-listing-craft"><span class="chip chip-required">Required</span><span class="item-title">App Store listing craft</span></label>
-        <p>Screenshots are the entire conversion funnel &mdash; most people never read the description. Show the product doing the thing your positioning claims, with a caption on each. The subtitle carries almost as much search weight as the title, and the keyword field is invisible to users, so use it for terms you would never put in prose.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="pick-three-places-and-be-there-early"><span class="chip chip-decide">Decide</span><span class="item-title">Pick three places, and be there before you need them</span></label>
-        <p>Not a growth strategy &mdash; three specific communities you are genuinely part of, joined weeks before launch so you are a member rather than a drive-by advert. For this product the honest shortlist is Notion communities, journaling communities, and the indie-dev crowd who will care about the engineering story.</p>
-        <p>Turning up on launch day to a community you have never posted in is the single most common way a first launch goes nowhere.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="write-the-story-not-the-announcement"><span class="chip chip-decide">Decide</span><span class="item-title">Write the story, not the announcement</span></label>
-        <p>"I made a journaling app" is ignorable. "I journaled every day for six years, my tooling kept eating my dictation, so I built one that cannot" is a thing people forward to a friend.</p>
-        <p>You have unusually good material here: the founding bug, the AI that had to be stopped from rewriting your voice, a migration that nearly ate your own journal and the test suite that now prevents it. Most people launching an app have nothing this specific to say.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="launch-more-than-once"><span class="chip chip-decide">Decide</span><span class="item-title">Plan to launch more than once</span></label>
-        <p>Launch is a habit, not an event. The single-day-big-bang model is how first-time founders end up demoralised: one post, a quiet afternoon, and the conclusion that nobody wants it.</p>
-        <p>Ship, tell one community, learn, improve, tell the next. Product Hunt and similar are worth doing <em>after</em> you have a few hundred people who like it, not as the opening move &mdash; they reward an audience you already have.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="a-place-for-feature-requests"><span class="chip chip-later">Later</span><span class="item-title">Somewhere for feature requests to pile up</span></label>
-        <p>Canny is the polished option and it is paid. At this stage you do not need voting, you need a list: an in-app "send feedback" that opens a mail composer, and a public page you maintain by hand. Fider is open-source and self-hostable when you outgrow that, and several hosted boards have free tiers worth comparing once you actually have requests to sort.</p>
-        <p>Ten users do not need a voting system. Ten thousand do, and you will know when.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="lifecycle-messaging-the-right-way"><span class="chip chip-later">Later</span><span class="item-title">Lifecycle messaging, but check what it forces</span></label>
-        <p>A welcome email and a launch announcement to the waitlist need nothing but a list &mdash; Loops and Resend both have free tiers for a small one.</p>
-        <p>"Seven days inactive" is a different animal. Emailing someone about their behaviour means you hold an account for them and track their usage server-side, which reintroduces the entire multi-tenant, GDPR-processor problem you avoided by having no backend. <strong>Use a local notification instead.</strong> It runs on the device, needs no account, knows nothing you have to protect, works offline &mdash; and for a journaling nudge it is simply better, because it can fire at the hour they usually write.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="visual-identity"><span class="chip chip-later">Later</span><span class="item-title">Visual identity</span></label>
-        <p>An icon, a type choice, and a colour you use consistently. You do not need a brand system. You need to not look like a weekend project in a grid of competitors.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="what-not-to-do"><span class="chip chip-later">Skip</span><span class="item-title">What to deliberately not do</span></label>
-        <p>Paid ads before you know who converts. Press releases &mdash; no journalist reads them. Buying followers or "influencer" outreach for a $3 app. A Discord server with no members. Rebuilding the landing page a fourth time because it is more comfortable than talking to people.</p>
-        <p>That last one is the real risk for an engineer. Polishing is work that feels productive and reaches nobody.</p>
-      </div>
-
-    </div>
-  </section>
-
-  <section>
-    <div class="phase-head">
-      <span class="phase-num">07</span>
-      <h2>Money</h2>
-    </div>
-
-    <div class="items">
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="know-your-marginal-cost-before-you-price"><span class="chip chip-decide">Decide</span><span class="item-title">Know your marginal cost before you price</span></label>
-        <p>On path C every minute of dictation costs you money and every formatting call costs you money. Measure your own usage for a month &mdash; minutes transcribed, formatting calls, tokens &mdash; and compute the cost of a heavy user, not an average one. Journalers are not average; the people who love this app most will use it daily.</p>
-        <p>A flat subscription against a variable cost is how indie apps quietly lose money on their best customers. On path A this problem does not exist, which is another argument for A.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="the-model-paid-subscription-or-free-with-a-p"><span class="chip chip-decide">Decide</span><span class="item-title">The model: paid, subscription, or free with a paid tier</span></label>
-        <p>A one-time purchase suits a local-first tool with no running costs and sets expectations honestly. A subscription is the only thing that funds ongoing inference. Free with a paid tier gets the most installs and the most support burden. Pick the one that matches the shape you chose in phase 01 &mdash; they are not independent decisions.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="tax-banking-and-paid-agreements"><span class="chip chip-later">Later</span><span class="item-title">Tax, banking, and paid agreements</span></label>
-        <p>App Store Connect will not pay you until the paid apps agreement is signed and tax and banking details are complete. It is tedious, it involves forms, and it takes longer than you expect. Start it the week you decide to charge.</p>
-      </div>
-
-    </div>
-  </section>
-
-  <section>
-    <div class="phase-head">
-      <span class="phase-num">08</span>
-      <h2>The release cycle you asked for</h2>
-    </div>
-    <p>This is what turns "I could upload it today" into a practice you can sustain.</p>
-
-    <div class="items">
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="testflight-before-the-store-always"><span class="chip chip-required">Required</span><span class="item-title">TestFlight before the store, always</span></label>
-        <p>Internal testing needs no review and is nearly instant. External testing takes a review pass but lets you hand builds to real people. Every release goes through TestFlight first &mdash; including the ones you are sure about, especially the ones you are sure about.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="product-analytics-carefully"><span class="chip chip-required">Required</span><span class="item-title">Product analytics &mdash; and the trap in adding them</span></label>
-        <p>You do need to know where people fall out of onboarding and whether anyone returns on day seven. PostHog has a free tier generous enough for this stage and can be self-hosted; check its current limits rather than trusting a number written here.</p>
-        <p><strong>The trap:</strong> the moment you add analytics, "data not collected" stops being a truthful answer on Apple's privacy questionnaire &mdash; and that answer is one of the best things this app has to say. Weigh it deliberately. If you do add it, instrument <em>events</em> only: never entry text, never titles, never transcripts, never counts specific enough to fingerprint someone. A journaling app leaking content through its analytics is the one mistake there is no recovering from.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="ci-that-runs-your-suites-on-every-push"><span class="chip chip-required">Required</span><span class="item-title">CI that runs your suites on every push</span></label>
-        <p>You have 150 Swift and 129 Python tests that run in under three seconds combined. That is a gift &mdash; wire them to run automatically so a red build stops a release rather than a user finding it. Your migration suite in particular should gate every single release.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="a-release-checklist-you-actually-follow"><span class="chip chip-required">Required</span><span class="item-title">A release checklist you actually follow</span></label>
-        <p>Bump version, run both suites, migration test against a fixture from the <em>previous shipped build</em>, TestFlight, soak for a few days, submit, then tag the commit. Write it down. You will skip steps from memory at 1am and that is precisely when the schema breaks.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="capture-a-store-fixture-every-time-you-ship"><span class="chip chip-required">Required</span><span class="item-title">Capture a store fixture every time you ship</span></label>
-        <p>This one is specific to you and you have just lived through why. The moment a version ships, capture a store written by it and check it in. Without that, the next migration is untested in exactly the way the last one was.</p>
-      </div>
-
-      <div class="item">
-        <label class="item-head"><input type="checkbox" data-task="cadence-and-phased-release"><span class="chip chip-decide">Decide</span><span class="item-title">Cadence, and phased release</span></label>
-        <p>Pick a rhythm you can hold &mdash; every two weeks is plenty. Use App Store phased release so a bad build reaches a fraction of users before everyone. Keep the ability to halt a rollout, and know how to use it before you need to.</p>
-      </div>
-
-    </div>
-  </section>
-
-  <section>
-    <div class="phase-head">
-      <span class="phase-num">09</span>
-      <h2>What to do in the next two weeks</h2>
-    </div>
-    <p>Everything above is the map. This is the next leg.</p>
-
-    <ol class="steps">
-      <li><label><input type="checkbox" data-task="step-twenty-conversations-and-one-sentence"><p><strong>Have twenty conversations, then write the one sentence.</strong> Before any code. It decides the listing, the screenshots, the communities, and half the roadmap &mdash; and it is the thing currently stopping you, not the engineering.</p></label></li>
-      <li><label><input type="checkbox" data-task="step-choose-the-shape-a-b-or-c-nothing-el"><p><strong>Choose the shape.</strong> A, B, or C. Nothing else can be sequenced until this is decided, and half the list disappears depending on your answer.</p></label></li>
-      <li><label><input type="checkbox" data-task="step-search-the-trademark-register-for-the-na"><p><strong>Search the trademark register</strong> for the name, before you draw an icon or buy a domain.</p></label></li>
-      <li><label><input type="checkbox" data-task="step-build-export-markdown-plus-media-out-t"><p><strong>Build export.</strong> Markdown plus media, out to Files. It is the smallest thing that makes your first tenet true off-device &mdash; and it doubles as the answer to "I do not use Notion", so one weekend closes the biggest hole in the product and the biggest objection to it.</p></label></li>
-      <li><label><input type="checkbox" data-task="step-fix-the-name-and-make-an-icon-display-n"><p><strong>Fix the name and make an icon.</strong> Display name, bundle id decision, 1024&times;1024. These are hard stops at submission and they are boring, so they get deferred.</p></label></li>
-      <li><label><input type="checkbox" data-task="step-write-the-privacy-policy-and-stand-up-a"><p><strong>Write the privacy policy and stand up a landing page.</strong> Two pages. They unblock both Apple and Notion, and both are queues you do not control.</p></label></li>
-      <li><label><input type="checkbox" data-task="step-get-a-build-into-testflight-with-five-pe"><p><strong>Get a build into TestFlight</strong> with five people who are not you. Their first ten minutes will teach you more than another month of building.</p></label></li>
-    </ol>
-  </section>
-
-  <div class="closing">
-    <p>One last thing worth saying plainly. The gap list above is short because you did the hard part first &mdash; the durability work, the tests, the decision register. Most people ship the features and discover the foundations later, usually from a support inbox.</p>
-    <p>You did it the other way round. That is a real advantage, and it is worth knowing that you have it.</p>
-  </div>
-
-</div>
+</footer>
 
 <script>
 (function () {
   "use strict";
-
-  var KEY = "autoreflect-launch-ticks-v1";
+  var KEY = "autoreflect-launch-ticks-v2";
   var boxes = Array.prototype.slice.call(document.querySelectorAll('input[type="checkbox"][data-task]'));
 
   function load() {
-    try {
-      var raw = window.localStorage.getItem(KEY);
-      return raw ? JSON.parse(raw) : {};
-    } catch (e) {
-      return {};
-    }
+    try { var raw = window.localStorage.getItem(KEY); return raw ? JSON.parse(raw) : {}; }
+    catch (e) { return {}; }
   }
-
   function save(state) {
-    try {
-      window.localStorage.setItem(KEY, JSON.stringify(state));
-    } catch (e) {
-      /* private browsing, or storage full &mdash; the page still works, it just forgets. */
-    }
+    try { window.localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
   }
 
   var state = load();
 
-  // An item ticked in the markup is done and committed, and stale local state must
-  // never un-tick it. Local ticks are additive only.
+  function paint(box) {
+    var row = box.closest(".task");
+    if (row) { row.classList.toggle("is-done", box.checked); }
+  }
+
+  // A task ticked in the markup is done and committed; stale local state must never
+  // un-tick it. Local ticks are additive only.
   boxes.forEach(function (box) {
     if (box.hasAttribute("checked")) { box.checked = true; }
     else if (state[box.dataset.task]) { box.checked = true; }
     paint(box);
   });
 
-  function paint(box) {
-    var row = box.closest(".item") || box.closest("li");
-    if (row) { row.classList.toggle("is-done", box.checked); }
-  }
-
   function tally() {
-    var items = boxes.filter(function (b) { return b.closest(".item"); });
-    var done = items.filter(function (b) { return b.checked; }).length;
-    var total = items.length;
+    var done = boxes.filter(function (b) { return b.checked; }).length;
     document.getElementById("done-count").textContent = String(done);
-    document.getElementById("total-count").textContent = String(total);
+    document.getElementById("total-count").textContent = String(boxes.length);
     document.getElementById("progress-fill").style.width =
-      total ? (done / total * 100).toFixed(1) + "%" : "0%";
+      boxes.length ? (done / boxes.length * 100).toFixed(1) + "%" : "0%";
   }
 
   boxes.forEach(function (box) {
     box.addEventListener("change", function () {
       if (box.checked) { state[box.dataset.task] = true; }
       else { delete state[box.dataset.task]; }
-      save(state);
-      paint(box);
-      tally();
+      save(state); paint(box); tally();
     });
   });
 
   document.getElementById("reset-ticks").addEventListener("click", function () {
-    state = {};
-    save(state);
-    boxes.forEach(function (box) {
-      box.checked = box.hasAttribute("checked");
-      paint(box);
-    });
+    state = {}; save(state);
+    boxes.forEach(function (box) { box.checked = box.hasAttribute("checked"); paint(box); });
     tally();
   });
 
