@@ -14,6 +14,8 @@ struct DraftListView: View {
     @State private var loadError: String?
     @State private var showingImport = false
     @State private var showingOpenDays = false
+    /// Which half of the gap finder to open on.
+    @State private var openDaysMode: OpenDaysView.Mode = .missingDays
     @AppStorage(RowDensity.storageKey) private var density: RowDensity = .comfortable
     /// Recomputed on every reload; drives the prompt row at the top of the list.
     @State private var mostRecentOpenDay: CalendarDay?
@@ -83,11 +85,40 @@ struct DraftListView: View {
                     }
                     .tint(Brand.ink)
                 }
+                // Both catch-up tools behind one visible button.
+                //
+                // The gap finder used to be reachable only from the prompt at the top of the
+                // list, which scrolls away and - once it was flattened to a line - stopped
+                // looking like a button at all. A feature people find by accident is one that
+                // may as well not ship.
+                //
+                // A menu rather than a fourth icon: this trades one unlabelled glyph
+                // ("photo.stack", which nobody reads as "import by date") for two named
+                // items, so the toolbar gets no busier and both tools say what they are. Not
+                // a long-press - that is the thing nobody discovers; this is a plain button
+                // that opens a labelled list.
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingImport = true
+                    Menu {
+                        Button {
+                            openDaysMode = .missingDays
+                            showingOpenDays = true
+                        } label: {
+                            Label("Fill in a missing day", systemImage: "calendar.badge.plus")
+                        }
+                        Button {
+                            openDaysMode = .unfinished
+                            showingOpenDays = true
+                        } label: {
+                            Label("Finish an unfinished entry", systemImage: "square.dashed")
+                        }
+                        Divider()
+                        Button {
+                            showingImport = true
+                        } label: {
+                            Label("Import photos by date", systemImage: "photo.stack")
+                        }
                     } label: {
-                        Label("Import photos by date", systemImage: "photo.stack")
+                        Label("Catch up", systemImage: "clock.arrow.circlepath")
                     }
                     .tint(Brand.ink)
                 }
@@ -116,7 +147,8 @@ struct DraftListView: View {
                 if let store = services.store {
                     OpenDaysView(
                         store: store,
-                        connection: services.connectionService
+                        connection: services.connectionService,
+                        initialMode: openDaysMode
                     ) { draft in
                         reload()
                         path.append(OpeningDraft(id: draft.id))
@@ -150,7 +182,8 @@ struct DraftListView: View {
         List(selection: $selection) {
             if !drafts.isEmpty {
                 Section {
-                    OpenDaysPrompt(mostRecentOpenDay: mostRecentOpenDay) {
+                    OpenDaysPrompt(mostRecentOpenDay: mostRecentOpenDay) { mode in
+                        openDaysMode = mode
                         showingOpenDays = true
                     }
                     // Deliberately no surface behind it. Every element having a background is

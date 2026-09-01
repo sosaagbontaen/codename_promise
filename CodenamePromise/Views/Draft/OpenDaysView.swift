@@ -62,6 +62,9 @@ struct OpenDaysView: View {
     let store: DraftStore
     /// Optional on purpose: with no destination connected this still works, it just says so.
     let connection: (any NotionConnectionService)?
+    /// Which question the opener was asking. The screen answers both, but arriving on the
+    /// wrong one makes the other look missing.
+    var initialMode: Mode = .missingDays
     /// Called with a brand-new draft for the chosen day, so the list can open it.
     let onStartDay: (EntryDraft) -> Void
 
@@ -225,6 +228,7 @@ struct OpenDaysView: View {
                 .padding(.bottom, 8)
                 .background(.bar)
             }
+            .onAppear { mode = initialMode }
             .task(id: ReloadKey(window: window, mode: mode)) { await reload() }
             // Chips re-filter, they do not re-fetch. Re-reading Notion because somebody
             // narrowed a list they are already looking at would be a page request per entry
@@ -608,37 +612,62 @@ struct OpenDaysView: View {
 struct OpenDaysPrompt: View {
     /// The newest day with nothing written for it, or nil when everything is filled in.
     let mostRecentOpenDay: CalendarDay?
-    let action: () -> Void
+    /// Handed the mode the row was offering, so tapping "Unfinished" does not open on
+    /// "Missing days" and read as a dead end.
+    let action: (OpenDaysView.Mode) -> Void
 
-    /// A line, not a card.
+    /// A line with a button on it, rather than a line that happens to be tappable.
     ///
-    /// This was a full surface - icon, title, subtitle, chevron, its own rounded background -
-    /// which put a contextual nudge at the same visual weight as the entries themselves, and
-    /// pushed the first real day heading a long way down an otherwise empty screen. It is a
-    /// footnote about a day you have not written yet, so it now reads like one.
+    /// This was a full card, and flattening it to plain text went one step too far: the row
+    /// still opened the gap finder, but nothing about it said so, and the feature behind it
+    /// became something people found by accident. Coloured text is not an affordance - a
+    /// tinted capsule with a chevron is.
     ///
-    /// "Fill it in" is the only violet on the row, because it is the only thing here you can
-    /// press. That is the whole rule the palette now follows.
+    /// So the container comes back at the size of the *action* rather than the size of the
+    /// row. The nudge stays a footnote; the thing you can press looks pressable.
+    ///
+    /// It is also the only violet here, which is the palette rule: violet marks what you can
+    /// act on right now.
     var body: some View {
-        Button(action: action) {
+        Button {
+            action(mostRecentOpenDay == nil ? .unfinished : .missingDays)
+        } label: {
             HStack(spacing: 6) {
                 Image(systemName: mostRecentOpenDay == nil
                       ? "checkmark.circle.fill" : "calendar.badge.plus")
                     .font(.system(size: 11.5, weight: .semibold))
                     .foregroundStyle(mostRecentOpenDay == nil ? Brand.reached : Brand.muted)
                 Text(title)
-                if mostRecentOpenDay != nil {
-                    Text("·").foregroundStyle(Brand.muted.opacity(0.45))
-                    Text("Fill it in").foregroundStyle(Brand.violet)
+                    .font(Type.caption(12.5, .medium))
+                    .foregroundStyle(Brand.muted)
+                    .lineLimit(1)
+                    .layoutPriority(1)
+
+                Spacer(minLength: 6)
+
+                HStack(spacing: 2) {
+                    Text(callToAction)
+                    Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold))
                 }
-                Spacer(minLength: 0)
+                .font(Type.caption(11.5, .semibold))
+                .foregroundStyle(Brand.violet)
+                .padding(.horizontal, 9)
+                .frame(height: 24)
+                .background(Capsule().fill(Brand.violet.opacity(0.14)))
+                .fixedSize()
             }
-            .font(Type.caption(12.5, .medium))
-            .foregroundStyle(Brand.muted)
-            .lineLimit(1)
             .contentShape(Rectangle())
         }
         .buttonStyle(.row)
+    }
+
+    /// Says what is behind the row, and there is something behind it either way.
+    ///
+    /// Being caught up on *days* does not mean there is nothing to do - the same screen also
+    /// finds entries that were started and never finished, which is the more common backlog.
+    /// A row that goes inert on success would hide the half of the feature people need most.
+    private var callToAction: String {
+        mostRecentOpenDay == nil ? "Unfinished" : "Fill it in"
     }
 
     private var title: String {
