@@ -445,7 +445,7 @@ struct DraftRow: View {
     let fileStore: MediaFileStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 6) {
             // Title and time on one line. The timeline header already said which day this
             // was, so repeating the date here only crowded it.
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -467,7 +467,7 @@ struct DraftRow: View {
                 Text(summary.preview)
                     .font(Type.journal(14.5))
                     .foregroundStyle(Brand.muted)
-                    .lineLimit(3)
+                    .lineLimit(2)
                     .lineSpacing(2)
             }
 
@@ -503,7 +503,7 @@ struct DraftRow: View {
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 11)
+        .padding(.vertical, 9)
         .frame(maxWidth: .infinity, alignment: .leading)
         .clipped()
         .contentShape(Rectangle())
@@ -585,19 +585,14 @@ private struct DayHeader: View {
     let label: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            VStack(alignment: .leading, spacing: -1) {
-                Text(headline)
-                    .font(Type.display(22, .bold))
-                    .foregroundStyle(Brand.ink)
-                if let relative {
-                    Text(relative)
-                        .font(Type.caption(13, .semibold))
-                        .foregroundStyle(isToday ? Brand.violet : Brand.muted)
-                }
-            }
-            .textCase(nil)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: 5) {
+            Text(headline)
+                .font(Type.caption(13, .semibold))
+                // Today is the tint rather than a second line saying so. Same information,
+                // no extra height - and height is the whole currency of this screen.
+                .foregroundStyle(isToday ? Brand.violet : Brand.muted)
+                .textCase(nil)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             LinearGradient(
                 colors: [Brand.ripple, Brand.ripple.opacity(0)],
@@ -610,7 +605,7 @@ private struct DayHeader: View {
         // makes the grouping legible at a glance. The asymmetry is the whole point - the
         // heading has to sit closer to the entries it owns than to the day above it, or it
         // reads as one more free-floating object in a column of them.
-        .padding(.top, 26)
+        .padding(.top, 18)
         .padding(.bottom, 0)
         .listRowInsets(EdgeInsets(top: 0, leading: 18, bottom: 2, trailing: 16))
     }
@@ -634,14 +629,6 @@ private struct DayHeader: View {
         CalendarDay(rawValue: day) == CalendarDay.today()
     }
 
-    /// Only the two days that have a name worth more than their number.
-    private var relative: String? {
-        guard let calendarDay = CalendarDay(rawValue: day) else { return nil }
-        let today = CalendarDay.today()
-        if calendarDay == today { return "Today" }
-        if calendarDay == today.adding(days: -1) { return "Yesterday" }
-        return nil
-    }
 }
 
 struct RecoveryNotice: View {

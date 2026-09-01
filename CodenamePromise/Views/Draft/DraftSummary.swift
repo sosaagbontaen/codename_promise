@@ -17,8 +17,9 @@ struct DraftSummary: Identifiable, Hashable {
     let id: UUID
     let entryDateKey: String
     let title: String
-    /// The time of day, because the timeline header already carries the date and repeating
-    /// it in the card is the redundancy that made these read as records rather than moments.
+    /// When the entry was *started*, phrased so it cannot be misread as a timestamp for the
+    /// day it is filed under. A time of day when those agree, "added Sep 1" when they do not.
+    /// Never last-modified: an entry you tidied a typo in did not happen at 11pm.
     let time: String
     let preview: String
     let thumbnails: [Thumb]
@@ -51,6 +52,22 @@ struct DraftSummary: Identifiable, Hashable {
 }
 
 extension DraftSummary {
+    /// The entry, minus the line already serving as its title, with its blank lines closed up.
+    static func preview(of rawText: String, titleWasDerived: Bool) -> String {
+        var body = Substring(rawText)
+        if titleWasDerived, let firstBreak = body.firstIndex(where: \.isNewline) {
+            body = body[body.index(after: firstBreak)...]
+        } else if titleWasDerived {
+            // The whole entry is its own title; there is nothing left to preview.
+            return ""
+        }
+        return body
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "  ")
+    }
+
     /// Snapshots a live draft. Only ever called on the main actor while the model is valid.
     init(_ draft: EntryDraft, thumbnailLimit: Int) {
         let media = draft.orderedMedia
@@ -68,8 +85,30 @@ extension DraftSummary {
         self.id = draft.id
         self.entryDateKey = draft.entryDateKey
         self.title = resolvedTitle
-        self.time = draft.createdAt.formatted(date: .omitted, time: .shortened)
-        self.preview = rawText == resolvedTitle ? "" : rawText
+        // A bare time is only honest when it belongs to the day the card is filed under.
+        //
+        // This is `createdAt` - when the entry was started - while the heading above it is
+        // `entryDateKey`, the day the entry is *about*. Those are usually the same day and
+        // the time then reads exactly as it should: which entry came first that evening.
+        //
+        // They come apart the moment somebody backfills. Write up last Tuesday today and the
+        // card sits under Tuesday showing a time from this afternoon, which is not ambiguous
+        // so much as wrong - it looks like a timestamp for Tuesday. So when the two disagree
+        // the card says when it was *added* instead, with the date, and stops pretending.
+        let startedOn = CalendarDay(date: draft.createdAt)
+        self.time = startedOn.rawValue == draft.entryDateKey
+            ? draft.createdAt.formatted(date: .omitted, time: .shortened)
+            : "added \(draft.createdAt.formatted(.dateTime.month(.abbreviated).day()))"
+        // What the preview is *for* is recognising an entry, not reading it - so it gets the
+        // part the title did not already say, flattened onto one run of lines.
+        //
+        // Two things were costing a card most of its preview. When an entry has no title of
+        // its own the title is its first line, and the preview then began by repeating that
+        // line verbatim. And blank lines between paragraphs came through intact, so with two
+        // lines to spend, one went on a title already above it and the other on nothing.
+        self.preview = Self.preview(
+            of: rawText, titleWasDerived: (draft.content.title ?? "").isEmpty
+        )
         self.thumbnails = media.prefix(thumbnailLimit).map {
             Thumb(id: $0.id, relativePath: $0.relativePath, isVideo: $0.kind == .video)
         }

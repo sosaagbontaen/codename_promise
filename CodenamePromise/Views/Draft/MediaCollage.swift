@@ -56,11 +56,20 @@ struct MediaCollage: View {
     }
 
     /// One photo gets a shorter, wider frame; a grid needs the room to be a grid.
+    ///
+    /// These were 150 / 118 / 176, which made every entry with photos a full screen of its
+    /// own and cost the list the thing it is for. A journal list has two jobs and they pull
+    /// against each other: show enough of a day to recognise it, and show enough days to scan.
+    /// At the old heights the first had eaten the second - three entries filled the screen and
+    /// finding last Tuesday meant scrolling rather than looking.
+    ///
+    /// A third smaller is still plainly a photograph and not a stamp, which is the line worth
+    /// holding. Anyone who wants the gallery has the density toggle in the toolbar.
     private var height: CGFloat {
         switch thumbs.count {
-        case 1: 150
-        case 2: 118
-        default: 176
+        case 1: 104
+        case 2: 84
+        default: 116
         }
     }
 
