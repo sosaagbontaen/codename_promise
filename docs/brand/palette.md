@@ -10,20 +10,22 @@ doc, a video — flying into it. Energetic and slightly irreverent, but clean.
 
 ## Palette
 
-Sampled from the concept rather than eyeballed.
+Exact values from the brand sheet (`logos/DumpNotes Concept 2.png`), not sampled.
 
-| Token | Light | Dark | What it is |
-|---|---|---|---|
-| `violet` | `#603CE4` | `#8265FF` | the tray, the wordmark, "Dump it" |
-| `violetDeep` | `#4A28C4` | `#6B4AE8` | pressed states, gradient tail |
-| `night` | `#090D19` | `#090D19` | the hero ground |
-| `ground` | `#F4F3FB` | `#0B0F1C` | app background |
-| `surface` | `#FFFFFF` | `#141928` | cards |
+| Token | Value | What it is |
+|---|---|---|
+| `violet` | `#6C4CFF` | the tray, the wordmark, "Dump it" |
+| `pink` | `#FF4DA6` | video |
+| `amber` | `#FFB02E` | the fourth confetti |
+| `green` | `#22C55E` | photo |
+| `blue` | `#3B82F6` | text |
+| `night` | `#0F1115` | the dark mark's ground |
+| `muted` | `#6B7280` | secondary text |
+| `ground` | `#F2F4F7` | app background, light |
 
 ### Confetti — one per capture mode
 
-`text` `#3B82F6` · `voice` `#8B5CF6` · `photo` `#22C55E` · `video` `#EC4899` ·
-`extra` `#F97316`
+`text` blue · `voice` violet · `photo` green · `video` pink · `extra` amber
 
 That is the whole idea of the mark: things of different kinds, flying into the same tray.
 
@@ -39,14 +41,18 @@ worked*. Status keeps its own three and never borrows from the set:
 ## Provenance moved
 
 Purple used to mean "the model touched this". After the rebrand violet means *the app*, so
-provenance moved to the **voice** confetti colour — adjacent enough to stay familiar,
-different enough not to read as chrome.
+provenance took the **blue** confetti colour rather than competing with the brand.
 
 ## Type
 
-`Sora` display, `Manrope` body, both bundled as variable fonts (OFL). See
-`CodenamePromise/Design/Typography.swift` — weights come from the `wght` axis, because iOS
-otherwise serves only a variable font's default instance.
+**Poppins** — Bold / SemiBold / Regular, per the sheet, plus Medium. One family throughout
+rather than a display/body pair: Poppins is geometric with circular bowls and generous
+counters, which is what makes the brand read friendly rather than corporate, and a second
+face would dilute exactly that.
+
+Bundled as static weights (OFL). Static rather than variable on purpose — a variable file
+loads happily and then serves only its default instance, which is a silent, hard-to-spot
+failure.
 
 ## Still to do
 

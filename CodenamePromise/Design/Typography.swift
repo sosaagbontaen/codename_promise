@@ -1,68 +1,68 @@
 import SwiftUI
 import UIKit
 
-/// The app's voice.
+/// The app's voice: Poppins, per the brand sheet.
 ///
-/// System font is the single loudest reason an app reads as a default iOS app: everything
-/// built with it inherits the same texture as Settings, Reminders, and every tutorial project
-/// ever shipped. A bundled face changes that in one move, before a single layout is touched.
+/// One family throughout rather than a display/body pair. Poppins is geometric with circular
+/// bowls and generous counters, which is what makes the brand read as friendly rather than
+/// corporate — and splitting it against a second face would dilute exactly the quality the
+/// mark is trading on.
 ///
-/// Sora for anything that carries — titles, days, the entry heading. Manrope for reading,
-/// because a journal is read as much as written and Manrope's wider counters hold up in long
-/// paragraphs where Sora would get tiring.
-///
-/// Both are variable fonts, so one file per family covers the whole weight range. iOS will
-/// happily load a variable font and then serve only its *default* instance, which for Manrope
-/// is ExtraLight — so weights are selected explicitly through the `wght` axis rather than by
-/// asking for a name like "Manrope-Bold" that does not exist in the bundle.
+/// Static weights rather than a variable file: the brand sheet names three (Bold, SemiBold,
+/// Regular), so shipping those plus Medium keeps the bundle honest about what it uses. It
+/// also sidesteps the variable-font trap, where iOS loads the file happily and then serves
+/// only its default instance.
 enum Type {
-    /// OpenType `wght` axis, as the four-character tag packed into an integer.
-    private static let weightAxis = 0x77676874  // 'wght'
-
-    private static func variable(_ family: String, size: CGFloat, weight: CGFloat) -> Font {
-        let descriptor = UIFontDescriptor(fontAttributes: [
-            .family: family,
-            kCTFontVariationAttribute as UIFontDescriptor.AttributeName: [weightAxis: weight],
-        ])
-        return Font(UIFont(descriptor: descriptor, size: size))
+    private static func poppins(_ size: CGFloat, _ weight: Weight) -> Font {
+        .custom(weight.postScriptName, size: size)
     }
 
-    // MARK: Display — Sora
+    enum Weight {
+        case regular, medium, semibold, bold
 
-    /// The list's own name, and nothing else at this size.
-    static func display(_ size: CGFloat, _ weight: CGFloat = 700) -> Font {
-        variable("Sora", size: size, weight: weight)
+        var postScriptName: String {
+            switch self {
+            case .regular: "Poppins-Regular"
+            case .medium: "Poppins-Medium"
+            case .semibold: "Poppins-SemiBold"
+            case .bold: "Poppins-Bold"
+            }
+        }
     }
 
-    /// A day, an entry title, a sheet heading.
-    static func title(_ size: CGFloat = 22) -> Font { display(size, 600) }
-
-    // MARK: Reading — Manrope
-
-    static func body(_ size: CGFloat = 17, _ weight: CGFloat = 400) -> Font {
-        variable("Manrope", size: size, weight: weight)
+    /// Anything that carries: the wordmark in-app, a day, a sheet heading.
+    static func display(_ size: CGFloat, _ weight: Weight = .bold) -> Font {
+        poppins(size, weight)
     }
 
-    static func label(_ size: CGFloat = 15, _ weight: CGFloat = 600) -> Font {
-        variable("Manrope", size: size, weight: weight)
+    static func title(_ size: CGFloat = 22) -> Font { poppins(size, .semibold) }
+
+    /// Poppins is geometric, so long paragraphs want a touch more room than a humanist face
+    /// would. Callers pair this with `lineSpacing` on the writing surface.
+    static func body(_ size: CGFloat = 17, _ weight: Weight = .regular) -> Font {
+        poppins(size, weight)
     }
 
-    static func caption(_ size: CGFloat = 12.5, _ weight: CGFloat = 500) -> Font {
-        variable("Manrope", size: size, weight: weight)
+    static func label(_ size: CGFloat = 15, _ weight: Weight = .semibold) -> Font {
+        poppins(size, weight)
     }
 
-    /// Everything that is dictated is timed, and digits that jump are distracting.
+    static func caption(_ size: CGFloat = 12.5, _ weight: Weight = .medium) -> Font {
+        poppins(size, weight)
+    }
+
+    /// Everything dictated is timed, and digits that jump around are distracting. Poppins has
+    /// no monospaced cut, so this stays system.
     static func mono(_ size: CGFloat = 15) -> Font {
         .system(size: size, weight: .semibold, design: .monospaced)
     }
 
-    /// Fails loudly in debug if the bundle did not actually register the faces — a missing
-    /// font silently falls back to Helvetica, which looks like a design decision rather than
-    /// a build problem.
+    /// A missing font falls back to Helvetica silently, which reads as a design choice rather
+    /// than a build problem. Fail loudly in debug instead.
     static func assertAvailable() {
         #if DEBUG
-        for family in ["Sora", "Manrope"] where !UIFont.familyNames.contains(family) {
-            assertionFailure("\(family) is not registered. Check UIAppFonts and that the file is in the bundle.")
+        if !UIFont.familyNames.contains("Poppins") {
+            assertionFailure("Poppins is not registered. Check UIAppFonts and the bundle.")
         }
         #endif
     }

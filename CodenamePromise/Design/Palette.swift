@@ -18,64 +18,59 @@ import SwiftUI
 /// model touched. It predates the logo, users already read it that way, and provenance is
 /// not the same question as success.
 enum Brand {
-    // MARK: Identity
+    // MARK: Identity — the exact values from the brand sheet
 
-    /// The tray, the wordmark's second half, the "Dump it" button. Sampled from the concept:
-    /// the single most-used saturated colour in it.
-    static let violet = Color(light: 0x603CE4, dark: 0x8265FF)
-    /// Deeper, for pressed states and the gradient's tail.
-    static let violetDeep = Color(light: 0x4A28C4, dark: 0x6B4AE8)
+    /// The tray, the wordmark's second half, "Dump it".
+    static let violet = Color(light: 0x6C4CFF, dark: 0x8F76FF)
+    static let violetDeep = Color(light: 0x5033D6, dark: 0x6C4CFF)
 
-    /// The ground the mark is drawn on. Not a neutral grey - a near-black with the same blue
-    /// in it as the violet, which is what stops the dark theme looking like a default.
-    static let night = Color(light: 0x090D19, dark: 0x090D19)
+    /// The near-black the dark mark sits on.
+    static let night = Color(light: 0x0F1115, dark: 0x0F1115)
 
     static let gradient = LinearGradient(
         colors: [violet, violetDeep], startPoint: .topLeading, endPoint: .bottomTrailing
     )
 
-    /// The confetti. Each capture mode owns one, which is the whole idea of the mark: things
-    /// of different kinds, flying into the same tray.
+    /// The confetti. Each capture mode owns one, which is the whole idea of the mark:
+    /// things of different kinds, flying into the same tray.
     ///
-    /// These are identity, not status - a green here means "photo", never "it worked". That
-    /// is why status keeps its own three colours below and never borrows from this set.
+    /// **These are identity, never status.** Green here means *photo*, never *it worked* —
+    /// which is why the three status colours below are kept separate and never borrow from
+    /// this set.
     enum Mode {
-        static let text = Color(light: 0x3B82F6, dark: 0x60A5FA)
-        static let voice = Color(light: 0x8B5CF6, dark: 0xA78BFA)
-        static let photo = Color(light: 0x22C55E, dark: 0x4ADE80)
-        static let video = Color(light: 0xEC4899, dark: 0xF472B6)
-        static let extra = Color(light: 0xF97316, dark: 0xFB923C)
+        static let text = Color(light: 0x3B82F6, dark: 0x60A5FA)   // blue
+        static let voice = Color(light: 0x6C4CFF, dark: 0x8F76FF)  // violet
+        static let photo = Color(light: 0x22C55E, dark: 0x4ADE80)  // green
+        static let video = Color(light: 0xFF4DA6, dark: 0xFF7CBF)  // pink
+        static let extra = Color(light: 0xFFB02E, dark: 0xFFC15C)  // amber
     }
 
-    /// The ground everything sits on.
-    ///
-    /// `systemGroupedBackground` is the single most recognisable signature of a stock iOS
-    /// app. This is the same idea pulled toward the mark's violet: still recedes, no longer
-    /// anonymous.
-    static let ground = Color(light: 0xF4F3FB, dark: 0x0B0F1C)
-    static let surface = Color(light: 0xFFFFFF, dark: 0x141928)
+    /// The ground everything sits on. `systemGroupedBackground` is the single most
+    /// recognisable signature of a stock iOS app; the sheet's own light grey is not.
+    static let ground = Color(light: 0xF2F4F7, dark: 0x0F1115)
+    static let surface = Color(light: 0xFFFFFF, dark: 0x181B22)
 
-    /// The R-of-the-old-mark equivalent: text that carries.
-    static let ink = Color(light: 0x12141F, dark: 0xF2F3F8)
-    /// Kept as an alias so call sites that mean "the app's accent" read that way.
+    static let ink = Color(light: 0x0F1115, dark: 0xF2F4F7)
+    /// The sheet's grey, for anything secondary.
+    static let muted = Color(light: 0x6B7280, dark: 0x9AA2B1)
+    /// Kept as an alias so call sites meaning "the app's accent" read that way.
     static let azure = violet
-    static let ripple = Color(light: 0xD8D2F7, dark: 0x2A2350)
+    static let ripple = Color(light: 0xDDD6FF, dark: 0x2A2350)
 
-    // MARK: Status - exactly three, and never a confetti colour
+    // MARK: Status — exactly three, and never a confetti colour
 
-    /// It reached the destination.
+    /// It reached Notion.
     static let reached = Color(light: 0x16803C, dark: 0x4ADE80)
-    /// It has not yet, and that is normal.
-    static let waiting = Color(light: 0xB45309, dark: 0xFB923C)
-    /// It tried and could not.
+    /// It hasn't yet, and that's normal.
+    static let waiting = Color(light: 0xB45309, dark: 0xFFB02E)
+    /// It tried and couldn't.
     static let failed = Color(light: 0xDC2626, dark: 0xF87171)
 
     // MARK: Provenance
 
-    /// The model touched this. Distinct from the brand violet on purpose: after the rebrand
-    /// violet means *the app*, so provenance moved to the voice confetti colour, which is
-    /// adjacent enough to stay familiar and different enough not to read as chrome.
-    static let ai = Mode.voice
+    /// The model touched this. After the rebrand violet means *the app*, so provenance took
+    /// the blue confetti colour rather than competing with the brand.
+    static let ai = Mode.text
 }
 
 extension Color {

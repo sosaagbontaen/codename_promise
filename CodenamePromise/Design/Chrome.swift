@@ -12,27 +12,19 @@ import UIKit
 /// and the variable weight axis has to be selected explicitly here too — asking for "Sora"
 /// alone yields its default instance.
 enum Chrome {
-    private static let weightAxis = 0x77676874  // 'wght'
-
     static func apply() {
-        let large = font("Sora", size: 32, weight: 700)
-        let inline = font("Sora", size: 17, weight: 600)
-
         let appearance = UINavigationBarAppearance()
         appearance.configureWithDefaultBackground()
-        appearance.largeTitleTextAttributes = [.font: large, .kern: -0.8]
-        appearance.titleTextAttributes = [.font: inline]
+        appearance.largeTitleTextAttributes = [
+            .font: UIFont(name: "Poppins-Bold", size: 32) ?? .systemFont(ofSize: 32, weight: .bold),
+            .kern: -0.6,
+        ]
+        appearance.titleTextAttributes = [
+            .font: UIFont(name: "Poppins-SemiBold", size: 17) ?? .systemFont(ofSize: 17, weight: .semibold)
+        ]
 
         UINavigationBar.appearance().standardAppearance = appearance
         UINavigationBar.appearance().compactAppearance = appearance
         UINavigationBar.appearance().scrollEdgeAppearance = appearance
-    }
-
-    private static func font(_ family: String, size: CGFloat, weight: CGFloat) -> UIFont {
-        let descriptor = UIFontDescriptor(fontAttributes: [
-            .family: family,
-            kCTFontVariationAttribute as UIFontDescriptor.AttributeName: [weightAxis: weight],
-        ])
-        return UIFont(descriptor: descriptor, size: size)
     }
 }

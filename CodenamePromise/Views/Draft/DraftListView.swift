@@ -203,7 +203,7 @@ struct DraftListView: View {
 
                     Button(action: createDraft) {
                         Text("Start today's entry")
-                            .font(Type.label(15.5, 700))
+                            .font(Type.label(15.5, .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 22)
                             .frame(height: 46)
@@ -356,7 +356,7 @@ struct DraftRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(summary.title)
-                .font(Type.label(16.5, 600))
+                .font(Type.label(16.5, .semibold))
                 .lineLimit(1)
 
             if !summary.preview.isEmpty {
@@ -395,7 +395,7 @@ struct DraftRow: View {
                 }
                 syncBadge
             }
-            .font(Type.caption(11.5, 600))
+            .font(Type.caption(11.5, .semibold))
         }
         .padding(.vertical, 4)
     }

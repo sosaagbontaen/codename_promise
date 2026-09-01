@@ -74,8 +74,10 @@
 
 	<key>UIAppFonts</key>
 	<array>
-		<string>Sora-Variable.ttf</string>
-		<string>Manrope-Variable.ttf</string>
+		<string>Poppins-Regular.ttf</string>
+		<string>Poppins-Medium.ttf</string>
+		<string>Poppins-SemiBold.ttf</string>
+		<string>Poppins-Bold.ttf</string>
 	</array>
 
 	<key>ITSAppUsesNonExemptEncryption</key>

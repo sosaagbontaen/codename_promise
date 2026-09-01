@@ -148,7 +148,7 @@ struct CaptureView: View {
                 // it a text box that happens to be open.
                 Text(controller.entryDate.representativeDate()
                     .formatted(.dateTime.weekday(.wide).month(.wide).day()))
-                    .font(Type.caption(11.5, 700))
+                    .font(Type.caption(11.5, .bold))
                     .foregroundStyle(Brand.azure)
                     .textCase(.uppercase)
                     .tracking(1.1)
@@ -406,7 +406,7 @@ struct CaptureView: View {
                 // to learn it from. The three actions here are the whole app.
                 VStack(spacing: 2) {
                     Image(systemName: "photo.on.rectangle.angled").font(.system(size: 19))
-                    Text("Attach").font(Type.caption(10.5, 600))
+                    Text("Attach").font(Type.caption(10.5, .semibold))
                 }
                 .foregroundStyle(Brand.azure)
             }
@@ -518,7 +518,7 @@ struct CaptureView: View {
             } label: {
                 VStack(spacing: 2) {
                     Image(systemName: "sparkles").font(.system(size: 19))
-                    Text("Structure").font(Type.caption(10.5, 600))
+                    Text("Structure").font(Type.caption(10.5, .semibold))
                 }
                 // Violet marks what the model touched, here and on the entry list. The
                 // control that invites it wears the same colour.
