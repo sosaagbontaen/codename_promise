@@ -1,6 +1,6 @@
 # Launch
 
-`shipping-autoreflect.html` is the release-readiness checklist — a working document, not a
+`shipping-dumpnotes.html` is the release-readiness checklist — a working document, not a
 snapshot. It is the source of truth for what stands between the current build and a first
 App Store release, and it is meant to be edited as work lands.
 
@@ -8,6 +8,19 @@ App Store release, and it is meant to be edited as work lands.
 
 Republish that same URL after editing so the link stays stable; publishing without it
 creates a second, competing copy.
+
+## Built to be skimmed, not read
+
+The doc kept growing until it asked you to hold 25 things at once, which is not a checklist,
+it is a wall. Three devices fix that:
+
+- **The next three, at the top.** Chosen automatically: blockers first, then needed, in
+  track order. Everything else can genuinely wait, and the page says so.
+- **A progress map.** Five tracks, each with a bar and a count, so "where am I" is one
+  glance rather than a scroll.
+- **Everything else collapsed.** Only the track that still has blockers opens by default.
+  Reference material - what the product is, decisions already made, what not to do - lives
+  behind its own disclosures.
 
 ## Three kinds of content, kept apart
 

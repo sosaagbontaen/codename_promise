@@ -1,0 +1,583 @@
+<title>Shipping DumpNotes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+
+<style>
+  /* DumpNotes brand sheet, exactly: violet #6C4CFF, confetti blue/green/pink/amber,
+     near-black #0F1115, Poppins. Confetti is identity; status keeps its own three. */
+  :root {
+    --violet:#6C4CFF; --violet-deep:#5033D6;
+    --blue:#3B82F6; --green:#22C55E; --pink:#FF4DA6; --amber:#FFB02E;
+    --ink:#0F1115; --muted:#6B7280; --ground:#F2F4F7; --surface:#FFFFFF;
+    --line:#E4E7EE; --line-soft:#EFF1F5;
+    --ok:#15803D; --warn:#B45309; --stop:#DC2626;
+    --shadow:0 1px 2px rgba(15,17,21,.05), 0 10px 28px rgba(15,17,21,.06);
+    --font:'Poppins',-apple-system,'Helvetica Neue',sans-serif;
+    --mono:'JetBrains Mono','SF Mono',Menlo,monospace;
+    --grad:linear-gradient(120deg,var(--violet),var(--violet-deep));
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --violet:#8F76FF; --violet-deep:#6C4CFF;
+      --blue:#60A5FA; --green:#4ADE80; --pink:#FF7CBF; --amber:#FFC15C;
+      --ink:#F2F4F7; --muted:#9AA2B1; --ground:#0F1115; --surface:#181B22;
+      --line:#272B36; --line-soft:#1E222B;
+      --ok:#4ADE80; --warn:#FFB02E; --stop:#F87171;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.3);
+    }
+  }
+  :root[data-theme="dark"] {
+    --violet:#8F76FF; --violet-deep:#6C4CFF;
+    --blue:#60A5FA; --green:#4ADE80; --pink:#FF7CBF; --amber:#FFC15C;
+    --ink:#F2F4F7; --muted:#9AA2B1; --ground:#0F1115; --surface:#181B22;
+    --line:#272B36; --line-soft:#1E222B;
+    --ok:#4ADE80; --warn:#FFB02E; --stop:#F87171;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.3);
+  }
+
+  *{margin:0;padding:0;box-sizing:border-box}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+  body{background:var(--ground);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:820px;margin:0 auto;padding:0 22px}
+
+  /* hero */
+  header{padding:52px 0 26px;background:
+    radial-gradient(620px 260px at 14% -80px, color-mix(in srgb, var(--violet) 16%, transparent), transparent 70%),
+    var(--ground);}
+  .eyebrow{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--violet);margin-bottom:12px}
+  h1{font-size:clamp(38px,7vw,60px);font-weight:700;letter-spacing:-.035em;line-height:1.02}
+  h1 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
+  .sub{margin-top:12px;color:var(--muted);max-width:52ch;font-size:16.5px}
+
+  /* the only thing you have to read */
+  .now{margin-top:30px;background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden}
+  .now-head{display:flex;align-items:center;gap:10px;padding:16px 20px 12px}
+  .now-head h2{font-size:16px;font-weight:700;letter-spacing:-.01em}
+  .now-head .pill{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#fff;background:var(--grad);padding:4px 9px;border-radius:999px}
+  ol.next{list-style:none;padding:0 20px 18px}
+  ol.next li{display:flex;gap:13px;padding:11px 0;border-top:1px solid var(--line-soft);align-items:flex-start}
+  ol.next li:first-child{border-top:0}
+  .next-n{font-family:var(--mono);font-size:12px;font-weight:600;color:#fff;background:var(--violet);width:22px;height:22px;border-radius:7px;display:grid;place-items:center;flex:none;margin-top:2px}
+  .next-title{display:block;font-weight:600;font-size:15.5px;letter-spacing:-.01em}
+  .next-when{display:block;font-family:var(--mono);font-size:11.5px;color:var(--ok);margin-top:3px;line-height:1.5}
+  .next-when::before{content:"DONE WHEN ";color:var(--muted);letter-spacing:.08em}
+
+  /* stage map */
+  .map{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-top:22px}
+  .stage{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 13px}
+  .stage-bar{height:4px;background:var(--line-soft);border-radius:3px;overflow:hidden;margin-bottom:9px}
+  .stage-bar span{display:block;height:100%;background:var(--grad)}
+  .stage-name{font-size:12.5px;font-weight:600;line-height:1.35;letter-spacing:-.01em}
+  .stage-count{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:3px}
+  .stage-done .stage-name{color:var(--muted)}
+
+  .meter{display:flex;align-items:center;gap:14px;margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
+  .meter b{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .meter .track-bar{flex:1;height:6px;background:var(--line-soft);border:1px solid var(--line);border-radius:4px;overflow:hidden}
+  .meter .track-bar span{display:block;height:100%;background:var(--grad);width:0;transition:width .25s ease}
+  .meter button{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:none;border:0;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+
+  main{padding:34px 0 0}
+  h2.sec{font-size:13px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-family:var(--mono);margin:36px 0 12px}
+
+  /* collapsible tracks */
+  details.track{background:var(--surface);border:1px solid var(--line);border-radius:14px;margin-bottom:10px;overflow:hidden}
+  details.track summary{list-style:none;cursor:pointer;padding:15px 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  details.track summary::-webkit-details-marker{display:none}
+  details.track summary::before{content:"\203A";font-size:19px;color:var(--muted);transition:transform .18s ease;display:inline-block;width:12px}
+  details.track[open] summary::before{transform:rotate(90deg)}
+  .track-name{font-weight:700;font-size:15.5px;letter-spacing:-.01em}
+  .track-note{color:var(--muted);font-size:13px;flex:1;min-width:140px}
+  .track-count{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap}
+  .track-body{padding:0 18px 8px}
+
+  .task{display:grid;grid-template-columns:21px 1fr;gap:12px;padding:14px 0;border-top:1px solid var(--line-soft)}
+  .task input[type=checkbox]{appearance:none;-webkit-appearance:none;width:19px;height:19px;margin:2px 0 0;border:1.5px solid var(--muted);border-radius:6px;background:var(--surface);cursor:pointer;position:relative;flex:none}
+  .task input[type=checkbox]:checked{background:var(--grad);border-color:transparent}
+  .task input[type=checkbox]:checked::after{content:"";position:absolute;left:6px;top:2px;width:5px;height:10px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(42deg)}
+  .task input:focus-visible{outline:2px solid var(--violet);outline-offset:2px}
+  .task-title{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-weight:600;font-size:15px;letter-spacing:-.01em;cursor:pointer;margin-bottom:4px}
+  .task-why{color:var(--muted);font-size:14px;max-width:62ch}
+  .task-why+.task-why{margin-top:6px}
+  .task-why strong{color:var(--ink);font-weight:600}
+  .done-when{display:block;font-family:var(--mono);font-size:11.5px;color:var(--ok);margin-top:7px;max-width:62ch;line-height:1.55}
+  .done-when::before{content:"DONE WHEN ";color:var(--muted);letter-spacing:.08em}
+  .task.is-done .task-title{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--line)}
+  .task.is-done .task-why,.task.is-done .done-when,.task.is-done .badge{opacity:.5}
+
+  .badge{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;padding:3px 8px 2px;border-radius:5px;white-space:nowrap;flex:none}
+  .badge.stop{background:color-mix(in srgb,var(--stop) 12%,transparent);color:var(--stop);border:1px solid color-mix(in srgb,var(--stop) 32%,transparent)}
+  .badge.need{background:color-mix(in srgb,var(--warn) 13%,transparent);color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 30%,transparent)}
+  .badge.later{background:var(--line-soft);color:var(--muted);border:1px solid var(--line)}
+  .badge.shipped{background:color-mix(in srgb,var(--ok) 13%,transparent);color:var(--ok);border:1px solid color-mix(in srgb,var(--ok) 30%,transparent)}
+  .badge.size{background:transparent;color:var(--muted);border:1px solid var(--line);letter-spacing:.04em;text-transform:none;font-weight:500}
+
+  details.ref{background:var(--surface);border:1px solid var(--line);border-radius:14px;margin-bottom:10px;overflow:hidden}
+  details.ref summary{list-style:none;cursor:pointer;padding:15px 18px;font-weight:600;font-size:15px;display:flex;gap:12px;align-items:center}
+  details.ref summary::-webkit-details-marker{display:none}
+  details.ref summary::before{content:"\203A";font-size:19px;color:var(--muted);transition:transform .18s ease;display:inline-block;width:12px}
+  details.ref[open] summary::before{transform:rotate(90deg)}
+  .ref-body{padding:2px 18px 20px;color:var(--muted);font-size:14.5px;max-width:66ch}
+  .ref-body p+p{margin-top:10px}
+  .ref-body strong{color:var(--ink);font-weight:600}
+  .ref-body em{color:var(--ink);font-style:italic}
+  .ref-body h4{color:var(--ink);font-size:14.5px;font-weight:700;margin:16px 0 6px}
+  .quote{font-family:var(--mono);font-size:12.5px;line-height:1.7;background:var(--ground);border:1px solid var(--line);border-left:3px solid var(--violet);border-radius:8px;padding:14px 16px;margin:12px 0;color:var(--ink)}
+  code{font-family:var(--mono);font-size:.87em;background:var(--ground);border:1px solid var(--line);padding:.06em .34em;border-radius:4px}
+  .ref-body ul{list-style:none;margin:8px 0}
+  .ref-body li{padding:5px 0 5px 18px;position:relative}
+  .ref-body li::before{content:"\2022";position:absolute;left:2px;color:var(--violet)}
+
+  footer{margin-top:56px;padding:36px 0 54px;border-top:1px solid var(--line);text-align:center;color:var(--muted)}
+  footer .big{font-size:clamp(19px,3.6vw,26px);font-weight:700;color:var(--ink);letter-spacing:-.02em;line-height:1.3;max-width:26ch;margin:0 auto}
+  footer .m{font-family:var(--mono);font-size:11px;margin-top:18px}
+  ::selection{background:color-mix(in srgb,var(--violet) 25%,transparent)}
+</style>
+
+<header>
+  <div class="wrap">
+    <div class="eyebrow">Release readiness</div>
+    <h1>Shipping <span class="g">DumpNotes</span></h1>
+    <p class="sub">Dump anything. Save everything. &mdash; and the short list between here and the App&nbsp;Store.</p>
+
+    <div class="now">
+      <div class="now-head"><span class="pill">Do these next</span><h2>Everything else can wait</h2></div>
+      <ol class="next">
+      <li>
+        <span class="next-n">1</span>
+        <div>
+          <span class="next-title">Draw a 1024&times;1024 icon and add an asset catalog</span>
+          <span class="next-when">an archive validates in Xcode with no icon warnings.</span>
+        </div>
+      </li>
+      <li>
+        <span class="next-n">2</span>
+        <div>
+          <span class="next-title">Write the privacy policy and put it at a public URL</span>
+          <span class="next-when">the URL loads for a logged-out stranger.</span>
+        </div>
+      </li>
+      <li>
+        <span class="next-n">3</span>
+        <div>
+          <span class="next-title">Build a first run that explains itself</span>
+          <span class="next-when">someone who has never seen it reaches their first saved entry without you speaking.</span>
+        </div>
+      </li>
+      </ol>
+    </div>
+
+    <div class="map">
+      <div class="stage">
+        <div class="stage-bar"><span style="width:40%"></span></div>
+        <div class="stage-name">Ship-blockers</div>
+        <div class="stage-count">2/5</div>
+      </div>
+      <div class="stage">
+        <div class="stage-bar"><span style="width:25%"></span></div>
+        <div class="stage-name">Queues you don't control</div>
+        <div class="stage-count">1/4</div>
+      </div>
+      <div class="stage">
+        <div class="stage-bar"><span style="width:20%"></span></div>
+        <div class="stage-name">Being findable</div>
+        <div class="stage-count">1/5</div>
+      </div>
+      <div class="stage">
+        <div class="stage-bar"><span style="width:25%"></span></div>
+        <div class="stage-name">Keeping it shipping</div>
+        <div class="stage-count">2/8</div>
+      </div>
+      <div class="stage stage-done">
+        <div class="stage-bar"><span style="width:100%"></span></div>
+        <div class="stage-name">Product</div>
+        <div class="stage-count">3/3</div>
+      </div>
+    </div>
+
+    <div class="meter">
+      <b><span id="done-count">0</span> / <span id="total-count">0</span> done</b>
+      <span class="track-bar"><span id="fill"></span></span>
+      <button type="button" id="reset">Clear my ticks</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <h2 class="sec">Everything, by track</h2>
+    <details class="track" open>
+      <summary>
+        <span class="track-name">Ship-blockers</span>
+        <span class="track-note">submission fails, or the product breaks its own promise</span>
+        <span class="track-count">3 left</span>
+      </summary>
+      <div class="track-body">
+      <div class="task">
+        <input type="checkbox" checked data-task="build-export" id="i-build-export">
+        <div class="task-body">
+          <label class="task-title" for="i-build-export">Build markdown + media export<span class="badge stop">Blocker</span><span class="badge size">~1 weekend</span></label>
+          <p class="task-why">Closes the gap in the notice above, and doubles as the answer
+            to "I don't use Notion" &mdash; so one weekend fixes the biggest hole in the
+            product and the biggest objection to it at once.</p><span class="done-when">an entry's text and photos land in Files, and reopen correctly somewhere else.</span>
+        </div>
+      </div>
+      <div class="task">
+        <input type="checkbox" data-task="app-icon" id="i-app-icon">
+        <div class="task-body">
+          <label class="task-title" for="i-app-icon">Draw a 1024&times;1024 icon and add an asset catalog<span class="badge stop">Blocker</span><span class="badge size">~half a day</span></label>
+          <p class="task-why">There is no asset catalog in the target at all. App Store
+            Connect rejects the upload without one, and it is the kind of boring thing that
+            gets deferred until it blocks you at midnight.</p><span class="done-when">an archive validates in Xcode with no icon warnings.</span>
+        </div>
+      </div>
+      <div class="task">
+        <input type="checkbox" checked data-task="display-name" id="i-display-name">
+        <div class="task-body">
+          <label class="task-title" for="i-display-name">Set the display name and settle the bundle id<span class="badge stop">Blocker</span><span class="badge size">~1 hour</span></label>
+          <p class="task-why"><strong>Done.</strong> <code>CFBundleDisplayName</code> is DumpNotes and every screen reads it through <code>Bundle.main.appDisplayName</code>. The bundle id is still <code>com.codenamepromise.journal</code> and is permanent once shipped &mdash; change it before the first upload.</p><span class="done-when">the icon on the home screen says AutoReflect.</span>
+        </div>
+      </div>
+      <div class="task">
+        <input type="checkbox" data-task="privacy-policy" id="i-privacy-policy">
+        <div class="task-body">
+          <label class="task-title" for="i-privacy-policy">Write the privacy policy and put it at a public URL<span class="badge stop">Blocker</span><span class="badge size">~2 hours</span></label>
+          <p class="task-why">Apple will not accept a submission without one, and Notion
+            will not approve a public integration without one. Two gates, one document.</p><span class="done-when">the URL loads for a logged-out stranger.</span>
+        </div>
+      </div>
+      <div class="task">
+        <input type="checkbox" data-task="onboarding" id="i-onboarding">
+        <div class="task-body">
+          <label class="task-title" for="i-onboarding">Build a first run that explains itself<span class="badge need">Needed</span><span class="badge size">~2 days</span></label>
+          <p class="task-why">A new user opens an empty list. In twenty seconds they need
+            to learn that capture is instant, Notion is optional, and their words stay on the
+            device unless they say otherwise. That last point is your differentiator &mdash;
+            say it out loud.</p><span class="done-when">someone who has never seen it reaches their first saved entry without you speaking.</span>
+        </div>
+      </div>
+      </div>
+    </details>
+
+    <details class="track">
+      <summary>
+        <span class="track-name">Queues you don't control</span>
+        <span class="track-note">start early &mdash; these wait on other people</span>
+        <span class="track-count">3 left</span>
+      </summary>
+      <div class="track-body">
+      <div class="task">
+        <input type="checkbox" data-task="notion-review" id="i-notion-review">
+        <div class="task-body">
+          <label class="task-title" for="i-notion-review">Submit the Notion integration for public review<span class="badge need">Needed</span><span class="badge size">queue</span></label>
+          <p class="task-why">Your OAuth integration is internal to your own workspace.
+            Reaching other people's workspaces needs it public, which needs Notion's review
+            plus a privacy policy and terms URL.</p><span class="done-when">submitted. Approval is theirs, not yours.</span>
+        </div>
+      </div>
+      <div class="task">
+        <input type="checkbox" data-task="trademark" id="i-trademark">
+        <div class="task-body">
+          <label class="task-title" for="i-trademark">Search the trademark register for the name<span class="badge need">Needed</span><span class="badge size">~1 hour</span></label>
+          <p class="task-why">Redo for <strong>DumpNotes</strong>. AutoReflect was taken, which is exactly why this comes before anything with the name on it.</p><span class="done-when">you have checked USPTO and the App Store and written down what you found.</span>
+        </div>
+      </div>
+      <div class="task">
+        <input type="checkbox" data-task="testflight" id="i-testflight">
+        <div class="task-body">
+          <label class="task-title" for="i-testflight">Get five external testers into TestFlight<span class="badge need">Needed</span><span class="badge size">~1 day + review</span></label>
+          <p class="task-why">Not marketing. You cannot see your own onboarding &mdash; you
+            know where everything is. External testing needs a review pass on the first
+            build, so it starts earlier than feels necessary.</p><span class="done-when">five people who are not you have opened it on their own phones.</span>
+        </div>
+      </div>
+      <div class="task">
+        <input type="checkbox" checked data-task="export-compliance" id="i-export-compliance">
+        <div class="task-body">
+          <label class="task-title" for="i-export-compliance">Declare export compliance in the plist<span class="badge need">Needed</span><span class="badge size">~10 min</span></label>
+          <p class="task-why">You use HTTPS, so you are almost certainly exempt &mdash; but
+            it must still be declared. Setting
+            <code>ITSAppUsesNonExemptEncryption</code> stops it asking on every upload.</p><span class="done-when">an upload completes without the encryption question.</span>
+        </div>
+      </div>
+      </div>
+    </details>
+
+    <details class="track">
+      <summary>
+        <span class="track-name">Being findable</span>
+        <span class="track-note">the App Store is a checkout counter, not a discovery engine</span>
+        <span class="track-count">4 left</span>
+      </summary>
+      <div class="track-body">
+      <div class="task">
+        <input type="checkbox" checked data-task="one-sentence" id="i-one-sentence">
+        <div class="task-body">
+          <label class="task-title" for="i-one-sentence">Commit to one sentence and stop rewriting it<span class="badge stop">Blocker</span><span class="badge size">~1 hour</span></label>
+          <p class="task-why"><strong>Answered.</strong> "DumpNotes is an app that lets you quickly capture thoughts, moments, and experiences through text, voice, images, or video, and automatically adds them to your Notion journals." Tagline: <em>Dump anything. Save everything.</em></p><span class="done-when">the same sentence appears in the subtitle and on the landing page.</span>
+        </div>
+      </div>
+      <div class="task">
+        <input type="checkbox" data-task="conversations" id="i-conversations">
+        <div class="task-body">
+          <label class="task-title" for="i-conversations">Have twenty conversations with people who journal<span class="badge need">Needed</span><span class="badge size">~2 weeks</span></label>
+          <p class="task-why">Do not pitch &mdash; ask what breaks in their current setup.
+            If "I take photos all week and can't remember which day was which" comes back
+            unprompted, your listing is written for you. If it never comes up, you learned
+            that while it was still cheap.</p><span class="done-when">twenty, counted. Not "a few".</span>
+        </div>
+      </div>
+      <div class="task">
+        <input type="checkbox" data-task="landing-page" id="i-landing-page">
+        <div class="task-body">
+          <label class="task-title" for="i-landing-page">Put up a landing page with email capture<span class="badge need">Needed</span><span class="badge size">~1 day</span></label>
+          <p class="task-why">The sentence, three screenshots, an email field, and links to
+            privacy, terms and support. Framer is fine; so is a static page on a free host.
+            Put it up <em>while review is pending</em> &mdash; that waiting week is free
+            audience time, and the waitlist is the only list you will have on day one.</p><span class="done-when">the URL is live and has captured at least one email that isn't yours.</span>
+        </div>
+      </div>
+      <div class="task">
+        <input type="checkbox" data-task="screenshots" id="i-screenshots">
+        <div class="task-body">
+          <label class="task-title" for="i-screenshots">Shoot the App Store screenshots<span class="badge need">Needed</span><span class="badge size">~1 day</span></label>
+          <p class="task-why">Screenshots are the entire conversion funnel &mdash; most
+            people never read the description. Lead with the open-days check and photo
+            import: they are the visible half of the claim.</p><span class="done-when">five captioned screenshots uploaded, each showing the product doing the thing the sentence promises.</span>
+        </div>
+      </div>
+      <div class="task">
+        <input type="checkbox" data-task="three-communities" id="i-three-communities">
+        <div class="task-body">
+          <label class="task-title" for="i-three-communities">Join three communities you will actually post in<span class="badge need">Needed</span><span class="badge size">~ongoing</span></label>
+          <p class="task-why">Notion people, journaling people, indie-dev people. Join
+            weeks before launch so you are a member rather than a drive-by advert. Arriving
+            on launch day to a community you have never posted in is the single most common
+            way a first launch goes nowhere.</p><span class="done-when">you have posted something useful and unrelated to your app in all three.</span>
+        </div>
+      </div>
+      </div>
+    </details>
+
+    <details class="track">
+      <summary>
+        <span class="track-name">Keeping it shipping</span>
+        <span class="track-note">so release two is not as hard as release one</span>
+        <span class="track-count">6 left</span>
+      </summary>
+      <div class="track-body">
+      <div class="task">
+        <input type="checkbox" data-task="crash-reporting" id="i-crash-reporting">
+        <div class="task-body">
+          <label class="task-title" for="i-crash-reporting">Add crash reporting<span class="badge need">Needed</span><span class="badge size">~2 hours</span></label>
+          <p class="task-why">You currently learn about bugs because you are the only user.
+            Without this you will be debugging from one-star reviews.</p><span class="done-when">a deliberate test crash shows up in the dashboard.</span>
+        </div>
+      </div>
+      <div class="task">
+        <input type="checkbox" data-task="ci" id="i-ci">
+        <div class="task-body">
+          <label class="task-title" for="i-ci">Wire both suites into CI<span class="badge need">Needed</span><span class="badge size">~half a day</span></label>
+          <p class="task-why">181 Swift and 132 Python tests run in under three seconds
+            combined. That is a gift &mdash; make a red build stop a release rather than a
+            user finding it. The migration suite in particular should gate everything.</p><span class="done-when">a deliberately broken test blocks a merge.</span>
+        </div>
+      </div>
+      <div class="task">
+        <input type="checkbox" data-task="store-fixture" id="i-store-fixture">
+        <div class="task-body">
+          <label class="task-title" for="i-store-fixture">Capture a store fixture from the shipped build<span class="badge need">Needed</span><span class="badge size">~1 hour</span></label>
+          <p class="task-why">Specific to you, and you have lived through why. The moment a
+            version ships, capture a store written by it and check it in &mdash; otherwise the
+            next migration is untested in exactly the way the last one was.</p><span class="done-when">the fixture is committed and MigrationTests opens it.</span>
+        </div>
+      </div>
+      <div class="task">
+        <input type="checkbox" checked data-task="version-numbers" id="i-version-numbers">
+        <div class="task-body">
+          <label class="task-title" for="i-version-numbers">Fix the version scheme and automate the build number<span class="badge need">Needed</span><span class="badge size">~1 hour</span></label>
+          <p class="task-why"><code>MARKETING_VERSION</code> is <code>0.1</code>. You will
+            upload a lot of builds and App Store Connect rejects duplicate build numbers.</p><span class="done-when">two uploads in a row succeed without touching the number by hand.</span>
+        </div>
+      </div>
+      <div class="task">
+        <input type="checkbox" data-task="release-checklist" id="i-release-checklist">
+        <div class="task-body">
+          <label class="task-title" for="i-release-checklist">Write the release checklist down<span class="badge need">Needed</span><span class="badge size">~1 hour</span></label>
+          <p class="task-why">Bump, run both suites, migration-test against a fixture from
+            the <em>previous shipped build</em>, TestFlight, soak, submit, tag. You will skip
+            steps from memory at 1am, and that is exactly when the schema breaks.</p><span class="done-when">it exists in the repo and you have followed it once.</span>
+        </div>
+      </div>
+      <div class="task">
+        <input type="checkbox" checked data-task="feedback-channel" id="i-feedback-channel">
+        <div class="task-body">
+          <label class="task-title" for="i-feedback-channel">Add an in-app "send feedback" that opens a mail composer<span class="badge later">Later</span><span class="badge size">~2 hours</span></label>
+          <p class="task-why">Canny is polished and paid. Ten users do not need a voting
+            system, they need a way to reach you. Fider is self-hostable when you outgrow a
+            list you keep by hand.</p><span class="done-when">a tap opens a pre-addressed draft with the app version in it.</span>
+        </div>
+      </div>
+      <div class="task">
+        <input type="checkbox" data-task="local-notification" id="i-local-notification">
+        <div class="task-body">
+          <label class="task-title" for="i-local-notification">Use a local notification for the inactivity nudge<span class="badge later">Later</span><span class="badge size">~half a day</span></label>
+          <p class="task-why">A "seven days inactive" <em>email</em> means holding an
+            account and tracking usage server-side, undoing the whole no-backend position. A
+            local notification needs no account, knows nothing worth protecting, works
+            offline &mdash; and fires at the hour they usually write.</p><p class="task-why"><strong>Built.</strong> Fires at the hour they usually write,
+            worked out from their own entry history, never in the middle of the night, and
+            never at all for someone who has just installed. Not ticked because the
+            done-condition needs a real device and five idle days.</p><span class="done-when">a nudge arrives after the set idle period on a real device.</span>
+        </div>
+      </div>
+      <div class="task">
+        <input type="checkbox" data-task="security-contact" id="i-security-contact">
+        <div class="task-body">
+          <label class="task-title" for="i-security-contact">Publish a security contact<span class="badge later">Later</span><span class="badge size">~30 min</span></label>
+          <p class="task-why">An address and a stated response time. It costs nothing and
+            is the difference between a researcher emailing you and a researcher tweeting.</p><span class="done-when">it is on the landing page.</span>
+        </div>
+      </div>
+      </div>
+    </details>
+
+    <details class="track">
+      <summary>
+        <span class="track-name">Product</span>
+        <span class="track-note">what makes the demo work</span>
+        <span class="track-count">0 left</span>
+      </summary>
+      <div class="track-body">
+      <div class="task">
+        <input type="checkbox" checked data-task="gap-view" id="i-gap-view">
+        <div class="task-body">
+          <label class="task-title" for="i-gap-view">Show which days are still open<span class="badge shipped">Shipped</span></label>
+          <p class="task-why">Checked against the device <em>and</em> the Notion database,
+            grouped by month over a year, with the colour-coded check status and a retry.
+            Framed as an invitation &mdash; nothing before your first entry counts, and there
+            is no streak.</p><span class="done-when">shipped, verified live against the real Notion database.</span>
+        </div>
+      </div>
+      <div class="task">
+        <input type="checkbox" checked data-task="feel-like-something" id="i-feel-like-something">
+        <div class="task-body">
+          <label class="task-title" for="i-feel-like-something">Make the entry screen feel like something<span class="badge need">Needed</span><span class="badge size">~2 days</span></label>
+          <p class="task-why"><strong>Done.</strong> Poppins throughout, the brand palette, a live waveform while recording, and capture-first with a tab bar.</p><span class="done-when">a tester describes using it with an adjective, unprompted.</span>
+        </div>
+      </div>
+      <div class="task">
+        <input type="checkbox" checked data-task="colour-language" id="i-colour-language">
+        <div class="task-body">
+          <label class="task-title" for="i-colour-language">Align the colour language across the app<span class="badge later">Later</span><span class="badge size">~1 hour</span></label>
+          <p class="task-why">The open-days banner now uses red for failure, but the draft
+            list still uses orange for both "sync failed" and "not synced yet" &mdash; so a
+            failure and a perfectly normal pending state look identical. Red for failed,
+            amber for pending, green for done, everywhere.</p><span class="done-when">no screen uses the same colour for a failure and a normal state.</span>
+        </div>
+      </div>
+      </div>
+    </details>
+
+
+    <h2 class="sec">Reference &mdash; open when you need it</h2>
+
+    <details class="ref">
+      <summary>What DumpNotes is, and how to say it</summary>
+      <div class="ref-body">
+        <p><strong>The sentence:</strong></p>
+        <div class="quote">DumpNotes is an app that lets you quickly capture thoughts, moments, and experiences through text, voice, images, or video, and automatically adds them to your Notion journals.</div>
+        <p>Tagline: <em>Dump anything. Save everything.</em></p>
+        <p>One practical note: the App Store <strong>subtitle is capped at 30 characters</strong>, so that sentence is the opening line of the description, not the subtitle. The subtitle needs its own short phrase.</p>
+
+        <h4>Why the category was hard to name</h4>
+        <p>The journal does not live in this app. It lives in Notion. Products that sit <em>in front of</em> another product are always harder to name than products that are a thing.</p>
+        <p>Drafts solved the same problem in four words &mdash; <em>Where Text Starts</em>. It does not claim to be your writing app, it claims to be the doorway. DumpNotes is the tray.</p>
+
+        <h4>Knowing whether it landed</h4>
+        <p><strong>"So it just goes straight into Notion?"</strong> &mdash; you have them.</p>
+        <p><strong>"Oh, like Day One?"</strong> &mdash; you have lost them. Lead harder on Notion.</p>
+      </div>
+    </details>
+
+    <details class="ref">
+      <summary>Decisions already made</summary>
+      <div class="ref-body">
+        <p><strong>Shape: no backend.</strong> On-device transcription and formatting; Notion OAuth through a thin stateless proxy. Zero per-user cost, no server to run or breach. The open question is only whether Apple's on-device speech is good enough to replace Groq &mdash; testable in an afternoon.</p>
+        <p><strong>Analytics: no.</strong> "Data not collected" stays truthful on the privacy questionnaire, which is one of the strongest things a journaling app can say. Feedback route shipped in its place.</p>
+        <p><strong>Company: later.</strong> One LLC can publish any number of apps, so a studio entity holding several is the normal shape and waiting for revenue is reasonable. Verify before shipping under your own name: converting an Apple individual account to an organization later involves Apple, a D-U-N-S number, and re-signing agreements.</p>
+        <p><strong>Data model: unchanged.</strong> A dump is an <code>EntryDraft</code>, and several per day with their own Notion page has been supported since ADR-006 was revised. The capture-first rebuild needed no migration.</p>
+      </div>
+    </details>
+
+    <details class="ref">
+      <summary>Deliberately not doing</summary>
+      <div class="ref-body">
+        <ul>
+          <li><strong>Paid ads</strong> before you know who converts.</li>
+          <li><strong>Press releases.</strong> No journalist reads them.</li>
+          <li><strong>Product Hunt as an opening move.</strong> It rewards an audience you already have.</li>
+          <li><strong>A second deep integration.</strong> Export answers "I don't use Notion" for most people, and being an integration layer is a commodity position.</li>
+          <li><strong>Rebuilding the landing page a fourth time</strong> because it is more comfortable than talking to people. This is the one that will actually get you.</li>
+        </ul>
+      </div>
+    </details>
+
+    <details class="ref">
+      <summary>The one thing that could still bite</summary>
+      <div class="ref-body">
+        <p><strong>Everything lives on one device.</strong> Export shipped, so the journal can now leave the phone &mdash; but it is a manual action. There is still no account and no cloud copy, so a lost phone with no recent export loses everything.</p>
+        <p>The schema was deliberately kept CloudKit-compatible (ADR-008b), so that door is open whenever you want it.</p>
+      </div>
+    </details>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="big">Most people ship the features and find the foundations later.</div>
+    <div class="m">DUMPNOTES &middot; LAUNCH DOC &middot; docs/launch/</div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var KEY="dumpnotes-launch-ticks-v1";
+  var boxes=[].slice.call(document.querySelectorAll('input[type="checkbox"][data-task]'));
+  function load(){try{var r=localStorage.getItem(KEY);return r?JSON.parse(r):{}}catch(e){return{}}}
+  function save(s){try{localStorage.setItem(KEY,JSON.stringify(s))}catch(e){}}
+  var state=load();
+  function paint(b){var row=b.closest(".task");if(row)row.classList.toggle("is-done",b.checked)}
+  boxes.forEach(function(b){
+    if(b.hasAttribute("checked"))b.checked=true;
+    else if(state[b.dataset.task])b.checked=true;
+    paint(b);
+  });
+  function tally(){
+    var d=boxes.filter(function(b){return b.checked}).length;
+    document.getElementById("done-count").textContent=d;
+    document.getElementById("total-count").textContent=boxes.length;
+    document.getElementById("fill").style.width=boxes.length?(d/boxes.length*100).toFixed(1)+"%":"0%";
+    // keep each track's "N left" honest as things get ticked
+    document.querySelectorAll("details.track").forEach(function(t){
+      var left=[].slice.call(t.querySelectorAll("input[data-task]")).filter(function(b){return !b.checked}).length;
+      var c=t.querySelector(".track-count");
+      if(c)c.textContent=left+" left";
+    });
+  }
+  boxes.forEach(function(b){
+    b.addEventListener("change",function(){
+      if(b.checked)state[b.dataset.task]=true;else delete state[b.dataset.task];
+      save(state);paint(b);tally();
+    });
+  });
+  document.getElementById("reset").addEventListener("click",function(){
+    state={};save(state);
+    boxes.forEach(function(b){b.checked=b.hasAttribute("checked");paint(b)});
+    tally();
+  });
+  tally();
+})();
+</script>
