@@ -516,6 +516,17 @@ struct DraftRow: View {
 /// A journal grouped by date should say the date like it matters. The default section header
 /// is nine-point grey uppercase, which is what you use for "OTHER" in a settings screen.
 ///
+/// **The date is the headline, not the weekday name.** "Wednesday" in 22pt told you almost
+/// nothing while scrolling back through months - you cannot place a Wednesday without the
+/// number, so the number was doing the work from the small grey line underneath. Now it reads
+/// "Sat 8/22/26": weekday for feel, date for fact, one line at one size. The year is always
+/// there because two digits cost nothing and "8/22" is ambiguous the moment a journal is more
+/// than a year old.
+///
+/// "Today" and "Yesterday" keep the line underneath, since those are the two days where the
+/// relative name really is the more useful fact - and today is tinted, so it is findable
+/// without reading.
+///
 /// The hairline under it tapers the way the ripples do in the mark.
 private struct DayHeader: View {
     let day: String
@@ -524,12 +535,14 @@ private struct DayHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             VStack(alignment: .leading, spacing: -1) {
-                Text(weekday)
+                Text(headline)
                     .font(Type.display(22, .bold))
                     .foregroundStyle(Brand.ink)
-                Text(rest)
-                    .font(Type.caption(13))
-                    .foregroundStyle(Brand.muted)
+                if let relative {
+                    Text(relative)
+                        .font(Type.caption(13, .semibold))
+                        .foregroundStyle(isToday ? Brand.violet : Brand.muted)
+                }
             }
             .textCase(nil)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -548,24 +561,32 @@ private struct DayHeader: View {
         .listRowInsets(EdgeInsets(top: 0, leading: 18, bottom: 8, trailing: 16))
     }
 
-    /// "Friday" carries the feel of a day; "August 14, 2026" carries the fact.
-    private var weekday: String {
+    /// "Sat" carries the feel of a day; "8/22/26" carries the fact. Both, once, at the top.
+    ///
+    /// Composed rather than asked for as one format style, because a combined weekday-plus-
+    /// numeric-date style renders as "Sat, 8/22/2026" - a comma and four digits of year to
+    /// say the same thing.
+    private var headline: String {
         guard let calendarDay = CalendarDay(rawValue: day) else { return label }
+        let date = calendarDay.representativeDate()
+        let weekday = date.formatted(.dateTime.weekday(.abbreviated))
+        let numeric = date.formatted(
+            .dateTime.month(.defaultDigits).day().year(.twoDigits)
+        )
+        return "\(weekday) \(numeric)"
+    }
+
+    private var isToday: Bool {
+        CalendarDay(rawValue: day) == CalendarDay.today()
+    }
+
+    /// Only the two days that have a name worth more than their number.
+    private var relative: String? {
+        guard let calendarDay = CalendarDay(rawValue: day) else { return nil }
         let today = CalendarDay.today()
         if calendarDay == today { return "Today" }
         if calendarDay == today.adding(days: -1) { return "Yesterday" }
-        return calendarDay.representativeDate().formatted(.dateTime.weekday(.wide))
-    }
-
-    /// The year is only worth the space when it is not this one.
-    private var rest: String {
-        guard let calendarDay = CalendarDay(rawValue: day) else { return "" }
-        let date = calendarDay.representativeDate()
-        let thisYear = Calendar.current.component(.year, from: Date())
-        let year = Calendar.current.component(.year, from: date)
-        return year == thisYear
-            ? date.formatted(.dateTime.month(.wide).day())
-            : date.formatted(.dateTime.month(.wide).day().year())
+        return nil
     }
 }
 
