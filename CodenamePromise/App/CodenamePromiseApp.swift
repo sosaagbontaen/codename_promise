@@ -2,6 +2,13 @@ import SwiftUI
 
 @main
 struct CodenamePromiseApp: App {
+    init() {
+        // A missing font falls back to Helvetica silently, which reads as a design choice
+        // rather than a build problem. Fail loudly in debug instead.
+        Type.assertAvailable()
+        Chrome.apply()
+    }
+
     @State private var services = AppServices()
     @Environment(\.scenePhase) private var scenePhase
 

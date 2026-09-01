@@ -56,6 +56,28 @@
 	  Connect asks the same question on every single upload. Verify this answer still holds
 	  if any bespoke crypto is ever added.
 	-->
+	<!--
+	  Bundled typefaces. Sora and Manrope are OFL-licensed, and they are the difference
+	  between an app that looks like itself and one that looks like the system defaults with
+	  a tint. Both are variable fonts, so one file per family covers every weight - see
+	  Typography.swift for how a weight is actually selected.
+	-->
+	<!--
+	  The name on the home screen and in the navigation bar. Without this the target name
+	  leaks through, so the icon reads "CodenamePromise".
+
+	  On rename this is the one string to change; every screen reads it via
+	  `Bundle.main.appDisplayName` rather than hard-coding a product name.
+	-->
+	<key>CFBundleDisplayName</key>
+	<string>AutoReflect</string>
+
+	<key>UIAppFonts</key>
+	<array>
+		<string>Sora-Variable.ttf</string>
+		<string>Manrope-Variable.ttf</string>
+	</array>
+
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 

@@ -148,14 +148,14 @@ struct CaptureView: View {
                 // it a text box that happens to be open.
                 Text(controller.entryDate.representativeDate()
                     .formatted(.dateTime.weekday(.wide).month(.wide).day()))
-                    .font(.caption.weight(.semibold))
+                    .font(Type.caption(11.5, 700))
                     .foregroundStyle(Brand.azure)
                     .textCase(.uppercase)
-                    .tracking(0.6)
+                    .tracking(1.1)
                     .padding(.top, 6)
 
                 TextField("Title (optional)", text: $controller.title)
-                    .font(.title2.weight(.semibold))
+                    .font(Type.title(25))
                     .textInputAutocapitalization(.sentences)
 
                 if controller.hasFormatting {
@@ -177,7 +177,7 @@ struct CaptureView: View {
                             .overlay(alignment: .topLeading) {
                                 if controller.text.isEmpty {
                                     Text("What went well today?")
-                                        .font(.body)
+                                        .font(Type.body(17))
                                         .foregroundStyle(.tertiary)
                                         .padding(.top, 8)
                                         .padding(.leading, 5)
@@ -406,7 +406,7 @@ struct CaptureView: View {
                 // to learn it from. The three actions here are the whole app.
                 VStack(spacing: 2) {
                     Image(systemName: "photo.on.rectangle.angled").font(.system(size: 19))
-                    Text("Attach").font(.caption2)
+                    Text("Attach").font(Type.caption(10.5, 600))
                 }
                 .foregroundStyle(Brand.azure)
             }
@@ -454,8 +454,7 @@ struct CaptureView: View {
                         .frame(maxWidth: .infinity)
 
                     Text(elapsedLabel)
-                        .monospacedDigit()
-                        .font(.subheadline.weight(.semibold))
+                        .font(Type.mono(15))
 
                     Image(systemName: "stop.fill").font(.system(size: 14, weight: .bold))
                 }
@@ -519,7 +518,7 @@ struct CaptureView: View {
             } label: {
                 VStack(spacing: 2) {
                     Image(systemName: "sparkles").font(.system(size: 19))
-                    Text("Structure").font(.caption2)
+                    Text("Structure").font(Type.caption(10.5, 600))
                 }
                 // Violet marks what the model touched, here and on the entry list. The
                 // control that invites it wears the same colour.

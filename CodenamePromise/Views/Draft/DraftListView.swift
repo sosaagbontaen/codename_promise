@@ -36,7 +36,7 @@ struct DraftListView: View {
                     ContentUnavailableView("Journal unavailable", systemImage: "exclamationmark.triangle")
                 }
             }
-            .navigationTitle("AutoReflect")
+            .navigationTitle(Bundle.main.appDisplayName)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     if editMode == .active {
@@ -136,6 +136,7 @@ struct DraftListView: View {
                     OpenDaysPrompt(mostRecentOpenDay: mostRecentOpenDay) {
                         showingOpenDays = true
                     }
+                    .listRowBackground(Brand.surface)
                 }
             }
 
@@ -158,6 +159,7 @@ struct DraftListView: View {
                         NavigationLink(value: OpeningDraft(id: draft.id)) {
                             DraftRow(summary: draft, fileStore: files)
                         }
+                        .listRowBackground(Brand.surface)
                         // Swipe the opposite way from delete. Duplicating is the safe action,
                         // so it gets the leading edge where an accidental swipe costs nothing.
                         .swipeActions(edge: .leading) {
@@ -178,6 +180,8 @@ struct DraftListView: View {
             }
 
         }
+        .scrollContentBackground(.hidden)
+        .background(Brand.ground)
         .overlay {
             if drafts.isEmpty {
                 // The call to action lives *inside* the overlay. A button in a List section
@@ -190,16 +194,16 @@ struct DraftListView: View {
 
                     VStack(spacing: 6) {
                         Text("Nothing captured yet")
-                            .font(.title3.weight(.semibold))
+                            .font(Type.title(21))
                         Text("Capture first. Organize later. Sync whenever.")
-                            .font(.subheadline)
+                            .font(Type.body(15))
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                     }
 
                     Button(action: createDraft) {
                         Text("Start today's entry")
-                            .font(.subheadline.weight(.semibold))
+                            .font(Type.label(15.5, 700))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 22)
                             .frame(height: 46)
@@ -352,12 +356,12 @@ struct DraftRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(summary.title)
-                .font(.body.weight(.medium))
+                .font(Type.label(16.5, 600))
                 .lineLimit(1)
 
             if !summary.preview.isEmpty {
                 Text(summary.preview)
-                    .font(.footnote)
+                    .font(Type.body(14))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
@@ -391,9 +395,9 @@ struct DraftRow: View {
                 }
                 syncBadge
             }
-            .font(.caption2)
+            .font(Type.caption(11.5, 600))
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
     }
 
     /// Green when the destination holds what you see; amber when it doesn't yet.
@@ -476,10 +480,10 @@ private struct DayHeader: View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(weekday)
-                    .font(.title3.weight(.semibold))
+                    .font(Type.title(20))
                     .foregroundStyle(.primary)
                 Text(rest)
-                    .font(.subheadline)
+                    .font(Type.caption(13))
                     .foregroundStyle(.secondary)
                 Spacer()
             }

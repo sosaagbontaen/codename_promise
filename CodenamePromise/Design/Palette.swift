@@ -35,6 +35,17 @@ enum Brand {
         colors: [azure, violet], startPoint: .topLeading, endPoint: .bottomTrailing
     )
 
+    /// The ground everything sits on.
+    ///
+    /// `systemGroupedBackground` is a neutral grey, and it is the single most recognisable
+    /// signature of a stock iOS app — every settings screen ever built sits on it. This is
+    /// the same value pulled a few degrees toward the mark's azure: still recedes, no longer
+    /// anonymous.
+    static let ground = Color(light: 0xF3F5FA, dark: 0x0D111C)
+
+    /// Cards and sheets on top of it.
+    static let surface = Color(light: 0xFFFFFF, dark: 0x161C2A)
+
     // MARK: Status — exactly three
 
     /// It reached the destination.
@@ -79,8 +90,8 @@ extension View {
     /// feel unhurried instead of cramped.
     func writingSurface(minHeight: CGFloat = 320) -> some View {
         self
-            .font(.system(size: 17))
-            .lineSpacing(5)
+            .font(Type.body(17))
+            .lineSpacing(6)
             .scrollContentBackground(.hidden)
             .frame(minHeight: minHeight)
     }
