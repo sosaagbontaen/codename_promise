@@ -148,7 +148,7 @@ struct DraftListView: View {
             if let loadError {
                 Section {
                     Label(loadError, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Brand.failed)
                 }
             }
 
@@ -166,7 +166,7 @@ struct DraftListView: View {
                             } label: {
                                 Label("Duplicate", systemImage: "doc.on.doc")
                             }
-                            .tint(.indigo)
+                            .tint(Brand.violet)
                         }
                     }
                     .onDelete { offsets in
@@ -364,7 +364,7 @@ struct DraftRow: View {
                 }
                 if summary.isFormatted {
                     // Purple is the app's mark for anything the AI touched.
-                    badge("sparkles", "formatted", .purple)
+                    badge("sparkles", "formatted", Brand.ai)
                 }
                 syncBadge
             }
@@ -382,13 +382,13 @@ struct DraftRow: View {
         case .syncing:
             badge("arrow.up.circle", "syncing", .secondary)
         case .failed:
-            badge("exclamationmark.icloud", "sync failed", .orange)
+            badge("exclamationmark.icloud", "sync failed", Brand.failed)
         case .synced:
-            badge("checkmark.icloud.fill", "synced", .green)
+            badge("checkmark.icloud.fill", "synced", Brand.reached)
         case .unsyncedChanges:
-            badge("arrow.triangle.2.circlepath", "unsynced changes", .orange)
+            badge("arrow.triangle.2.circlepath", "unsynced changes", Brand.waiting)
         case .notSynced:
-            badge("icloud.slash", "not synced", .orange)
+            badge("icloud.slash", "not synced", Brand.waiting)
         }
     }
 

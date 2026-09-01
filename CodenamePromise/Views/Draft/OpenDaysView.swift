@@ -24,9 +24,9 @@ enum DestinationCheck: Equatable {
     var tint: Color {
         switch self {
         case .notConnected: .secondary
-        case .checking: .orange
-        case .included: .green
-        case .failed: .red
+        case .checking: Brand.waiting
+        case .included: Brand.reached
+        case .failed: Brand.failed
         }
     }
 
@@ -333,10 +333,12 @@ struct OpenDaysView: View {
                 let remote = try await connection.entryDays(from: from, through: through)
                 apply(remote)
                 check = .included
-            } catch {
+            } catch let error {
                 // A failure here is never an error page. The local answer stands; the banner
                 // says what it is worth, and offers to try again.
-                check = Self.checkState(for: error)
+                let state = Self.checkState(for: error)
+                if case .failed = state { Haptics.failed() }
+                check = state
             }
         } catch {
             loadError = error.localizedDescription
@@ -364,6 +366,7 @@ struct OpenDaysView: View {
     private func start(_ day: CalendarDay) {
         do {
             let draft = try store.createDraft(entryDate: day)
+            Haptics.picked()
             dismiss()
             onStartDay(draft)
         } catch {
@@ -392,7 +395,7 @@ struct OpenDaysPrompt: View {
             HStack(spacing: 10) {
                 Image(systemName: mostRecentOpenDay == nil
                       ? "checkmark.circle.fill" : "calendar.badge.plus")
-                    .foregroundStyle(mostRecentOpenDay == nil ? Color.green : Color.accentColor)
+                    .foregroundStyle(mostRecentOpenDay == nil ? Brand.reached : Brand.azure)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
                         .font(.subheadline.weight(.medium))

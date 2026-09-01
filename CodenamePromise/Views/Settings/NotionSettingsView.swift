@@ -66,7 +66,7 @@ struct NotionSettingsView: View {
             if case .failed(let message) = coordinator.phase {
                 Section {
                     Label(message, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Brand.failed)
                     Button("Dismiss") { coordinator.dismissError() }
                 }
             }
@@ -164,7 +164,7 @@ struct NotionSettingsView: View {
             if serverSaved {
                 Label("Saved — reopen the app to apply.", systemImage: "checkmark.circle")
                     .font(.footnote)
-                    .foregroundStyle(.green)
+                    .foregroundStyle(Brand.reached)
             }
         } header: {
             Text("Server")
@@ -187,7 +187,7 @@ struct NotionSettingsView: View {
                         coordinator.status.workspaceName ?? "Connected",
                         systemImage: "checkmark.circle.fill"
                     )
-                    .foregroundStyle(.green)
+                    .foregroundStyle(Brand.reached)
                     Spacer()
                 }
             } else {

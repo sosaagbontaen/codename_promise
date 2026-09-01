@@ -48,7 +48,7 @@ struct ExportView: View {
 
                     case .failed(let message):
                         Label(message, systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Brand.failed)
                         Button("Try again") { Task { await run() } }
                     }
                 } header: {
@@ -84,7 +84,7 @@ struct ExportView: View {
                 systemImage: "exclamationmark.triangle.fill"
             )
             .font(.footnote)
-            .foregroundStyle(.orange)
+            .foregroundStyle(Brand.waiting)
         }
     }
 

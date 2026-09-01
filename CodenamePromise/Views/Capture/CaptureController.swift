@@ -254,9 +254,13 @@ final class CaptureController {
                 fileStore: fileStore
             )
             saveState = .saved
+            // The recording is on disk before transcription is even attempted (ADR-002).
+            // That is the moment worth confirming, not the transcript arriving later.
+            Haptics.landed()
             return capture
         } catch {
             saveState = .failed(error.localizedDescription)
+            Haptics.failed()
             return nil
         }
     }
@@ -340,6 +344,7 @@ final class CaptureController {
         do {
             let moved = try store.moveMedia(ids: ids, from: draft, to: destination)
             saveState = .saved
+            if moved > 0 { Haptics.committed() }
             return moved
         } catch {
             saveState = .failed(error.localizedDescription)

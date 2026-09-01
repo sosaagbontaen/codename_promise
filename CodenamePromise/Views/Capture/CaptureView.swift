@@ -135,14 +135,17 @@ struct CaptureView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 TextField("Title (optional)", text: $controller.title)
-                    .font(.title3.weight(.semibold))
+                    .font(.title2.weight(.semibold))
                     .textInputAutocapitalization(.sentences)
+                    .padding(.top, 4)
 
                 if controller.hasFormatting {
                     Picker("View", selection: $mode) {
                         ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
                     .pickerStyle(.segmented)
+                    .padding(.bottom, 2)
+                    .onChange(of: mode) { Haptics.picked() }
                 }
 
                 if mode == .formatted, controller.hasFormatting {
@@ -351,15 +354,21 @@ struct CaptureView: View {
                 maxSelectionCount: nil,
                 matching: .any(of: [.images, .videos])
             ) {
-                Image(systemName: "photo.on.rectangle.angled")
-                    .font(.title3)
+                // Labelled, because an icon alone has to be learned and there is nothing
+                // to learn it from. The three actions here are the whole app.
+                VStack(spacing: 2) {
+                    Image(systemName: "photo.on.rectangle.angled").font(.system(size: 19))
+                    Text("Attach").font(.caption2)
+                }
+                .foregroundStyle(Brand.azure)
             }
 
             formatButton
             dictationButton
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 18)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
         .background(.bar)
     }
 
@@ -367,9 +376,12 @@ struct CaptureView: View {
     private var saveStateLabel: some View {
         switch controller.saveState {
         case .saved:
+            // Reassurance, not an announcement. It is true almost always, so it should sit
+            // quietly rather than compete with the words being written.
             Label("Saved", systemImage: "checkmark.circle.fill")
                 .font(.footnote)
-                .foregroundStyle(.green)
+                .foregroundStyle(Brand.reached)
+                .transition(.opacity)
         case .pending:
             Label("Saving…", systemImage: "ellipsis.circle")
                 .font(.footnote)
@@ -378,7 +390,7 @@ struct CaptureView: View {
             Label(message, systemImage: "exclamationmark.triangle.fill")
                 .font(.footnote)
                 .lineLimit(1)
-                .foregroundStyle(.orange)
+                .foregroundStyle(Brand.failed)
         }
     }
 
@@ -387,15 +399,19 @@ struct CaptureView: View {
         switch recorder.state {
         case .recording:
             Button {
+                Haptics.committed()
                 stopRecording()
             } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "stop.circle.fill")
-                    Text(elapsedLabel).monospacedDigit()
+                HStack(spacing: 7) {
+                    Image(systemName: "stop.fill").font(.system(size: 15, weight: .bold))
+                    Text(elapsedLabel).monospacedDigit().font(.subheadline.weight(.semibold))
                 }
-                .font(.title3)
-                .foregroundStyle(.red)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+                .frame(height: 46)
+                .background(Brand.failed, in: Capsule())
             }
+            .accessibilityLabel("Stop dictation")
         case .denied:
             // Actionable rather than merely informative — the fix lives in iOS Settings.
             Button {
@@ -405,7 +421,7 @@ struct CaptureView: View {
             } label: {
                 Label("Mic off", systemImage: "mic.slash")
                     .font(.footnote)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Brand.failed)
             }
         case .failed(let message):
             // Previously fell into `default`, which drew the mic button again — so a failure
@@ -416,14 +432,24 @@ struct CaptureView: View {
                 Label(message, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .lineLimit(2)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Brand.failed)
             }
         case .idle:
             Button {
+                Haptics.committed()
                 Task { await recorder.start() }
             } label: {
-                Image(systemName: "mic.circle.fill").font(.title3)
+                // The one filled control in the bar. Talking is the primary action of a
+                // voice-first journal, and until now it looked exactly as important as
+                // attaching a photo.
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 46, height: 46)
+                    .background(Brand.gradient, in: Circle())
+                    .shadow(color: Brand.violet.opacity(0.28), radius: 8, y: 3)
             }
+            .accessibilityLabel("Start dictation")
         }
     }
 
@@ -435,7 +461,13 @@ struct CaptureView: View {
             Button {
                 formatOrConfirm()
             } label: {
-                Image(systemName: "sparkles").font(.title3)
+                VStack(spacing: 2) {
+                    Image(systemName: "sparkles").font(.system(size: 19))
+                    Text("Structure").font(.caption2)
+                }
+                // Violet marks what the model touched, here and on the entry list. The
+                // control that invites it wears the same colour.
+                .foregroundStyle(Brand.ai)
             }
             .disabled(controller.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
