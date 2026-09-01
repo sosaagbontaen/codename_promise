@@ -39,16 +39,19 @@ enum JournalFont: String, CaseIterable, Identifiable {
         case .rounded: "Rounded"
         case .sans: "Sans"
         case .serif: "Serif"
-        case .book: "Book"
+        case .book: "Literata"
         }
     }
 
+    /// Says what the typeface *is*. These used to be evocative - "warm, and closest to the
+    /// mark" - which read as advice about journaling rather than a description of a font, and
+    /// was a large part of why the setting did not look like a font setting at all.
     var note: String {
         switch self {
-        case .rounded: "Warm, and closest to the mark"
-        case .sans: "Plain and unobtrusive"
-        case .serif: "Apple's reading serif"
-        case .book: "The bundled one"
+        case .rounded: "SF Rounded"
+        case .sans: "SF Pro"
+        case .serif: "New York"
+        case .book: "The previous default"
         }
     }
 

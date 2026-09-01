@@ -134,14 +134,21 @@ struct NotionSettingsView: View {
                 } label: {
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 5) {
+                                Text(choice.label)
+                                    .font(Type.label(15, .semibold))
+                                    .foregroundStyle(Brand.ink)
+                                Text(choice.note)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            // The sample sits under the name and at reading size, because the
+                            // point of showing it is the thing a name cannot tell you.
                             Text("The evening was warmer than we expected.")
                                 .font(choice.font(size: 16, weight: 400))
-                                .foregroundStyle(Brand.ink)
+                                .foregroundStyle(Brand.muted)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.8)
-                            Text("\(choice.label) \u{00B7} \(choice.note)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
                         }
                         Spacer(minLength: 8)
                         Image(systemName: journalFont == choice
@@ -153,9 +160,12 @@ struct NotionSettingsView: View {
                 .buttonStyle(.row)
             }
         } header: {
-            Text("Your writing")
+            // Names the control, not the reason for it. "Your writing" was the scope rule
+            // wearing a section header: accurate about what the setting touches and silent
+            // about what it does, so it read as a heading for settings *about* entries.
+            Text("Journal font")
         } footer: {
-            Text("Only your own words change \u{2014} titles, entries, previews. The rest of the app stays as it is.")
+            Text("Sets the type your entries are shown in \u{2014} titles, text and previews. Buttons and labels keep the system font.")
         }
 
         Section {
