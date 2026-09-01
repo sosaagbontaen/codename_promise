@@ -33,84 +33,22 @@ enum RowDensity: String, CaseIterable, Identifiable {
     var next: RowDensity { self == .comfortable ? .compact : .comfortable }
 }
 
-/// An entry at a glance: title, when, and what is in it.
+/// An entry collapsed to its label.
 ///
-/// Deliberately one line of content plus one of metadata. Anything more and it stops being
-/// the answer to "show me everything".
+/// Literally the card's bottom strip with nothing above it — same view, same icon, same
+/// facts in the same places. That is the whole idea of the density switch: collapsing an
+/// entry drops its *body*, not its identity, so nothing moves when you toggle and there is
+/// no second row design to keep in step with the first.
+///
+/// It used to be its own layout - title, a line of little count chips, a truncated preview,
+/// a stacked time and status dot - which meant two rows that had to agree by hand and drifted
+/// every time the card changed.
 struct CompactDraftRow: View {
     let summary: DraftSummary
 
     var body: some View {
         EntryCard {
-            row.padding(.horizontal, 13).padding(.vertical, 9)
-        }
-    }
-
-    private var row: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
-                // Same rule as the comfortable row: the title is the user's, so it is set
-                // in their voice even when the row is a single line.
-                Text(summary.title)
-                    .font(Type.journal(15.5, 600))
-                    .foregroundStyle(Brand.ink)
-                    .lineLimit(1)
-
-                HStack(spacing: 8) {
-                    if summary.mediaCount > 0 {
-                        chip("photo", "\(summary.mediaCount)")
-                    }
-                    if summary.pendingRecordings > 0 {
-                        chip("waveform", "\(summary.pendingRecordings)")
-                    }
-                    if summary.isFormatted {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 9))
-                            .foregroundStyle(Brand.ai)
-                    }
-                    if !summary.preview.isEmpty {
-                        Text(summary.preview)
-                            .font(Type.journal(12))
-                            .foregroundStyle(Brand.muted)
-                            .lineLimit(1)
-                    }
-                }
-            }
-
-            Spacer(minLength: 6)
-
-            VStack(alignment: .trailing, spacing: 4) {
-                Text(summary.edited)
-                    .font(Type.caption(11))
-                    .foregroundStyle(Brand.muted)
-                // Status as a dot, not a sentence: at this density a word would be most of
-                // the row.
-                Circle()
-                    .fill(dotTint)
-                    .frame(width: 6, height: 6)
-                    .opacity(summary.sync == .hidden ? 0 : 1)
-            }
-        }
-        .padding(.vertical, 7)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
-    }
-
-    private func chip(_ symbol: String, _ text: String) -> some View {
-        HStack(spacing: 2.5) {
-            Image(systemName: symbol).font(.system(size: 9))
-            Text(text)
-        }
-        .font(Type.caption(10.5, .medium))
-        .foregroundStyle(Brand.muted)
-    }
-
-    private var dotTint: Color {
-        switch summary.sync {
-        case .failed: Brand.failed
-        case .synced: Brand.reached
-        case .syncing: Brand.violet
-        default: Brand.muted.opacity(0.5)
+            EntryTitleBar(summary: summary, showsTopEdge: false)
         }
     }
 }
