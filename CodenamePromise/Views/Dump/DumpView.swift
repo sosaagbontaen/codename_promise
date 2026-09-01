@@ -32,7 +32,7 @@ struct DumpView: View {
     @State private var appendTo: NotionPage?
     @State private var connection: NotionConnectionStatus?
     @State private var flight: [DumpFlight.Piece] = []
-    @State private var flying = false
+    @State private var flightPhase: DumpFlight.Phase = .idle
     @State private var status: Status = .composing
     @FocusState private var writing: Bool
 
@@ -75,16 +75,7 @@ struct DumpView: View {
             .containerRelativeFrame(.vertical) { height, _ in height }
         }
         .background(Brand.ground)
-        .overlay {
-            GeometryReader { geo in
-                DumpFlight(
-                    pieces: flight,
-                    // The tray in the tab bar, just below this view's bounds.
-                    destination: CGPoint(x: geo.size.width / 2, y: geo.size.height + 34),
-                    flying: $flying
-                )
-            }
-        }
+        .overlay { flightOverlay }
         .scrollDismissesKeyboard(.interactively)
         // iOS gives a plain TextEditor no way out: with no return key to dismiss and no
         // accessory, the only exit is tapping some arbitrary blank area.
@@ -244,6 +235,19 @@ struct DumpView: View {
         .buttonStyle(.pressable)
         .disabled(recorder.isRecording)
         .opacity(recorder.isRecording ? 0.4 : 1)
+    }
+
+    /// Sits just above the bottom edge rather than down in the tab bar, so the impact is
+    /// actually on screen - a shockwave clipped by the view's bounds is a shockwave nobody
+    /// sees.
+    private var flightOverlay: some View {
+        GeometryReader { geo in
+            DumpFlight(
+                pieces: flight,
+                destination: CGPoint(x: geo.size.width / 2, y: geo.size.height - 18),
+                phase: flightPhase
+            )
+        }
     }
 
     // MARK: - Destination
@@ -467,13 +471,17 @@ struct DumpView: View {
             writing = false
             status = .composing
 
-            withAnimation { flying = true }
+            flightPhase = .falling
             Task {
-                // Long enough to read as an event, short enough that dumping twice never
-                // feels like waiting.
-                try? await Task.sleep(for: .milliseconds(420))
+                // The plunge, then the hit. The haptic fires with the impact frame, not with
+                // the button press, because that is the moment being described.
+                try? await Task.sleep(for: .milliseconds(300))
+                Haptics.thud()
+                flightPhase = .impact
+
+                try? await Task.sleep(for: .milliseconds(320))
                 flight = []
-                flying = false
+                flightPhase = .idle
                 syncStagedCount()
                 onDumped(created)
             }

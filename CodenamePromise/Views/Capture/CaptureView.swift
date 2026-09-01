@@ -50,6 +50,7 @@ struct CaptureView: View {
         VStack(spacing: 0) {
             editor
             syncProgressBar
+            actionPanel
         }
         .navigationTitle(dayLabel)
         .navigationBarTitleDisplayMode(.inline)
@@ -68,11 +69,7 @@ struct CaptureView: View {
                     Label("Change day", systemImage: "calendar")
                 }
             }
-            // The save state is the one thing that must stay visible: not knowing whether
-            // your words are safe is the anxiety this project exists to remove (ADR-001).
-            ToolbarItem(placement: .topBarTrailing) {
-                saveStateLabel
-            }
+
         }
         .confirmationDialog(
             "Replace your edits?",
@@ -199,9 +196,6 @@ struct CaptureView: View {
                     mediaStrip
                 }
 
-                actionRow
-                destinationRow
-                sendButton
 
                 // Everything below is *about* the entry rather than part of it, so it sits
                 // together on its own ground instead of trailing off as loose grey text.
@@ -385,43 +379,61 @@ struct CaptureView: View {
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
     }
 
-    // MARK: - Actions, inline
+    // MARK: - The action panel
 
-    /// The same three circles as the Dump screen, in the same confetti colours.
+    /// Everything you can do to this entry, pinned and visible without scrolling.
     ///
-    /// They used to sit in a second bottom bar stacked on top of the tab bar - two rows of
-    /// chrome on a screen whose whole job is a page of text. Inline they cost nothing while
-    /// you are reading and are where your thumb already is when you are adding.
-    private var actionRow: some View {
-        HStack(spacing: 14) {
-            PhotosPicker(
-                selection: $photoSelections, maxSelectionCount: nil,
-                matching: .any(of: [.images, .videos])
-            ) {
-                ActionCircle(title: "Attach", symbol: "photo.on.rectangle.angled", tint: Brand.Mode.photo)
+    /// This has now been wrong in both directions. It started as a second bottom bar stacked
+    /// on the tab bar - two rows of chrome. Moving it inline fixed that and broke something
+    /// worse: on an entry with any text at all, attaching media, choosing a destination and
+    /// sending were all below the fold, which is the same as not existing.
+    ///
+    /// One panel, pinned. Status and destination on a single line, actions and the primary
+    /// on the next. Two lines rather than two bars, and nothing important is ever a scroll
+    /// away.
+    private var actionPanel: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                saveStateLabel
+                Spacer(minLength: 8)
+                destinationButton
             }
-            .disabled(recorder.isRecording)
 
-            Button {
-                Haptics.committed()
-                Task { await recorder.start() }
-            } label: {
-                ActionCircle(title: "Voice", symbol: "mic.fill", tint: Brand.Mode.voice)
-            }
-            .buttonStyle(.pressable)
-            .disabled(recorder.isRecording)
+            HStack(spacing: 10) {
+                PhotosPicker(
+                    selection: $photoSelections, maxSelectionCount: nil,
+                    matching: .any(of: [.images, .videos])
+                ) {
+                    CompactAction(symbol: "photo.on.rectangle.angled", tint: Brand.Mode.photo)
+                }
+                .disabled(recorder.isRecording)
 
-            Button {
-                formatOrConfirm()
-            } label: {
-                ActionCircle(title: "Structure", symbol: "sparkles", tint: Brand.ai)
+                Button {
+                    Haptics.committed()
+                    Task { await recorder.start() }
+                } label: {
+                    CompactAction(symbol: "mic.fill", tint: Brand.Mode.voice)
+                }
+                .buttonStyle(.pressable)
+                .disabled(recorder.isRecording)
+
+                Button {
+                    formatOrConfirm()
+                } label: {
+                    CompactAction(symbol: "sparkles", tint: Brand.ai)
+                }
+                .buttonStyle(.pressable)
+                .disabled(controller.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                sendButton
             }
-            .buttonStyle(.pressable)
-            .disabled(controller.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .overlay { if recorder.isRecording { recordingCapsule } }
+            .animation(.easeOut(duration: 0.18), value: recorder.isRecording)
         }
-        .opacity(recorder.isRecording ? 0.3 : 1)
-        .overlay { if recorder.isRecording { recordingCapsule } }
-        .animation(.easeOut(duration: 0.18), value: recorder.isRecording)
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+        .background(.bar)
     }
 
     private var recordingCapsule: some View {
@@ -431,58 +443,40 @@ struct CaptureView: View {
         } label: {
             HStack(spacing: 12) {
                 LiveWaveform(levels: recorder.levels, tint: .white)
-                    .frame(height: 22).frame(maxWidth: .infinity)
-                Text(elapsedLabel).font(Type.mono(14)).foregroundStyle(.white)
+                    .frame(height: 20).frame(maxWidth: .infinity)
+                Text(elapsedLabel).font(Type.mono(13)).foregroundStyle(.white)
                 Image(systemName: "stop.fill")
-                    .font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                    .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
             }
-            .padding(.horizontal, 16)
-            .frame(height: 48)
+            .padding(.horizontal, 14)
+            .frame(height: 44)
             .background(Brand.gradient, in: Capsule())
         }
         .buttonStyle(.plain)
     }
 
-    /// Where this entry goes, stated plainly instead of hidden behind an arrow.
-    ///
-    /// The old menu changed shape depending on whether the entry already owned a page,
-    /// which was correct but invisible - you had to open it to find out what it would do.
-    private var destinationRow: some View {
+    /// Where this entry goes, on the same line as its save state so both are read at once.
+    private var destinationButton: some View {
         Button {
             showingEntryPicker = true
         } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: 5) {
                 Image(systemName: controller.appendsToExistingPage ? "text.append" : "doc.badge.plus")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Brand.violet)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(destinationTitle)
-                        .font(Type.caption(13, .semibold))
-                        .foregroundStyle(Brand.ink).lineLimit(1)
-                    Text(destinationDetail)
-                        .font(Type.caption(11.5)).foregroundStyle(Brand.muted).lineLimit(1)
-                }
-                Spacer(minLength: 6)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(Brand.muted)
+                    .font(.system(size: 11, weight: .semibold))
+                Text(destinationTitle).lineLimit(1)
+                Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
             }
-            .padding(.horizontal, 14)
-            .frame(height: 52)
-            .background(Brand.surface, in: RoundedRectangle(cornerRadius: 14))
+            .font(Type.caption(12, .semibold))
+            .foregroundStyle(Brand.violet)
         }
         .buttonStyle(.pressable)
         .disabled(services.connectionService == nil)
     }
 
     private var destinationTitle: String {
+        if services.connectionService == nil { return "Not connected" }
         if controller.appendsToExistingPage { return controller.syncActionLabel }
-        return controller.isLinkedToPage ? "Its own page in Notion" : "A new page in Notion"
-    }
-
-    private var destinationDetail: String {
-        if services.connectionService == nil { return "Notion isn\u{2019}t connected" }
-        if controller.isLinkedToPage { return "Sending again updates that page" }
-        return "Tap to add to an existing page instead"
+        return controller.isLinkedToPage ? "Its Notion page" : "New Notion page"
     }
 
     /// One obvious primary action, where a small arrow in the toolbar used to open a menu.
@@ -495,17 +489,18 @@ struct CaptureView: View {
                     ProgressView().tint(.white)
                 } else {
                     Label(sendTitle, systemImage: canSend ? "arrow.up" : "checkmark")
-                        .font(Type.label(16, .semibold))
+                        .font(Type.label(14.5, .semibold))
+                        .lineLimit(1)
                 }
             }
             .foregroundStyle(canSend ? .white : Brand.muted)
-            .frame(maxWidth: .infinity).frame(height: 52)
+            .frame(maxWidth: .infinity).frame(height: 46)
             .background(
                 canSend ? AnyShapeStyle(Brand.gradient)
                         : AnyShapeStyle(Brand.muted.opacity(0.16)),
-                in: RoundedRectangle(cornerRadius: 15)
+                in: RoundedRectangle(cornerRadius: 13)
             )
-            .shadow(color: Brand.violet.opacity(canSend ? 0.32 : 0), radius: 14, y: 6)
+            .shadow(color: Brand.violet.opacity(canSend ? 0.3 : 0), radius: 12, y: 5)
         }
         .buttonStyle(.pressablePrimary)
         .disabled(!canSend)
@@ -519,9 +514,9 @@ struct CaptureView: View {
     }
 
     private var sendTitle: String {
-        if !controller.needsSync && controller.isLinkedToPage { return "Up to date in Notion" }
-        if controller.appendsToExistingPage { return controller.syncActionLabel }
-        return controller.isLinkedToPage ? "Update its Notion page" : "Send to Notion"
+        if !controller.needsSync && controller.isLinkedToPage { return "Up to date" }
+        if controller.appendsToExistingPage { return "Add to page" }
+        return controller.isLinkedToPage ? "Update page" : "Send to Notion"
     }
 
     // MARK: - Footer
@@ -529,25 +524,39 @@ struct CaptureView: View {
 
 
     @ViewBuilder
+    /// The one always-visible answer to "are my words safe".
+    ///
+    /// It used to be a bare green tick in the toolbar, which is not an answer - a checkmark
+    /// alone could mean saved, synced, or done, and it meant only the first. It carries its
+    /// word now, and it reports the queue too: a recording that has not been transcribed yet
+    /// is the state people most need reassuring about, and it was previously described only
+    /// below the fold.
     private var saveStateLabel: some View {
-        switch controller.saveState {
-        case .saved:
-            // Reassurance, not an announcement. It is true almost always, so it should sit
-            // quietly rather than compete with the words being written.
-            Label("Saved", systemImage: "checkmark.circle.fill")
-                .font(.footnote)
-                .foregroundStyle(Brand.reached)
-                .transition(.opacity)
-        case .pending:
-            Label("Saving…", systemImage: "ellipsis.circle")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        case .failed(let message):
-            Label(message, systemImage: "exclamationmark.triangle.fill")
-                .font(.footnote)
+        Group {
+            switch controller.saveState {
+            case .failed(let message):
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(Brand.failed)
+                    .lineLimit(1)
+            case .pending:
+                Label("Saving\u{2026}", systemImage: "ellipsis.circle")
+                    .foregroundStyle(Brand.muted)
+            case .saved where controller.pendingTranscriptionCount > 0:
+                // Saved, but with words still waiting to become text. Say both.
+                Label(
+                    "Saved \u{00B7} \(controller.pendingTranscriptionCount) to transcribe",
+                    systemImage: "waveform"
+                )
+                .foregroundStyle(Brand.waiting)
                 .lineLimit(1)
-                .foregroundStyle(Brand.failed)
+            case .saved:
+                Label("Saved", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(Brand.reached)
+            }
         }
+        .font(Type.caption(12, .semibold))
+        .transition(.opacity)
+        .animation(.easeOut(duration: 0.2), value: controller.pendingTranscriptionCount)
     }
 
 
@@ -737,6 +746,21 @@ struct CaptureView: View {
 ///
 /// A view rather than a method on `CaptureView`: `PhotosPicker`'s label closure is
 /// nonisolated and cannot call a main-actor member.
+/// A compact action for the pinned panel: icon only, because the panel has to carry three
+/// of them plus the primary on one line.
+struct CompactAction: View {
+    let symbol: String
+    let tint: Color
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(tint)
+            .frame(width: 46, height: 46)
+            .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 13))
+    }
+}
+
 struct ActionCircle: View {
     let title: String
     let symbol: String

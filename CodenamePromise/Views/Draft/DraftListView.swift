@@ -40,7 +40,7 @@ struct DraftListView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .principal) { Wordmark(size: 19) }
+                ToolbarItem(placement: .principal) { Wordmark(size: 17) }
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

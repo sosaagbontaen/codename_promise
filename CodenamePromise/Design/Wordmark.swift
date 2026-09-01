@@ -21,6 +21,13 @@ struct Wordmark: View {
         }
         .font(Type.display(size, .bold))
         .tracking(-0.3)
+        .lineLimit(1)
+        // A toolbar squeezes its principal item between the leading and trailing groups and
+        // will happily truncate it - "Du...Not..." - rather than let it claim the width it
+        // needs. fixedSize takes the intrinsic width; the scale factor is the fallback when
+        // even that will not fit, so it shrinks instead of losing letters.
+        .fixedSize(horizontal: true, vertical: false)
+        .minimumScaleFactor(0.75)
         .accessibilityElement()
         .accessibilityLabel(Bundle.main.appDisplayName)
     }

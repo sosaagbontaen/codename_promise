@@ -26,6 +26,19 @@ enum Haptics {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 
+    /// The dump landing. Heavier than anything else in the app on purpose: this is the one
+    /// gesture the product is named after, and it should be the one you can feel through the
+    /// table. Followed by a lighter tail so it reads as an impact with a settle rather than
+    /// a single buzz.
+    static func thud() {
+        let heavy = UIImpactFeedbackGenerator(style: .heavy)
+        heavy.prepare()
+        heavy.impactOccurred(intensity: 1.0)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.09) {
+            UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.7)
+        }
+    }
+
     /// Light acknowledgement for a selection that isn't destructive.
     static func picked() {
         UISelectionFeedbackGenerator().selectionChanged()
