@@ -375,6 +375,22 @@ struct CaptureView: View {
 
     private var footer: some View {
         HStack(spacing: 16) {
+            if recorder.isRecording {
+                dictationButton
+            } else {
+                idleFooter
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
+        .background(.bar)
+        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: recorder.isRecording)
+    }
+
+    @ViewBuilder
+    private var idleFooter: some View {
+        Group {
             saveStateLabel
 
             Spacer()
@@ -398,10 +414,6 @@ struct CaptureView: View {
             formatButton
             dictationButton
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 10)
-        .padding(.bottom, 6)
-        .background(.bar)
     }
 
     @ViewBuilder
@@ -434,16 +446,28 @@ struct CaptureView: View {
                 Haptics.committed()
                 stopRecording()
             } label: {
-                HStack(spacing: 7) {
-                    Image(systemName: "stop.fill").font(.system(size: 15, weight: .bold))
-                    Text(elapsedLabel).monospacedDigit().font(.subheadline.weight(.semibold))
+                HStack(spacing: 12) {
+                    // Live levels, not a spinner: the only question anyone has while
+                    // talking into a phone is whether it can hear them.
+                    LiveWaveform(levels: recorder.levels, tint: .white)
+                        .frame(height: 26)
+                        .frame(maxWidth: .infinity)
+
+                    Text(elapsedLabel)
+                        .monospacedDigit()
+                        .font(.subheadline.weight(.semibold))
+
+                    Image(systemName: "stop.fill").font(.system(size: 14, weight: .bold))
                 }
                 .foregroundStyle(.white)
-                .padding(.horizontal, 16)
-                .frame(height: 46)
-                .background(Brand.failed, in: Capsule())
+                .padding(.horizontal, 18)
+                .frame(height: 52)
+                .frame(maxWidth: .infinity)
+                .background(Brand.gradient, in: Capsule())
+                .shadow(color: Brand.violet.opacity(0.3), radius: 10, y: 4)
             }
             .accessibilityLabel("Stop dictation")
+            .transition(.scale(scale: 0.94).combined(with: .opacity))
         case .denied:
             // Actionable rather than merely informative — the fix lives in iOS Settings.
             Button {

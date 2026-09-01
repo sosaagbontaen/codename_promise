@@ -153,7 +153,7 @@ struct DraftListView: View {
             }
 
             ForEach(groupedDrafts, id: \.day) { group in
-                Section(group.label) {
+                Section {
                     ForEach(group.drafts, id: \.id) { draft in
                         NavigationLink(value: OpeningDraft(id: draft.id)) {
                             DraftRow(summary: draft, fileStore: files)
@@ -172,6 +172,8 @@ struct DraftListView: View {
                     .onDelete { offsets in
                         delete(offsets, in: group.drafts, files: files)
                     }
+                } header: {
+                    DayHeader(day: group.day, label: group.label)
                 }
             }
 
@@ -181,14 +183,31 @@ struct DraftListView: View {
                 // The call to action lives *inside* the overlay. A button in a List section
                 // underneath it is unreachable — the overlay covers the whole list and eats
                 // the tap.
-                ContentUnavailableView {
-                    Label("Nothing captured yet", systemImage: "book.closed")
-                } description: {
-                    Text("Capture first. Organize later. Sync whenever.")
-                } actions: {
-                    Button("Start today's entry", action: createDraft)
-                        .buttonStyle(.borderedProminent)
+                VStack(spacing: 18) {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 46, weight: .light))
+                        .foregroundStyle(Brand.gradient)
+
+                    VStack(spacing: 6) {
+                        Text("Nothing captured yet")
+                            .font(.title3.weight(.semibold))
+                        Text("Capture first. Organize later. Sync whenever.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+
+                    Button(action: createDraft) {
+                        Text("Start today's entry")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 22)
+                            .frame(height: 46)
+                            .background(Brand.gradient, in: Capsule())
+                    }
+                    .padding(.top, 2)
                 }
+                .padding(32)
             }
         }
     }
@@ -347,16 +366,16 @@ struct DraftRow: View {
             // photos is the point of opening the list — "3 photos" tells you nothing about
             // which day this was.
             if !summary.thumbnails.isEmpty {
-                HStack(spacing: 4) {
+                HStack(spacing: 5) {
                     ForEach(summary.thumbnails) { thumb in
                         RowThumbnail(thumb: thumb, fileStore: fileStore)
                     }
                     if summary.hiddenThumbnailCount > 0 {
                         Text("+\(summary.hiddenThumbnailCount)")
-                            .font(.caption2)
+                            .font(.caption.weight(.medium))
                             .foregroundStyle(.secondary)
-                            .frame(width: 34, height: 34)
-                            .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+                            .frame(width: 58, height: 58)
+                            .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
                     }
                 }
                 .padding(.vertical, 2)
@@ -421,24 +440,76 @@ private struct RowThumbnail: View {
                 Color.secondary.opacity(0.15)
             }
         }
-        .frame(width: 34, height: 34)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .frame(width: 58, height: 58)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(alignment: .bottomTrailing) {
             if thumb.isVideo {
                 Image(systemName: "play.fill")
-                    .font(.system(size: 7))
+                    .font(.system(size: 9))
                     .foregroundStyle(.white)
-                    .padding(2)
+                    .shadow(radius: 2)
+                    .padding(4)
             }
         }
         .task {
             if image == nil {
                 image = await ThumbnailCache.shared.thumbnail(
                     id: thumb.id, relativePath: thumb.relativePath, isVideo: thumb.isVideo,
-                    fileStore: fileStore, maxPixel: 80
+                    fileStore: fileStore, maxPixel: 140
                 )
             }
         }
+    }
+}
+
+/// A day, given the weight a day deserves.
+///
+/// A journal grouped by date should say the date like it matters. The default section header
+/// is nine-point grey uppercase, which is what you use for "OTHER" in a settings screen.
+///
+/// The hairline under it tapers the way the ripples do in the mark.
+private struct DayHeader: View {
+    let day: String
+    let label: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(weekday)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text(rest)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .textCase(nil)
+
+            LinearGradient(
+                colors: [Brand.ripple, Brand.ripple.opacity(0)],
+                startPoint: .leading, endPoint: .trailing
+            )
+            .frame(height: 1.5)
+            .frame(maxWidth: 190)
+        }
+        .padding(.top, 14)
+        .padding(.bottom, 4)
+        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 6, trailing: 16))
+    }
+
+    /// "Friday" carries the feel of a day; "August 14, 2026" carries the fact.
+    private var weekday: String {
+        guard let calendarDay = CalendarDay(rawValue: day) else { return label }
+        let today = CalendarDay.today()
+        if calendarDay == today { return "Today" }
+        if calendarDay == today.adding(days: -1) { return "Yesterday" }
+        return calendarDay.representativeDate().formatted(.dateTime.weekday(.wide))
+    }
+
+    private var rest: String {
+        guard let calendarDay = CalendarDay(rawValue: day) else { return "" }
+        return calendarDay.representativeDate()
+            .formatted(.dateTime.month(.wide).day().year())
     }
 }
 
