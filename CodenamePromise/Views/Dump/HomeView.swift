@@ -17,6 +17,8 @@ struct HomeView: View {
     /// Set by a finished dump so the entry it created can be opened. Lives here rather than
     /// in either tab, because it is a message from one to the other.
     @State private var openEntry: UUID?
+    /// How many things are staged on the Dump tab, so the tray can react to them.
+    @State private var staged = 0
 
     enum Tab: Hashable { case entries, dump, settings }
 
@@ -27,7 +29,7 @@ struct HomeView: View {
                 .tag(Tab.entries)
 
             NavigationStack {
-                DumpView { draftId in
+                DumpView(stagedCount: $staged) { draftId in
                     // Land the person on what they just made, unsynced and editable, rather
                     // than on an empty box that gives no sign anything happened.
                     openEntry = draftId
@@ -38,7 +40,11 @@ struct HomeView: View {
                     ToolbarItem(placement: .principal) { Wordmark(size: 19) }
                 }
             }
-            .tabItem { Label("Dump", systemImage: "tray.and.arrow.down.fill") }
+            .tabItem {
+                // A tab icon that never changes is furniture. This one fills the moment
+                // there is something waiting to be dumped.
+                Label { Text("Dump") } icon: { TrayBadge(count: staged) }
+            }
             .tag(Tab.dump)
 
             NotionSettingsView()

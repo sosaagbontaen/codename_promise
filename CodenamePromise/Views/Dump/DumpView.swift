@@ -13,6 +13,8 @@ import SwiftUI
 /// nothing about the store, sync, export or the day-grouped journal had to change to support
 /// it. The compose state below is deliberately the only new concept.
 struct DumpView: View {
+    /// Mirrors how much is staged, so the tab bar's tray can react to it.
+    @Binding var stagedCount: Int
     /// Called with the draft a finished dump created, so the caller can open it.
     let onDumped: (UUID) -> Void
 
@@ -29,6 +31,8 @@ struct DumpView: View {
     /// An existing Notion page to append to, instead of making a new one.
     @State private var appendTo: NotionPage?
     @State private var connection: NotionConnectionStatus?
+    @State private var flight: [DumpFlight.Piece] = []
+    @State private var flying = false
     @State private var status: Status = .composing
     @FocusState private var writing: Bool
 
@@ -71,6 +75,16 @@ struct DumpView: View {
             .containerRelativeFrame(.vertical) { height, _ in height }
         }
         .background(Brand.ground)
+        .overlay {
+            GeometryReader { geo in
+                DumpFlight(
+                    pieces: flight,
+                    // The tray in the tab bar, just below this view's bounds.
+                    destination: CGPoint(x: geo.size.width / 2, y: geo.size.height + 34),
+                    flying: $flying
+                )
+            }
+        }
         .scrollDismissesKeyboard(.interactively)
         // iOS gives a plain TextEditor no way out: with no return key to dismiss and no
         // accessory, the only exit is tapping some arbitrary blank area.
@@ -89,6 +103,9 @@ struct DumpView: View {
             guard !items.isEmpty else { return }
             Task { await stage(items) }
         }
+        .onChange(of: staged.count) { _, _ in syncStagedCount() }
+        .onChange(of: pendingAudio != nil) { _, _ in syncStagedCount() }
+        .onDisappear { stagedCount = 0 }
     }
 
     // MARK: - Composer
@@ -382,6 +399,31 @@ struct DumpView: View {
     /// Order matters and follows the same discipline as everywhere else: the draft and its
     /// bytes are committed first, and anything that can fail — transcription, sync — happens
     /// afterwards and can never cost the capture (ADR-001, ADR-002).
+    /// One flying piece per thing captured, starting from roughly where it sat on screen.
+    private func syncStagedCount() {
+        stagedCount = staged.count + (pendingAudio != nil ? 1 : 0)
+    }
+
+    private func flightPieces() -> [DumpFlight.Piece] {
+        var pieces: [DumpFlight.Piece] = []
+        var delay = 0.0
+        func add(_ symbol: String, _ tint: Color, _ x: CGFloat) {
+            pieces.append(.init(symbol: symbol, tint: tint,
+                                origin: CGPoint(x: x, y: 240), delay: delay))
+            delay += 0.055
+        }
+        if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            add("text.alignleft", Brand.Mode.text, 90)
+        }
+        if pendingAudio != nil { add("mic.fill", Brand.Mode.voice, 150) }
+        for item in staged.prefix(4) {
+            add(item.kind == .video ? "video.fill" : "photo.fill",
+                item.kind == .video ? Brand.Mode.video : Brand.Mode.photo,
+                210 + CGFloat(pieces.count) * 34)
+        }
+        return pieces
+    }
+
     private func dump() {
         guard let store = services.store, let files = services.files else { return }
         status = .dumping
@@ -411,6 +453,13 @@ struct DumpView: View {
 
             Haptics.landed()
             let created = draft.id
+
+            // Everything below here is optional and may fail freely.
+            Task { await services.drainTranscriptions() }
+
+            // What was captured, thrown toward the tray. Built before the state is cleared,
+            // because it describes what was just dumped.
+            flight = flightPieces()
             text = ""
             staged = []
             pendingAudio = nil
@@ -418,12 +467,16 @@ struct DumpView: View {
             writing = false
             status = .composing
 
-            // Everything below here is optional and may fail freely.
-            Task { await services.drainTranscriptions() }
-
-            // Land them on what they just made. An empty box gives no sign anything
-            // happened, and the entry is where syncing and editing already live.
-            onDumped(created)
+            withAnimation { flying = true }
+            Task {
+                // Long enough to read as an event, short enough that dumping twice never
+                // feels like waiting.
+                try? await Task.sleep(for: .milliseconds(420))
+                flight = []
+                flying = false
+                syncStagedCount()
+                onDumped(created)
+            }
         } catch {
             Haptics.failed()
             status = .failed(error.localizedDescription)
