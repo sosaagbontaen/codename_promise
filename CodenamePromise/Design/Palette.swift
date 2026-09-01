@@ -51,8 +51,8 @@ enum Brand {
     /// app, so neither theme uses it. Dark is a blue-black in the Palenight family rather
     /// than the mark's flat #0F1115: a true near-black flattens the confetti and makes the
     /// violet look like it is floating, where a ground with blue already in it holds them.
-    static let ground = Color(light: 0xF2F4F7, dark: 0x161925)
-    static let surface = Color(light: 0xFFFFFF, dark: 0x1F2331)
+    static let ground = Color(light: 0xF2F4F7, dark: 0x0E1119)
+    static let surface = Color(light: 0xFFFFFF, dark: 0x171B26)
 
     static let ink = Color(light: 0x0F1115, dark: 0xEDEFF6)
     /// The sheet's grey, for anything secondary.
