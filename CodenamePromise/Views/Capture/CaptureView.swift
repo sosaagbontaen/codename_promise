@@ -21,6 +21,7 @@ struct CaptureView: View {
     @State private var photoSelections: [PhotosPickerItem] = []
     @State private var attachProgress: (done: Int, total: Int)?
     @State private var viewingMedia: ViewingMedia?
+    @State private var viewerDetent: PresentationDetent = .medium
     @State private var confirmingReformat = false
     @State private var showingDatePicker = false
     @State private var showingEntryPicker = false
@@ -58,7 +59,17 @@ struct CaptureView: View {
                     actionPanel
                 }
             }
-        .navigationTitle(dayLabel)
+        // One date, not two.
+        //
+        // The nav bar said "Tue, Sep 1" and an eyebrow said "TUESDAY, SEPTEMBER 1" directly
+        // underneath it - the same fact twice, four millimetres apart, which is the sort of
+        // thing that reads as an unfinished screen even when nobody can say why.
+        //
+        // The eyebrow won, because it is the one in the app's own voice rather than in system
+        // chrome, and it is now pinned above the scroll view instead of living inside it. That
+        // was the nav title's only real advantage: it survived scrolling. Now both do, and
+        // there is only one of them.
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         // No tab bar while writing.
         //
@@ -118,7 +129,7 @@ struct CaptureView: View {
             // Medium detent plus background interaction is the whole point: the photo is
             // large enough to jog a memory while the editor stays live behind it, so you can
             // keep writing without dismissing anything.
-            .presentationDetents([.medium, .large])
+            .presentationDetents([.medium, .large], selection: $viewerDetent)
             .presentationBackgroundInteraction(.enabled(upThrough: .medium))
             .presentationDragIndicator(.visible)
         }
@@ -164,19 +175,11 @@ struct CaptureView: View {
     private var editor: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                // A page for a day. The nav bar already carries the date, but small and in
-                // chrome; saying it here gives the entry somewhere to be rather than making
-                // it a text box that happens to be open.
-                Text(controller.entryDate.representativeDate()
-                    .formatted(.dateTime.weekday(.wide).month(.wide).day()))
-                    .font(Type.caption(11.5, .bold))
-                    .foregroundStyle(Brand.azure)
-                    .textCase(.uppercase)
-                    .tracking(1.1)
-                    .padding(.top, 6)
-
+                // Centred to match the card, so an entry looks the same whether you are
+                // reading it in the list or writing it here.
                 TextField("Title (optional)", text: $controller.title)
                     .font(Type.title(25))
+                    .multilineTextAlignment(.center)
                     .textInputAutocapitalization(.sentences)
 
                 if controller.hasFormatting {
@@ -270,6 +273,20 @@ struct CaptureView: View {
             .padding(.horizontal, 16)
             .padding(.top, 12)
         }
+        // The date, pinned rather than scrolled. It is the entry's filing key, so it should
+        // not disappear the moment somebody writes past the fold - which is the one thing the
+        // nav-bar version did better before it was removed as a duplicate.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            Text(controller.entryDate.representativeDate()
+                .formatted(.dateTime.weekday(.wide).month(.wide).day().year()))
+                .font(Type.caption(11.5, .bold))
+                .foregroundStyle(Brand.azure)
+                .textCase(.uppercase)
+                .tracking(1.1)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 9)
+                .background(Brand.ground)
+        }
         // Otherwise this screen falls back to the system ground, which is pure black in dark
         // mode and does not match anything else in the app.
         .background(Brand.ground)
@@ -291,6 +308,13 @@ struct CaptureView: View {
                             if selectingMedia {
                                 toggleSelection(item.id)
                             } else {
+                                // Video opens tall. AVPlayerViewController draws its
+                                // controls on translucent glass, and on a half-height sheet
+                                // that glass sits directly on top of the picture, where a
+                                // bright frame washes the buttons out until they read as
+                                // disabled. At full height they land on the letterbox black
+                                // above and below instead.
+                                viewerDetent = item.kind == .video ? .large : .medium
                                 viewingMedia = ViewingMedia(id: item.id)
                             }
                         }

@@ -229,7 +229,7 @@ struct DraftListView: View {
                                 .fill(Brand.surface)
                                 .strokeBorder(Brand.edge, lineWidth: 1)
                                 .padding(.horizontal, 8)
-                                .padding(.vertical, 2)
+                                .padding(.vertical, 5)
                         )
                         .listRowSeparator(.hidden)
                         // Swipe the opposite way from delete. Duplicating is the safe action,
@@ -459,7 +459,8 @@ struct DraftRow: View {
                 .font(Type.journal(17, 600))
                 .foregroundStyle(Brand.ink)
                 .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, alignment: .center)
 
             if !summary.preview.isEmpty {
                 Text(summary.preview)
@@ -510,8 +511,8 @@ struct DraftRow: View {
                     .foregroundStyle(Brand.muted.opacity(0.75))
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.horizontal, 13)
+        .padding(.vertical, 7)
         .frame(maxWidth: .infinity, alignment: .leading)
         .clipped()
         .contentShape(Rectangle())
@@ -609,14 +610,17 @@ private struct DayHeader: View {
                 // no extra height - and height is the whole currency of this screen.
                 .foregroundStyle(isToday ? Brand.violet : Brand.muted)
                 .textCase(nil)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .center)
 
+            // Tapers from the middle out, now that the date it underlines is centred. A rule
+            // that fades to the right under text centred on the screen reads as a mistake.
             LinearGradient(
-                colors: [Brand.ripple, Brand.ripple.opacity(0)],
+                colors: [Brand.ripple.opacity(0), Brand.ripple, Brand.ripple.opacity(0)],
                 startPoint: .leading, endPoint: .trailing
             )
             .frame(height: 1.5)
             .frame(maxWidth: 190)
+            .frame(maxWidth: .infinity, alignment: .center)
         }
         // Much more space above a day than between its entries: that difference is what
         // makes the grouping legible at a glance. The asymmetry is the whole point - the
@@ -624,7 +628,7 @@ private struct DayHeader: View {
         // reads as one more free-floating object in a column of them.
         .padding(.top, 18)
         .padding(.bottom, 0)
-        .listRowInsets(EdgeInsets(top: 0, leading: 18, bottom: 2, trailing: 16))
+        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 2, trailing: 16))
     }
 
     /// Written out in full: "Friday, August 14, 2026".
