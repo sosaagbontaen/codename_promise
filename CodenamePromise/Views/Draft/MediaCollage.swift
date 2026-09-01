@@ -16,6 +16,9 @@ struct MediaCollage: View {
     let overflow: Int
     let fileStore: MediaFileStore
 
+    /// Zero when the band runs edge to edge inside a card, which has its own corners.
+    var corner: CGFloat = 8
+
     private let gap: CGFloat = 3
     /// Smaller than the card's 14, not equal to it.
     ///
@@ -23,7 +26,7 @@ struct MediaCollage: View {
     /// outer radius minus the inset. Two nested rectangles sharing a radius is one of the
     /// reliable tells of a layout nobody looked at twice - the corners visibly disagree, and
     /// the eye reads it as a mistake without being able to say why.
-    private let corner: CGFloat = 8
+
 
 
 
@@ -61,7 +64,9 @@ struct MediaCollage: View {
         // Matters most in dark mode, where a bright image has nothing to sit against and
         // floats free of the surface it is supposed to belong to.
         .overlay {
-            if !thumbs.isEmpty {
+            // Only when it is floating inside padding. Edge to edge, the card's own outline
+            // is already doing this job and a second one would draw a box round a photograph.
+            if !thumbs.isEmpty, corner > 0 {
                 RoundedRectangle(cornerRadius: corner)
                     .strokeBorder(Brand.edge, lineWidth: 1)
             }

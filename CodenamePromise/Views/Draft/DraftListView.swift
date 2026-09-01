@@ -221,16 +221,16 @@ struct DraftListView: View {
                             }
                         }
                         .buttonStyle(.row)
-                        // A quiet container, not the old heavy card. Removing them entirely
-                        // left days and entries separated identically, so the grouping
-                        // stopped being readable - a day heading looked like just more list.
-                        .listRowBackground(
-                            RoundedRectangle(cornerRadius: 14)
-                                .fill(Brand.surface)
-                                .strokeBorder(Brand.edge, lineWidth: 1)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 5)
-                        )
+                        // The card is drawn by the row now, not by the List.
+                        //
+                        // `listRowBackground` spans the whole row and knows nothing about the
+                        // content inside it, which is fine for a flat fill and impossible once
+                        // part of the card needs its own ground: a title panel has to run edge
+                        // to edge *inside* the card, and the row's content is inset from the
+                        // row's edges by amounts the List picks. The two could never be made
+                        // to line up. Owning the shape is what makes the panel possible.
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets())
                         .listRowSeparator(.hidden)
                         // Swipe the opposite way from delete. Duplicating is the safe action,
                         // so it gets the leading edge where an accidental swipe costs nothing.
@@ -446,76 +446,100 @@ struct DraftRow: View {
     let fileStore: MediaFileStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // The title line is the entry's, and nothing else's. The edit time moved down to
-            // the metadata row: it was sharing a baseline with the one piece of the card the
-            // person actually wrote, which put a housekeeping fact in the loudest position on
-            // the row and made every title read as if it came with a receipt attached.
+        EntryCard {
+            // Content on top, name at the bottom - the Notion gallery-card shape.
             //
-            // The journal face, not the UI font - a title is something the person wrote, and
-            // setting it against the entry text in an opposed face at nearly the same size is
-            // what made the card look like a component rather than a memory.
-            Text(summary.title)
-                .font(Type.journal(17, 600))
-                .foregroundStyle(Brand.ink)
-                .lineLimit(1)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity, alignment: .center)
-
+            // Putting the title panel at the *top* was the wrong borrow. A card whose first
+            // line is its name reads as a record with a label on it; a card whose first line
+            // is what you wrote reads as the thing itself, with a name attached underneath.
+            // The second is what a journal wants, and it is also why the photograph runs to
+            // the card's edges rather than sitting in a frame inside one: the picture is the
+            // card, not an attachment shown on it.
             if !summary.preview.isEmpty {
                 Text(summary.preview)
                     .font(Type.journal(14.5))
-                    .foregroundStyle(Brand.muted)
-                    .lineLimit(2)
+                    .foregroundStyle(Brand.ink.opacity(0.72))
+                    .lineLimit(summary.thumbnails.isEmpty ? 3 : 2)
                     .lineSpacing(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 13)
+                    .padding(.top, 11)
+                    .padding(.bottom, summary.thumbnails.isEmpty ? 11 : 9)
             }
 
             if !summary.thumbnails.isEmpty {
                 MediaCollage(
                     thumbs: summary.thumbnails,
                     overflow: summary.hiddenThumbnailCount,
-                    fileStore: fileStore
+                    fileStore: fileStore,
+                    corner: 0
                 )
-                // Uniform spacing between items of different kinds is what makes a stack read
-                // as a form. Text lines belong to each other; a photograph does not belong to
-                // them in the same way, so it gets a little more air on both sides.
-                .padding(.vertical, 2)
             }
 
-            // Metadata, and it should read as metadata. Previously "not synced" carried the
-            // same visual weight as the entry itself, which put a housekeeping detail on a
-            // level with somebody's evening.
-            HStack(spacing: 10) {
-                if !statusLabel.isEmpty {
-                    HStack(spacing: 4) {
-                        Image(systemName: statusIcon).font(.system(size: 10, weight: .semibold))
-                        Text(statusLabel)
-                    }
-                    .font(Type.caption(11, statusWeight))
+            titleBar
+        }
+    }
+
+    /// The name of the entry, and everything that is true *about* it rather than in it.
+    ///
+    /// One strip at the bottom on its own ground: the page icon, the title, and the quiet
+    /// facts pushed to the right. Gathering them here is what lets the body above be nothing
+    /// but the entry - no timestamps sharing a baseline with somebody's evening.
+    private var titleBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "doc.text")
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(Brand.muted)
+
+            Text(summary.title)
+                .font(Type.journal(15.5, 600))
+                .foregroundStyle(Brand.ink)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            Spacer(minLength: 8)
+
+            if !statusLabel.isEmpty {
+                Image(systemName: statusIcon)
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(statusTint)
-                }
+                    .accessibilityLabel(statusLabel)
+            }
+            if summary.pendingRecordings > 0 {
+                Image(systemName: "waveform")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Brand.waiting)
+                    .accessibilityLabel("\(summary.pendingRecordings) to transcribe")
+            }
+            if summary.isFormatted {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Brand.ai)
+                    .accessibilityLabel("formatted")
+            }
 
-                // Separate badges rather than a run-on line, each with its own symbol and
-                // colour, so three different facts do not read as one sentence.
-                if summary.pendingRecordings > 0 {
-                    badge("waveform", "\(summary.pendingRecordings) to transcribe", Brand.waiting)
-                }
-                if summary.isFormatted {
-                    badge("sparkles", "formatted", Brand.ai)
-                }
-
-                Spacer(minLength: 6)
-
-                Text(summary.edited)
-                    .font(Type.caption(11))
-                    .foregroundStyle(Brand.muted.opacity(0.75))
+            // Fixed, so it is the title that gives way on a narrow row and not this.
+            //
+            // A negative layout priority let the HStack squeeze it to almost nothing against
+            // a long title, and Text answers a width it cannot fit by wrapping: "edited 1:25
+            // AM" came out as seven stacked lines and made the card four times taller than
+            // its neighbours.
+            Text(summary.edited)
+                .font(Type.caption(10.5))
+                .foregroundStyle(Brand.muted.opacity(0.7))
+                .lineLimit(1)
+                .fixedSize()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Brand.panel)
+        .overlay(alignment: .top) {
+            // Only when there is something above it to be separated from.
+            if !summary.preview.isEmpty || !summary.thumbnails.isEmpty {
+                Rectangle().fill(Brand.edge).frame(height: 1)
             }
         }
-        .padding(.horizontal, 13)
-        .padding(.vertical, 7)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .clipped()
-        .contentShape(Rectangle())
     }
 
     /// One symbol per state, never shared.

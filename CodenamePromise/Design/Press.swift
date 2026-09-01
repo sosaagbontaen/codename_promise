@@ -41,6 +41,11 @@ struct RowPressStyle: ButtonStyle {
                     .fill(Brand.ink.opacity(configuration.isPressed ? 0.07 : 0))
                     .padding(.horizontal, -10)
             )
+            // Dims as well as tints. The tint sits *behind* the label, which worked while
+            // rows were transparent and stopped working the moment an entry started drawing
+            // its own opaque card - the highlight was still there, painted underneath
+            // something you cannot see through. Dimming the label survives either.
+            .opacity(configuration.isPressed ? 0.88 : 1)
             .scaleEffect(configuration.isPressed ? 0.985 : 1)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
             .onChange(of: configuration.isPressed) { _, pressed in

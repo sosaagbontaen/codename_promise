@@ -64,6 +64,13 @@ enum Brand {
     /// The hairline around a card. Does most of the work of separating it from the ground.
     static let edge = Color(light: 0x0F1115, dark: 0xFFFFFF).opacity(0.07)
 
+    /// The band an entry's title sits on, one step in from `surface`.
+    ///
+    /// Deliberately a small step. The panel's job is to say "this line is the entry's name,
+    /// not its first sentence" - a job a hairline and a change of ground do completely, and
+    /// which more contrast would turn into a second card inside the first.
+    static let panel = Color(light: 0xF6F7FA, dark: 0x232A3C)
+
     static let ink = Color(light: 0x0F1115, dark: 0xEDEFF6)
     /// The sheet's grey, for anything secondary.
     static let muted = Color(light: 0x6B7280, dark: 0x8B93A7)

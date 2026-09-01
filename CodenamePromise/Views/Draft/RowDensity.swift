@@ -41,6 +41,12 @@ struct CompactDraftRow: View {
     let summary: DraftSummary
 
     var body: some View {
+        EntryCard {
+            row.padding(.horizontal, 13).padding(.vertical, 9)
+        }
+    }
+
+    private var row: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 // Same rule as the comfortable row: the title is the user's, so it is set
@@ -106,5 +112,30 @@ struct CompactDraftRow: View {
         case .syncing: Brand.violet
         default: Brand.muted.opacity(0.5)
         }
+    }
+}
+
+/// The card an entry sits in, drawn by the row rather than by the `List`.
+///
+/// A `listRowBackground` spans the whole row and knows nothing about the content inside it,
+/// which is fine for a flat fill and impossible once part of the card needs its own ground.
+/// The row's content is inset from the row's edges by amounts the List picks, so an inner
+/// panel could never be lined up with the outer shape. Owning the shape fixes that, and puts
+/// the corner radius, the hairline and the gap between cards in one place instead of three.
+struct EntryCard<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(spacing: 0) { content }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Brand.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Brand.edge, lineWidth: 1)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
     }
 }
