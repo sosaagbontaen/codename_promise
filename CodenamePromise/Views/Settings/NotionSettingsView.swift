@@ -16,7 +16,7 @@ struct NotionSettingsView: View {
     @State private var serverURL = ""
     @State private var serverSaved = false
     @AppStorage(Appearance.storageKey) private var appearance: Appearance = .dark
-    @AppStorage(JournalFont.storageKey) private var journalFont: JournalFont = .rounded
+    @AppStorage(JournalFont.storageKey) private var journalFont: JournalFont = .sans
     @State private var showingExport = false
     @State private var showingFeedback = false
 

@@ -17,7 +17,13 @@ struct MediaCollage: View {
     let fileStore: MediaFileStore
 
     private let gap: CGFloat = 3
-    private let corner: CGFloat = 14
+    /// Smaller than the card's 14, not equal to it.
+    ///
+    /// Concentric rounding: a shape inset inside another wants a *smaller* radius, roughly the
+    /// outer radius minus the inset. Two nested rectangles sharing a radius is one of the
+    /// reliable tells of a layout nobody looked at twice - the corners visibly disagree, and
+    /// the eye reads it as a mistake without being able to say why.
+    private let corner: CGFloat = 8
 
 
 
@@ -51,6 +57,15 @@ struct MediaCollage: View {
         .frame(maxWidth: .infinity)
         .frame(height: thumbs.isEmpty ? 0 : height)
         .clipShape(RoundedRectangle(cornerRadius: corner))
+        // A photograph with no edge is pasted onto the card; with one it is placed in it.
+        // Matters most in dark mode, where a bright image has nothing to sit against and
+        // floats free of the surface it is supposed to belong to.
+        .overlay {
+            if !thumbs.isEmpty {
+                RoundedRectangle(cornerRadius: corner)
+                    .strokeBorder(Brand.edge, lineWidth: 1)
+            }
+        }
     }
 
     /// A lone photo can afford to be a photo; a band of them only has to be recognisable.
@@ -60,7 +75,7 @@ struct MediaCollage: View {
     /// eat the second: three entries filled a screen, and finding last Tuesday meant scrolling
     /// rather than looking. Anyone who wants the gallery has the density toggle.
     private var height: CGFloat {
-        thumbs.count == 1 ? 104 : 86
+        thumbs.count == 1 ? 88 : 72
     }
 
     private func cell(_ thumb: DraftSummary.Thumb) -> some View {

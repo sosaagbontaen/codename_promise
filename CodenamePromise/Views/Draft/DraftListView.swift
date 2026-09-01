@@ -478,6 +478,10 @@ struct DraftRow: View {
                     overflow: summary.hiddenThumbnailCount,
                     fileStore: fileStore
                 )
+                // Uniform spacing between items of different kinds is what makes a stack read
+                // as a form. Text lines belong to each other; a photograph does not belong to
+                // them in the same way, so it gets a little more air on both sides.
+                .padding(.vertical, 2)
             }
 
             // Metadata, and it should read as metadata. Previously "not synced" carried the

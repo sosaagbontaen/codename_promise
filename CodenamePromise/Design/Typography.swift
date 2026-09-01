@@ -114,7 +114,7 @@ enum Type {
     /// than a build problem. Fail loudly in debug instead.
     static func assertAvailable() {
         #if DEBUG
-        for family in ["Poppins", "Literata"] where !UIFont.familyNames.contains(family) {
+        for family in ["Poppins"] where !UIFont.familyNames.contains(family) {
             assertionFailure("\(family) is not registered. Check UIAppFonts and the bundle.")
         }
         #endif
