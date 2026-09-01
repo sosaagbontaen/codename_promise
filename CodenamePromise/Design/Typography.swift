@@ -51,6 +51,32 @@ enum Type {
         poppins(size, weight)
     }
 
+    // MARK: The user's own words — Literata
+
+    /// What someone actually wrote, as opposed to anything the app says.
+    ///
+    /// Poppins is a geometric display face: perfectly circular bowls, near-uniform strokes,
+    /// a tall x-height with short extenders, and no true italic. All of that is why the
+    /// wordmark looks good and why a paragraph of it does not — word shapes flatten out and
+    /// there is no rhythm to follow, which is tiring at any length past a caption.
+    ///
+    /// Literata is drawn for reading on screen, and the split earns its keep twice: it makes
+    /// long entries comfortable, and it draws a line between *the app's voice* and *yours*.
+    /// Chrome speaks Poppins; your journal does not.
+    ///
+    /// It is variable on two axes. `opsz` is set to the point size, which is the whole point
+    /// of an optical-size axis and is why small text stays open rather than merely shrunk.
+    static func journal(_ size: CGFloat = 17, _ weight: CGFloat = 400) -> Font {
+        let descriptor = UIFontDescriptor(fontAttributes: [
+            .family: "Literata",
+            kCTFontVariationAttribute as UIFontDescriptor.AttributeName: [
+                0x77676874: weight,          // 'wght'
+                0x6F70737A: Double(size),    // 'opsz'
+            ],
+        ])
+        return Font(UIFont(descriptor: descriptor, size: size))
+    }
+
     /// Everything dictated is timed, and digits that jump around are distracting. Poppins has
     /// no monospaced cut, so this stays system.
     static func mono(_ size: CGFloat = 15) -> Font {
@@ -61,8 +87,8 @@ enum Type {
     /// than a build problem. Fail loudly in debug instead.
     static func assertAvailable() {
         #if DEBUG
-        if !UIFont.familyNames.contains("Poppins") {
-            assertionFailure("Poppins is not registered. Check UIAppFonts and the bundle.")
+        for family in ["Poppins", "Literata"] where !UIFont.familyNames.contains(family) {
+            assertionFailure("\(family) is not registered. Check UIAppFonts and the bundle.")
         }
         #endif
     }

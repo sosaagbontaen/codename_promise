@@ -187,7 +187,7 @@ struct CaptureView: View {
                             .overlay(alignment: .topLeading) {
                                 if controller.text.isEmpty {
                                     Text("What went well today?")
-                                        .font(Type.body(17))
+                                        .font(Type.journal(17))
                                         .foregroundStyle(.tertiary)
                                         .padding(.top, 8)
                                         .padding(.leading, 5)

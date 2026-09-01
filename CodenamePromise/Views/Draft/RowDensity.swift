@@ -62,7 +62,7 @@ struct CompactDraftRow: View {
                     }
                     if !summary.preview.isEmpty {
                         Text(summary.preview)
-                            .font(Type.caption(12))
+                            .font(Type.journal(12))
                             .foregroundStyle(Brand.muted)
                             .lineLimit(1)
                     }

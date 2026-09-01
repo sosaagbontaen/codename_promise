@@ -398,7 +398,7 @@ struct DraftRow: View {
 
             if !summary.preview.isEmpty {
                 Text(summary.preview)
-                    .font(Type.body(14.5))
+                    .font(Type.journal(14.5))
                     .foregroundStyle(Brand.muted)
                     .lineLimit(3)
                     .lineSpacing(2)

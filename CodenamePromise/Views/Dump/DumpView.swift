@@ -110,15 +110,15 @@ struct DumpView: View {
             ZStack(alignment: .topLeading) {
                 if text.isEmpty {
                     Text("What's on your mind?")
-                        .font(Type.body(17))
+                        .font(Type.journal(17))
                         .foregroundStyle(Brand.muted)
                         .padding(.top, 14)
                         .padding(.leading, 16)
                         .allowsHitTesting(false)
                 }
                 TextEditor(text: $text)
-                    .font(Type.body(17))
-                    .lineSpacing(5)
+                    .font(Type.journal(17))
+                    .lineSpacing(7)
                     .scrollContentBackground(.hidden)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
