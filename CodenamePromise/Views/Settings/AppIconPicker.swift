@@ -36,8 +36,10 @@ struct AppIconPicker: View {
 
     var body: some View {
         Section {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 14) {
+            // All five fit at once. They were in a horizontal scroll at 62pt, which pushed
+            // the fifth off the edge - so the answer to "where are the rest" was "keep
+            // swiping", which is not an answer.
+            HStack(spacing: 8) {
                     ForEach(Self.choices) { choice in
                         Button {
                             select(choice)
@@ -49,11 +51,10 @@ struct AppIconPicker: View {
                         }
                         .buttonStyle(.pressable)
                     }
-                }
-                .padding(.vertical, 6)
-                .padding(.horizontal, 2)
             }
-            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 0))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
 
             if let failure {
                 Label(failure, systemImage: "exclamationmark.triangle.fill")
@@ -96,7 +97,7 @@ private struct IconTile: View {
     var body: some View {
         VStack(spacing: 7) {
             preview
-                .frame(width: 62, height: 62)
+                .frame(width: 54, height: 54)
                 // Apple's own corner curve, so the tile looks like a home screen icon
                 // rather than a rounded picture of one.
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -107,10 +108,12 @@ private struct IconTile: View {
                 }
 
             Text(choice.label)
-                .font(Type.caption(11, .medium))
+                .font(Type.caption(10, .medium))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
                 .foregroundStyle(selected ? Brand.violet : Brand.muted)
         }
-        .frame(width: 74)
+        .frame(maxWidth: .infinity)
     }
 
     /// The asset is included as a normal image because the target sets
