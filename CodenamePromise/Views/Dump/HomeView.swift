@@ -19,6 +19,8 @@ struct HomeView: View {
     @State private var openEntry: UUID?
     /// How many things are staged on the Dump tab, so the tray can react to them.
     @State private var staged = 0
+    /// Owned here so the blast reaches the tab bar too, not just the screen that caused it.
+    @State private var impact = DumpImpact()
 
     enum Tab: Hashable { case entries, dump, settings }
 
@@ -29,7 +31,7 @@ struct HomeView: View {
                 .tag(Tab.entries)
 
             NavigationStack {
-                DumpView(stagedCount: $staged) { draftId in
+                DumpView(stagedCount: $staged, impact: impact) { draftId in
                     // Land the person on what they just made, unsynced and editable, rather
                     // than on an empty box that gives no sign anything happened.
                     openEntry = draftId
@@ -52,5 +54,6 @@ struct HomeView: View {
                 .tag(Tab.settings)
         }
         .tint(Brand.violet)
+        .dumpImpact(impact)
     }
 }

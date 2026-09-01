@@ -15,6 +15,8 @@ import SwiftUI
 struct DumpView: View {
     /// Mirrors how much is staged, so the tab bar's tray can react to it.
     @Binding var stagedCount: Int
+    /// Poked on landing so the whole app flinches, not just this screen.
+    let impact: DumpImpact
     /// Called with the draft a finished dump created, so the caller can open it.
     let onDumped: (UUID) -> Void
 
@@ -477,6 +479,7 @@ struct DumpView: View {
                 // the button press, because that is the moment being described.
                 try? await Task.sleep(for: .milliseconds(300))
                 Haptics.thud()
+                impact.blast()
                 flightPhase = .impact
 
                 try? await Task.sleep(for: .milliseconds(320))

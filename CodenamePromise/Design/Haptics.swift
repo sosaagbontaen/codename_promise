@@ -31,11 +31,24 @@ enum Haptics {
     /// table. Followed by a lighter tail so it reads as an impact with a settle rather than
     /// a single buzz.
     static func thud() {
+        // Four taps in 160ms, not one. A single impact is a tap however hard it is fired;
+        // a burst that starts hard and decays is a *hit* - the ear-and-thumb equivalent of
+        // a transient with a tail, which is what makes it read as force rather than
+        // notification.
         let heavy = UIImpactFeedbackGenerator(style: .heavy)
-        heavy.prepare()
+        let rigid = UIImpactFeedbackGenerator(style: .rigid)
+        heavy.prepare(); rigid.prepare()
+
         heavy.impactOccurred(intensity: 1.0)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.09) {
-            UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.7)
+        let taps: [(Double, UIImpactFeedbackGenerator, CGFloat)] = [
+            (0.045, rigid, 0.95),
+            (0.095, heavy, 0.7),
+            (0.16,  rigid, 0.45),
+        ]
+        for (delay, generator, intensity) in taps {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                generator.impactOccurred(intensity: intensity)
+            }
         }
     }
 
