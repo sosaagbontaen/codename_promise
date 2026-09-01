@@ -430,21 +430,24 @@ struct DraftRow: View {
             // Metadata, and it should read as metadata. Previously "not synced" carried the
             // same visual weight as the entry itself, which put a housekeeping detail on a
             // level with somebody's evening.
-            if !statusLabel.isEmpty {
-                HStack(spacing: 5) {
-                    Image(systemName: statusIcon).font(.system(size: 9, weight: .semibold))
-                    Text(statusLabel)
-                    if summary.pendingRecordings > 0 {
-                        Text("\u{00B7} \(summary.pendingRecordings) to transcribe")
-                            .foregroundStyle(Brand.waiting)
+            HStack(spacing: 10) {
+                if !statusLabel.isEmpty {
+                    HStack(spacing: 4) {
+                        Image(systemName: statusIcon).font(.system(size: 10, weight: .semibold))
+                        Text(statusLabel)
                     }
-                    if summary.isFormatted {
-                        Text("\u{00B7} structured")
-                            .foregroundStyle(Brand.ai)
-                    }
+                    .font(Type.caption(11, .semibold))
+                    .foregroundStyle(statusTint)
                 }
-                .font(Type.caption(10.5, .semibold))
-                .foregroundStyle(statusTint)
+
+                // Separate badges rather than a run-on line, each with its own symbol and
+                // colour, so three different facts do not read as one sentence.
+                if summary.pendingRecordings > 0 {
+                    badge("waveform", "\(summary.pendingRecordings) to transcribe", Brand.waiting)
+                }
+                if summary.isFormatted {
+                    badge("sparkles", "formatted", Brand.ai)
+                }
             }
         }
         .padding(.horizontal, 14)
@@ -454,25 +457,31 @@ struct DraftRow: View {
         .contentShape(Rectangle())
     }
 
-    /// Quiet by default: "synced" is the expected state and does not need announcing, so the
-    /// only loud case is a genuine failure.
+    /// One symbol per state, never shared.
+    ///
+    /// The previous set used the same glyph for "not synced" and "edited since sync", which
+    /// makes a symbol decorative rather than informative - you had to read the words anyway,
+    /// so the icon was costing space and adding doubt. These are all from the cloud family
+    /// so they read as one vocabulary about one thing, and each state owns exactly one.
     private var statusLabel: String {
         switch summary.sync {
         case .hidden: ""
-        case .syncing: "Sending"
-        case .failed: "Didn't send"
-        case .synced: "In Notion"
-        case .unsyncedChanges: "Edited since sending"
-        case .notSynced: "Not sent yet"
+        case .syncing: "syncing"
+        case .failed: "sync failed"
+        case .synced: "synced"
+        case .unsyncedChanges: "unsynced changes"
+        case .notSynced: "not synced"
         }
     }
 
     private var statusIcon: String {
         switch summary.sync {
-        case .failed: "exclamationmark.triangle.fill"
-        case .synced: "checkmark"
-        case .syncing: "arrow.up"
-        default: "bolt.horizontal"
+        case .hidden: "icloud.slash"
+        case .syncing: "arrow.up.circle"
+        case .failed: "exclamationmark.icloud"
+        case .synced: "checkmark.icloud.fill"
+        case .unsyncedChanges: "arrow.triangle.2.circlepath"
+        case .notSynced: "icloud.slash"
         }
     }
 
@@ -482,6 +491,15 @@ struct DraftRow: View {
     /// *different channel* from the entry's own words, and losing it made status read as more
     /// body text. What made it shout before was its size and weight, not its hue - so it
     /// keeps the colour and gives up the size.
+    private func badge(_ symbol: String, _ text: String, _ tint: Color) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: symbol).font(.system(size: 10, weight: .semibold))
+            Text(text)
+        }
+        .font(Type.caption(11, .semibold))
+        .foregroundStyle(tint)
+    }
+
     private var statusTint: Color {
         switch summary.sync {
         case .failed: Brand.failed
