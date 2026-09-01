@@ -100,6 +100,15 @@ public protocol NotionConnectionService: Sendable {
     ///
     /// Dates only. Whether a day is written does not require reading what was written.
     func entryDays(from: CalendarDay, through: CalendarDay) async throws -> Set<CalendarDay>
+
+    /// The entries in a window, each marked for whether it has words and whether it has
+    /// attachments.
+    ///
+    /// A strictly narrower promise than it sounds. The server reads the page's blocks to
+    /// decide and returns two booleans; no text and no file URLs cross the wire. Days alone
+    /// cannot answer this - an entry with three photos and no writing covers its day.
+    func entryCoverage(from: CalendarDay, through: CalendarDay) async throws -> [DestinationEntryRow]
+
     func selectDatabase(id: String) async throws -> NotionConnectionStatus
     func disconnect() async throws
 }
@@ -150,6 +159,35 @@ public struct HTTPNotionConnectionService: NotionConnectionService {
         // Unparseable days are dropped rather than throwing: one malformed date in a
         // six-year database must not make the whole answer unavailable.
         return Set(response.days.compactMap { CalendarDay(rawValue: $0) })
+    }
+
+    private struct CoverageList: Decodable {
+        struct Entry: Decodable {
+            let page_id: String
+            let date: String
+            let title: String?
+            let has_words: Bool
+            let has_media: Bool
+        }
+        let entries: [Entry]
+    }
+
+    public func entryCoverage(
+        from: CalendarDay, through: CalendarDay
+    ) async throws -> [DestinationEntryRow] {
+        let response = try await client.get(
+            path: "notion/entry-coverage",
+            query: ["start": from.rawValue, "end": through.rawValue],
+            expecting: CoverageList.self
+        )
+        // Same rule as entryDays: one unparseable date must not take the whole answer down.
+        return response.entries.compactMap { entry in
+            guard let day = CalendarDay(rawValue: entry.date) else { return nil }
+            return DestinationEntryRow(
+                pageId: entry.page_id, day: day, title: entry.title,
+                hasWords: entry.has_words, hasMedia: entry.has_media
+            )
+        }
     }
 
     private struct SelectBody: Encodable, Sendable {

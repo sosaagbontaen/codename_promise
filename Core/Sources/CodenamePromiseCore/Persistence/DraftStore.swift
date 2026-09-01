@@ -103,6 +103,52 @@ public final class DraftStore {
         return Set(drafts.compactMap { CalendarDay(rawValue: $0.entryDateKey) })
     }
 
+    /// Every entry in a window, reduced to what "is this finished?" needs.
+    ///
+    /// Returns values rather than models on purpose: the caller is deciding what to show, not
+    /// what to edit, and a `Sendable` row can cross an actor boundary while an `EntryDraft`
+    /// cannot (ADR-009a). Callers that then want to *open* one re-fetch by `id`.
+    ///
+    /// A recording counts as words even before it is transcribed. Anything else would have
+    /// the app tell someone the three minutes they just dictated is an entry with nothing in
+    /// it, which is the exact fear this product exists to answer (ADR-002).
+    public func entryCompleteness(
+        from: CalendarDay, through: CalendarDay
+    ) throws -> [LocalEntryRow] {
+        let lower = from.rawValue
+        let upper = through.rawValue
+        let drafts = try context.fetch(
+            FetchDescriptor<EntryDraft>(
+                predicate: #Predicate { $0.entryDateKey >= lower && $0.entryDateKey <= upper }
+            )
+        )
+        return drafts.compactMap { draft in
+            guard let day = CalendarDay(rawValue: draft.entryDateKey) else { return nil }
+            let dictated = !draft.orderedAudioCaptures.isEmpty
+            let typed = !draft.content.rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            return LocalEntryRow(
+                id: draft.id,
+                day: day,
+                title: draft.content.title,
+                hasWords: typed || dictated,
+                hasMedia: !draft.orderedMedia.isEmpty,
+                linkedPageId: draft.syncStates.first { $0.target == .notion }?.externalId
+            )
+        }
+    }
+
+    /// Points a draft at an entry that already exists in the destination.
+    ///
+    /// So that finishing a half-written Notion page adds to *that* page instead of making a
+    /// second entry for the same day - which is what the app would otherwise do, and what
+    /// would make the unfinished-entries list actively harmful to use.
+    public func attachToExistingPage(
+        _ pageId: String, title: String?, for draft: EntryDraft
+    ) throws {
+        draft.syncState(for: .notion).attachToExistingPage(pageId, title: title)
+        try flush()
+    }
+
     /// The earliest day the user has ever written about, or nil if they never have.
     ///
     /// Bounds the open-days window so a new install is never shown a backlog it did not earn.

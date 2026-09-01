@@ -67,10 +67,47 @@ struct OpenDaysView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var window: Window = .month
+    @State private var mode: Mode = .missingDays
     @State private var openDays: [CalendarDay] = []
+    @State private var thinEntries: [ThinEntry] = []
+    /// The unfiltered inputs, kept so toggling a chip does not re-read Notion. Classifying
+    /// costs one request per page over there; narrowing a list already on screen is free.
+    @State private var localEntries: [LocalEntryRow] = []
+    @State private var destinationEntries: [DestinationEntryRow]?
+    /// Which kinds of unfinished count. All three by default - narrowing is for when you
+    /// have come here to do one specific job, like putting photos on last month's writing.
+    @State private var shortfalls: Set<EntryShortfall> = Set(EntryShortfall.allCases)
     @State private var check: DestinationCheck = .checking
     @State private var hasEverWritten = true
     @State private var loadError: String?
+
+    /// The two ways a journal has holes in it.
+    ///
+    /// Deliberately one screen rather than two features. Both answer "what have I not
+    /// finished", both are bounded by the same window, and both are checked against the same
+    /// two places - the split is only in what counts as a hole. Someone who opens this is
+    /// asking one question; making them find two menu items to answer it would be worse.
+    enum Mode: String, CaseIterable, Identifiable {
+        /// Days with no entry at all.
+        case missingDays
+        /// Entries that exist and are not finished.
+        case unfinished
+
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .missingDays: "Missing days"
+            case .unfinished: "Unfinished"
+            }
+        }
+    }
+
+    /// Both inputs to a reload, so changing either re-runs it exactly once.
+    private struct ReloadKey: Equatable {
+        let window: Window
+        let mode: Mode
+    }
 
     /// How far back to look.
     ///
@@ -124,17 +161,35 @@ struct OpenDaysView: View {
                     } description: {
                         Text("Once you've written a few entries, the days you haven't filled in yet will show up here.")
                     }
-                } else if openDays.isEmpty {
-                    ContentUnavailableView {
-                        Label("You're all caught up", systemImage: "checkmark.circle")
-                    } description: {
-                        Text("Every day in the \(window.label.lowercased()) is written up.")
+                } else if mode == .missingDays {
+                    if openDays.isEmpty {
+                        ContentUnavailableView {
+                            Label("You're all caught up", systemImage: "checkmark.circle")
+                        } description: {
+                            Text("Every day in the \(window.label.lowercased()) is written up.")
+                        }
+                    } else {
+                        list
                     }
                 } else {
-                    list
+                    if shortfalls.isEmpty {
+                        ContentUnavailableView {
+                            Label("Nothing selected", systemImage: "line.3.horizontal.decrease")
+                        } description: {
+                            Text("Turn on at least one kind above.")
+                        }
+                    } else if thinEntries.isEmpty {
+                        ContentUnavailableView {
+                            Label("Nothing left half-done", systemImage: "checkmark.circle")
+                        } description: {
+                            Text("Every entry in the \(window.label.lowercased()) has both words and photos.")
+                        }
+                    } else {
+                        unfinishedList
+                    }
                 }
             }
-            .navigationTitle("Fill in a day")
+            .navigationTitle("Fill in the gaps")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -143,9 +198,15 @@ struct OpenDaysView: View {
             }
             .safeAreaInset(edge: .top) {
                 VStack(alignment: .leading, spacing: 8) {
-                    // A menu rather than a segmented control: five spans do not fit across a
-                    // phone, and they would only get shorter and less readable as more are
-                    // added.
+                    // Segmented here and a menu below, on purpose: two modes fit across a
+                    // phone and want to be visible at once, five date spans do not.
+                    Picker("Mode", selection: $mode) {
+                        ForEach(Mode.allCases) { Text($0.label).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+
+                    if mode == .unfinished { shortfallFilter }
+
                     Menu {
                         Picker("Range", selection: $window) {
                             ForEach(Window.allCases) { Text($0.label).tag($0) }
@@ -164,7 +225,11 @@ struct OpenDaysView: View {
                 .padding(.bottom, 8)
                 .background(.bar)
             }
-            .task(id: window) { await reload() }
+            .task(id: ReloadKey(window: window, mode: mode)) { await reload() }
+            // Chips re-filter, they do not re-fetch. Re-reading Notion because somebody
+            // narrowed a list they are already looking at would be a page request per entry
+            // for no new information.
+            .onChange(of: shortfalls) { _, _ in refilter() }
         }
     }
 
@@ -248,6 +313,141 @@ struct OpenDaysView: View {
         .refreshable { await reload() }
     }
 
+    /// Three toggles, and turning them all off is allowed.
+    ///
+    /// Chips rather than a menu because the filter changes what the list *means* - a list of
+    /// entries missing photos and a list of everything unfinished look identical otherwise,
+    /// and a filter you cannot see is one you forget you set.
+    private var shortfallFilter: some View {
+        HStack(spacing: 6) {
+            ForEach(EntryShortfall.allCases) { kind in
+                let on = shortfalls.contains(kind)
+                Button {
+                    if on { shortfalls.remove(kind) } else { shortfalls.insert(kind) }
+                    Haptics.picked()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: kind.symbol).font(.system(size: 10, weight: .semibold))
+                        Text(kind.label)
+                    }
+                    .font(Type.caption(11.5, .semibold))
+                    .foregroundStyle(on ? Self.tint(for: kind) : Brand.muted)
+                    .padding(.horizontal, 9)
+                    .frame(height: 26)
+                    .background(
+                        Capsule().fill(
+                            on ? Self.tint(for: kind).opacity(0.16) : Color.primary.opacity(0.06)
+                        )
+                    )
+                }
+                .buttonStyle(.pressable)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// The badge wears the colour of the thing that is missing, borrowed from the capture
+    /// buttons - so "no photos yet" is green because Photo is green. One vocabulary.
+    private static func tint(for kind: EntryShortfall) -> Color {
+        switch kind {
+        case .empty: Brand.Mode.extra
+        case .noText: Brand.Mode.text
+        case .noMedia: Brand.Mode.photo
+        }
+    }
+
+    private var unfinishedList: some View {
+        List {
+            Section {
+                ForEach(thinEntries) { unfinishedRow($0) }
+            }
+
+            Section {
+                Text("Tap one to finish it. Entries already in Notion are added to, never replaced.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .listRowBackground(Color.clear)
+            }
+        }
+        .refreshable { await reload() }
+    }
+
+    private func unfinishedRow(_ entry: ThinEntry) -> some View {
+        Button {
+            finish(entry)
+        } label: {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(entry.displayTitle)
+                        .font(.body)
+                        .lineLimit(1)
+                    HStack(spacing: 5) {
+                        // Only when the title is not already the date. An untitled entry is
+                        // named after its day on the line above, and seeing the same date
+                        // twice in two formats read as a bug rather than as detail.
+                        if entry.hasOwnTitle {
+                            Text(entry.day.representativeDate()
+                                .formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
+                                .foregroundStyle(.secondary)
+                            Text("·").foregroundStyle(.secondary)
+                        }
+                        Image(systemName: entry.shortfall.symbol)
+                            .font(.system(size: 10, weight: .semibold))
+                        Text(entry.shortfall.rowLabel)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(Self.tint(for: entry.shortfall))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+                Spacer()
+                // Says what tapping will do. An entry that only exists in Notion gets a draft
+                // bound to its page, so the words land on the page that is already there.
+                Image(systemName: entry.isInDestinationOnly ? "text.append" : "square.and.pencil")
+                    .foregroundStyle(.tint)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.row)
+    }
+
+    /// Opens the local draft, or makes one bound to the existing page.
+    private func finish(_ entry: ThinEntry) {
+        do {
+            switch entry.source {
+            case .local(let id):
+                guard let draft = try store.draft(id: id) else {
+                    // Deleted while the list was on screen. Re-read rather than trap.
+                    reloadSoon()
+                    return
+                }
+                Haptics.picked()
+                dismiss()
+                onStartDay(draft)
+            case .destination(let pageId):
+                let draft = try store.createDraft(entryDate: entry.day)
+                try store.attachToExistingPage(pageId, title: entry.title, for: draft)
+                Haptics.picked()
+                dismiss()
+                onStartDay(draft)
+            }
+        } catch {
+            loadError = error.localizedDescription
+        }
+    }
+
+    /// Re-runs the rule over what has already been fetched.
+    private func refilter() {
+        thinEntries = JournalCompleteness.thinEntries(
+            local: localEntries, destination: destinationEntries, matching: shortfalls
+        )
+    }
+
+    /// Kicks a reload without making the caller async.
+    private func reloadSoon() {
+        Task { await reload() }
+    }
+
     private func dayRow(_ day: CalendarDay) -> some View {
         Button {
             start(day)
@@ -310,8 +510,13 @@ struct OpenDaysView: View {
             let localDays = try store.entryDays(from: from, through: through)
             let earliest = try store.earliestEntryDay()
 
-            // Local answer first, so the list is never blocked on the network.
-            func apply(_ destinationDays: Set<CalendarDay>?) {
+            localEntries = try store.entryCompleteness(from: from, through: through)
+            destinationEntries = nil
+
+            // Local answer first, so the list is never blocked on the network. Both modes
+            // follow the same shape: answer from the device, then widen if the destination
+            // can be reached, then say in the banner which of the two you are looking at.
+            func apply(days destinationDays: Set<CalendarDay>?) {
                 let report = JournalGaps.report(
                     from: from, through: through,
                     localDays: localDays, destinationDays: destinationDays,
@@ -320,7 +525,16 @@ struct OpenDaysView: View {
                 openDays = report.days
                 hasEverWritten = earliest != nil || !(destinationDays ?? []).isEmpty
             }
-            apply(nil)
+            func apply(entries rows: [DestinationEntryRow]?) {
+                destinationEntries = rows
+                refilter()
+                hasEverWritten = earliest != nil || !(rows ?? []).isEmpty
+            }
+
+            switch mode {
+            case .missingDays: apply(days: nil)
+            case .unfinished: apply(entries: nil)
+            }
             loadError = nil
 
             guard let connection else {
@@ -330,8 +544,14 @@ struct OpenDaysView: View {
 
             check = .checking
             do {
-                let remote = try await connection.entryDays(from: from, through: through)
-                apply(remote)
+                switch mode {
+                case .missingDays:
+                    apply(days: try await connection.entryDays(from: from, through: through))
+                case .unfinished:
+                    // Costs a request per page, so it is only asked for in the mode that
+                    // needs it - a day-level check never reads a page at all.
+                    apply(entries: try await connection.entryCoverage(from: from, through: through))
+                }
                 check = .included
             } catch let error {
                 // A failure here is never an error page. The local answer stands; the banner

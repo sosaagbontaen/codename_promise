@@ -38,6 +38,16 @@ final class StubConnectionService: NotionConnectionService, @unchecked Sendable 
         return destinationDays.filter { $0 >= from && $0 <= through }
     }
 
+    var destinationEntries: [DestinationEntryRow] = []
+    var entryCoverageError: Error?
+
+    func entryCoverage(
+        from: CalendarDay, through: CalendarDay
+    ) async throws -> [DestinationEntryRow] {
+        if let entryCoverageError { throw entryCoverageError }
+        return destinationEntries.filter { $0.day >= from && $0.day <= through }
+    }
+
     func selectDatabase(id: String) async throws -> NotionConnectionStatus {
         selectedIds.append(id)
         if let selectError { throw selectError }

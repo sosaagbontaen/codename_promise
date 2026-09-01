@@ -9,6 +9,8 @@ from app.config import Settings
 from app.connections import InMemoryConnectionStore, NotionConnection
 from app.main import create_app
 from app.oauth import NotionOAuth, OAuthStateError, StateStore
+from app.providers.notion_api import classify_blocks
+from app.services import InMemoryNotion
 from app.wordguard import (
     FormattingAlteredWordsError,
     dropped_words,
@@ -824,3 +826,156 @@ class TestEntryDays:
         )
 
         assert response.status_code == 409
+
+
+class TestBlockClassification:
+    """The rule that decides whether a Notion page counts as written or illustrated.
+
+    Directly against `classify_blocks`, because this is where the feature is either right or
+    quietly useless — a rule that calls an abandoned page "finished" makes the whole worklist
+    empty, and one that calls a finished page "empty" turns it into noise.
+    """
+
+    def test_a_page_with_a_paragraph_has_words(self):
+        blocks = [{"type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "Went to the sea."}]}}]
+        assert classify_blocks(blocks) == {"has_words": True, "has_media": False}
+
+    def test_a_page_with_an_image_has_media(self):
+        assert classify_blocks([{"type": "image", "image": {}}]) == {
+            "has_words": False, "has_media": True
+        }
+
+    def test_video_and_file_blocks_count_as_media(self):
+        for kind in ("video", "file", "pdf", "audio", "embed"):
+            assert classify_blocks([{"type": kind, kind: {}}])["has_media"], kind
+
+    def test_headings_and_lists_count_as_words(self):
+        for kind in ("heading_1", "bulleted_list_item", "numbered_list_item", "to_do", "quote"):
+            blocks = [{"type": kind, kind: {"rich_text": [{"plain_text": "x"}]}}]
+            assert classify_blocks(blocks)["has_words"], kind
+
+    def test_an_empty_paragraph_is_not_words(self):
+        """What Notion leaves behind when a line is deleted.
+
+        Counting one would mark the abandoned pages as finished, which is exactly the set
+        this feature exists to find.
+        """
+        assert classify_blocks([{"type": "paragraph", "paragraph": {"rich_text": []}}]) == {
+            "has_words": False, "has_media": False
+        }
+
+    def test_whitespace_is_not_words(self):
+        blocks = [{"type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "   \n"}]}}]
+        assert classify_blocks(blocks)["has_words"] is False
+
+    def test_a_divider_is_neither(self):
+        assert classify_blocks([{"type": "divider", "divider": {}}]) == {
+            "has_words": False, "has_media": False
+        }
+
+    def test_the_verdict_carries_no_content(self):
+        """Two booleans leave; the text does not."""
+        blocks = [{"type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "secret"}]}}]
+        result = classify_blocks(blocks)
+        assert set(result) == {"has_words", "has_media"}
+        assert "secret" not in repr(result)
+
+
+class TestEntryCoverage:
+    """The endpoint behind "which entries did I start and never finish"."""
+
+    def _app(self, entries):
+        from app import routes_notion_auth
+
+        class FakeGateway:
+            def __init__(self, *args, **kwargs):
+                pass
+
+        async def fake_coverage(access_token, database_id, date_property, start, end):
+            assert date_property == "When"
+            return [e for e in entries if start <= e["date"] <= end]
+
+        settings = Settings(
+            notion_client_id="cid",
+            notion_client_secret="s",
+            notion_redirect_uri="http://localhost/cb",
+        )
+        store = InMemoryConnectionStore(
+            NotionConnection(
+                access_token="t",
+                workspace_id="ws",
+                database_id="db-1",
+                title_property="Name",
+                date_property="When",
+            )
+        )
+        app = create_app(settings=settings, connections=store)
+        app.router.routes = [
+            r for r in app.router.routes if not getattr(r, "path", "").startswith("/notion/")
+        ]
+        app.include_router(
+            routes_notion_auth.build_router(
+                oauth=NotionOAuth("cid", "s", "http://localhost/cb"),
+                store=store,
+                app_return_url="app://done",
+                gateway_factory=FakeGateway,
+                coverage_lister=fake_coverage,
+            )
+        )
+        return TestClient(app)
+
+    def test_reports_entries_with_their_two_verdicts(self):
+        client = self._app([
+            {"page_id": "p1", "date": "2026-08-02", "title": "Beach",
+             "has_words": False, "has_media": True},
+            {"page_id": "p2", "date": "2026-09-20", "title": "Later",
+             "has_words": True, "has_media": True},
+        ])
+
+        body = client.get(
+            "/notion/entry-coverage", params={"start": "2026-08-01", "end": "2026-08-31"}
+        ).json()
+
+        assert body == {"entries": [
+            {"page_id": "p1", "date": "2026-08-02", "title": "Beach",
+             "has_words": False, "has_media": True}
+        ]}
+
+    def test_asking_before_a_database_is_chosen_is_a_clear_409(self):
+        settings = Settings(
+            notion_client_id="cid",
+            notion_client_secret="s",
+            notion_redirect_uri="http://localhost/cb",
+        )
+        store = InMemoryConnectionStore(NotionConnection(access_token="t", workspace_id="ws"))
+        app = create_app(settings=settings, connections=store)
+
+        response = TestClient(app).get(
+            "/notion/entry-coverage", params={"start": "2026-08-01", "end": "2026-08-31"}
+        )
+
+        assert response.status_code == 409
+
+
+class TestStubCoverage:
+    """The deterministic gateway answers the same question the real one does."""
+
+    @pytest.mark.anyio
+    async def test_a_page_with_only_photos_is_reported_as_wordless(self):
+        notion = InMemoryNotion()
+        page_id = await notion.ensure_page("2026-08-14", "Beach", None)
+        await notion.replace_children(page_id, [{"type": "image", "image": {}}], [])
+
+        coverage = await notion.entry_coverage("2026-08-01", "2026-08-31")
+
+        assert coverage == [{
+            "page_id": page_id, "date": "2026-08-14", "title": "Beach",
+            "has_words": False, "has_media": True,
+        }]
+
+    @pytest.mark.anyio
+    async def test_a_page_outside_the_window_is_not_reported(self):
+        notion = InMemoryNotion()
+        await notion.ensure_page("2026-01-04", "Old", None)
+
+        assert await notion.entry_coverage("2026-08-01", "2026-08-31") == []

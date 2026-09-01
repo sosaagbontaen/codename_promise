@@ -21,6 +21,8 @@ who happened to use the defaults.
 
 from __future__ import annotations
 
+import asyncio
+
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -435,6 +437,178 @@ async def entry_days(
             break
 
     return sorted(set(found))
+
+
+#: Block types that put words on a page. Anything not here is furniture or an attachment.
+TEXT_BLOCK_TYPES = frozenset({
+    "paragraph", "heading_1", "heading_2", "heading_3",
+    "bulleted_list_item", "numbered_list_item", "to_do",
+    "quote", "callout", "toggle", "code",
+})
+
+#: Block types that are an attachment.
+MEDIA_BLOCK_TYPES = frozenset({"image", "video", "file", "pdf", "audio", "embed"})
+
+
+def classify_blocks(blocks: List[Dict[str, Any]]) -> Dict[str, bool]:
+    """Does this page have words on it, and does it have attachments?
+
+    Two booleans, and deliberately nothing else. The verdict leaves this function; the text
+    never does. ``entry_days`` holds the line that knowing *whether* a day is written does not
+    require reading what was written - this is that same line one level further in, which is
+    why the classification happens on the server and only the answer travels.
+
+    A block counts as words only if its rich text actually contains characters. An empty
+    paragraph is what Notion leaves behind when you delete a line, and treating one as content
+    would mark abandoned pages as finished - which is precisely the case this exists to find.
+    """
+    has_words = False
+    has_media = False
+
+    for block in blocks:
+        kind = block.get("type")
+        if kind in MEDIA_BLOCK_TYPES:
+            has_media = True
+            continue
+        if kind in TEXT_BLOCK_TYPES:
+            rich = (block.get(kind) or {}).get("rich_text") or []
+            if any((span.get("plain_text") or "").strip() for span in rich):
+                has_words = True
+
+    return {"has_words": has_words, "has_media": has_media}
+
+
+async def _page_blocks(
+    client: httpx.AsyncClient, headers: Dict[str, str], page_id: str, base_url: str
+) -> List[Dict[str, Any]]:
+    """One page of a page's children. Deliberately not recursive and deliberately not paged.
+
+    A hundred top-level blocks is far past the point where "does this page have anything on
+    it" is still in doubt, and a nested image inside a toggle is a rare enough shape that
+    paying an extra request per block to find it is the wrong trade for a worklist.
+    """
+    response = await client.get(
+        f"{base_url}/blocks/{page_id}/children",
+        headers=headers,
+        params={"page_size": 100},
+    )
+    if response.status_code >= 400:
+        raise NotionError(f"Notion returned {response.status_code} reading a page.")
+    return response.json().get("results", [])
+
+
+async def entry_coverage(
+    access_token: str,
+    database_id: str,
+    date_property: Optional[str],
+    start: str,
+    end: str,
+    base_url: str = NOTION_BASE_URL,
+    max_pages: int = 200,
+    concurrency: int = 6,
+) -> List[Dict[str, Any]]:
+    """Every entry in the window, each marked for whether it has words and attachments.
+
+    This is what makes "which entries did I start and never finish" answerable for a journal
+    that mostly lives in Notion. ``entry_days`` cannot answer it by construction: an entry with
+    three photos and no writing covers its day perfectly well.
+
+    Costs one request per page in the window on top of the database query, which is why it is
+    bounded at ``max_pages`` and run at a small fixed concurrency. A window is normally tens
+    of pages; the bound exists so a year-long window against a busy database degrades into a
+    partial answer rather than a thousand requests.
+
+    Returns the page id, its date, its title and two booleans. No block content, no file URLs.
+    """
+    if not date_property:
+        raise NotionError("This database has no date property, so entries can't be checked.")
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Notion-Version": NOTION_VERSION,
+        "Content-Type": "application/json",
+    }
+    payload: Dict[str, Any] = {
+        "filter": {
+            "and": [
+                {"property": date_property, "date": {"on_or_after": start}},
+                {"property": date_property, "date": {"on_or_before": end}},
+            ]
+        },
+        "page_size": 100,
+    }
+
+    found: List[Dict[str, Any]] = []
+    cursor: Optional[str] = None
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            for _ in range(100):
+                if cursor:
+                    payload["start_cursor"] = cursor
+                response = await client.post(
+                    f"{base_url}/databases/{database_id}/query", headers=headers, json=payload
+                )
+                if response.status_code >= 400:
+                    raise NotionError(
+                        f"Notion returned {response.status_code} checking entries."
+                    )
+
+                body = response.json()
+                for item in body.get("results", []):
+                    properties = item.get("properties", {}) or {}
+                    value = (properties.get(date_property) or {}).get("date") or {}
+                    raw = value.get("start")
+                    if not raw:
+                        continue
+                    found.append({
+                        "page_id": item.get("id"),
+                        "date": raw[:10],
+                        "title": _title_of(properties),
+                    })
+
+                if len(found) >= max_pages or not body.get("has_more"):
+                    break
+                cursor = body.get("next_cursor")
+                if not cursor:
+                    break
+
+            found = found[:max_pages]
+
+            semaphore = asyncio.Semaphore(concurrency)
+
+            async def classify(entry: Dict[str, Any]) -> None:
+                async with semaphore:
+                    try:
+                        blocks = await _page_blocks(
+                            client, headers, entry["page_id"], base_url
+                        )
+                    except (NotionError, httpx.HTTPError):
+                        # One unreadable page must not lose the other ninety-nine. An entry
+                        # we could not classify is reported as complete, because the failure
+                        # mode of guessing the other way is telling somebody their finished
+                        # entry is empty.
+                        entry["has_words"] = True
+                        entry["has_media"] = True
+                        return
+                    entry.update(classify_blocks(blocks))
+
+            await asyncio.gather(*(classify(entry) for entry in found))
+    except httpx.HTTPError as exc:
+        raise NotionError(f"Could not reach Notion: {exc}") from exc
+
+    return found
+
+
+def _title_of(properties: Dict[str, Any]) -> str:
+    """The page's title property, whatever the user called that column."""
+    for value in properties.values():
+        if value.get("type") == "title":
+            spans = value.get("title") or []
+            text = "".join(span.get("plain_text", "") for span in spans).strip()
+            if text:
+                return text
+    return ""
 
 
 async def list_databases(access_token: str, base_url: str = NOTION_BASE_URL) -> List[Dict[str, str]]:

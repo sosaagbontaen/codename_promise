@@ -17,6 +17,7 @@ from .oauth import NotionOAuth, OAuthNotConfigured, OAuthStateError
 from .providers.notion_api import (
     NotionError,
     NotionGatewayHTTP,
+    entry_coverage,
     entry_days,
     list_databases,
     list_pages,
@@ -35,6 +36,7 @@ def build_router(
     gateway_factory=NotionGatewayHTTP,
     page_lister=list_pages,
     day_lister=entry_days,
+    coverage_lister=entry_coverage,
 ) -> APIRouter:
     router = APIRouter(prefix="/notion", tags=["notion-auth"])
 
@@ -133,6 +135,35 @@ def build_router(
         try:
             return {
                 "days": await day_lister(
+                    connection.access_token,
+                    connection.database_id,
+                    connection.date_property,
+                    start,
+                    end,
+                )
+            }
+        except NotionError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
+    @router.get("/entry-coverage")
+    async def coverage(start: str, end: str) -> Dict[str, List[Dict[str, Any]]]:
+        """Which entries in a range are missing their words or their attachments.
+
+        The day-level check next door cannot answer this: an entry with three photos and no
+        writing covers its day perfectly well, and an entry someone opened and abandoned
+        covers it too. Those are the common shapes - photos now and write it up later, or
+        write it up now and add the pictures later - and both are invisible to a calendar
+        walk.
+
+        Reads each page's blocks to classify it and returns **two booleans per page**. The
+        text never leaves this function; see `classify_blocks`.
+        """
+        connection = store.get()
+        if connection is None or not connection.is_ready:
+            raise HTTPException(status_code=409, detail="Pick a Notion database first.")
+        try:
+            return {
+                "entries": await coverage_lister(
                     connection.access_token,
                     connection.database_id,
                     connection.date_property,

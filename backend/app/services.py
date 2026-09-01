@@ -45,6 +45,9 @@ class NotionGateway(Protocol):
     #: Days that already have a page, so the client can say which are missing.
     async def entry_days(self, start: str, end: str) -> List[str]: ...
 
+    #: Entries that exist but are missing their words or their attachments.
+    async def entry_coverage(self, start: str, end: str) -> List[Dict[str, Any]]: ...
+
 
 # --- Stubs -----------------------------------------------------------------------------
 
@@ -157,6 +160,29 @@ class InMemoryNotion:
             for page in self.pages.values()
             if page.get("entry_date") and start <= str(page["entry_date"])[:10] <= end
         })
+
+    async def entry_coverage(self, start: str, end: str) -> List[Dict[str, Any]]:
+        """Classifies the stub's own blocks with the real rule, not a second copy of it.
+
+        Sharing `classify_blocks` is what makes the stub worth having: a change to what counts
+        as words has to keep both the deterministic tests and the live provider honest, and it
+        cannot do that if the stub has its own opinion.
+        """
+        from .providers.notion_api import classify_blocks
+
+        entries: List[Dict[str, Any]] = []
+        for page_id, page in self.pages.items():
+            day = str(page.get("entry_date") or "")[:10]
+            if not day or not (start <= day <= end):
+                continue
+            blocks = [self.blocks[b] for b in page.get("children", []) if b in self.blocks]
+            entries.append({
+                "page_id": page_id,
+                "date": day,
+                "title": page.get("title") or "",
+                **classify_blocks(blocks),
+            })
+        return entries
 
 
 async def insert_entry(
