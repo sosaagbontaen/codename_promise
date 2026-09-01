@@ -26,6 +26,33 @@ struct PressableStyle: ButtonStyle {
     }
 }
 
+/// For a full-width row, where scaling looks wrong but nothing at all feels broken.
+///
+/// iOS gives `List` rows a highlight for free, and both of the things this app does to its
+/// rows take it away: `.listRowBackground(.clear)` leaves nothing to tint, and
+/// `.buttonStyle(.plain)` strips the treatment without replacing it. The result is an app
+/// where tapping produces no acknowledgement until the next screen arrives - which reads as
+/// unresponsive even when it is fast.
+struct RowPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Brand.ink.opacity(configuration.isPressed ? 0.07 : 0))
+                    .padding(.horizontal, -10)
+            )
+            .scaleEffect(configuration.isPressed ? 0.985 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { _, pressed in
+                if pressed { Haptics.picked() }
+            }
+    }
+}
+
+extension ButtonStyle where Self == RowPressStyle {
+    static var row: RowPressStyle { RowPressStyle() }
+}
+
 extension ButtonStyle where Self == PressableStyle {
     /// For a large primary action, where a big surface makes a big scale look wrong.
     static var pressablePrimary: PressableStyle { PressableStyle(scale: 0.975) }

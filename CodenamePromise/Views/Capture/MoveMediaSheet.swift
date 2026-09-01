@@ -58,7 +58,7 @@ struct MoveMediaSheet: View {
                         } label: {
                             DestinationRow(draft: draft, fileStore: fileStore)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.row)
                     }
                 }
             }

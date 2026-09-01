@@ -267,7 +267,7 @@ struct OpenDaysView: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.row)
     }
 
     private struct MonthGroup {
@@ -411,7 +411,7 @@ struct OpenDaysPrompt: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.row)
     }
 
     private var title: String {

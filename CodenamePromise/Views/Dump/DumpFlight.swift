@@ -22,7 +22,10 @@ struct DumpFlight: View {
         let id = UUID()
         let symbol: String
         let tint: Color
-        let origin: CGPoint
+        /// Where it starts, as a fraction of the overlay. Resolved against real geometry at
+        /// draw time rather than guessed in points, which is how the last version ended up
+        /// launching things from coordinates nothing was actually at.
+        let originUnit: CGPoint
         let delay: Double
     }
 
@@ -40,6 +43,7 @@ struct DumpFlight: View {
     let pieces: [Piece]
     let destination: CGPoint
     let phase: Phase
+    let size: CGSize
 
     /// Fixed rather than random per frame, so the burst is the same shape every time and
     /// reads as the app's gesture rather than as noise.
@@ -73,7 +77,13 @@ struct DumpFlight: View {
 
     private var plunging: some View {
         ForEach(pieces) { piece in
-            PieceInFlight(piece: piece, destination: destination, flying: phase != .idle)
+            PieceInFlight(
+                piece: piece,
+                origin: CGPoint(x: piece.originUnit.x * size.width,
+                                y: piece.originUnit.y * size.height),
+                destination: destination,
+                flying: phase != .idle
+            )
         }
     }
 
@@ -132,6 +142,7 @@ struct DumpFlight: View {
 /// the tray at the end.
 private struct PieceInFlight: View {
     let piece: DumpFlight.Piece
+    let origin: CGPoint
     let destination: CGPoint
     let flying: Bool
 
@@ -146,8 +157,8 @@ private struct PieceInFlight: View {
             .opacity(flying ? 0 : 1)
             // The horizontal sweep eases out: fast away from where it sat, slowing as it
             // lines up over the tray.
-            .position(x: flying ? destination.x : piece.origin.x,
-                      y: flying ? destination.y : piece.origin.y)
+            .position(x: flying ? destination.x : origin.x,
+                      y: flying ? destination.y : origin.y)
             .animation(.timingCurve(0.2, 0.9, 0.7, 1.0, duration: 0.46).delay(piece.delay),
                        value: flying)
             // ...while the vertical drop eases *in*, so it hangs a moment and then falls.

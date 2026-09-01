@@ -17,6 +17,9 @@ struct DraftSummary: Identifiable, Hashable {
     let id: UUID
     let entryDateKey: String
     let title: String
+    /// The time of day, because the timeline header already carries the date and repeating
+    /// it in the card is the redundancy that made these read as records rather than moments.
+    let time: String
     let preview: String
     let thumbnails: [Thumb]
     let hiddenThumbnailCount: Int
@@ -63,6 +66,7 @@ extension DraftSummary {
         self.id = draft.id
         self.entryDateKey = draft.entryDateKey
         self.title = resolvedTitle
+        self.time = draft.createdAt.formatted(date: .omitted, time: .shortened)
         self.preview = rawText == resolvedTitle ? "" : rawText
         self.thumbnails = media.prefix(thumbnailLimit).map {
             Thumb(id: $0.id, relativePath: $0.relativePath, isVideo: $0.kind == .video)

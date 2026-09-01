@@ -35,6 +35,8 @@ struct DumpView: View {
     @State private var connection: NotionConnectionStatus?
     @State private var flight: [DumpFlight.Piece] = []
     @State private var flightPhase: DumpFlight.Phase = .idle
+    /// The button winding up as the pieces converge on it.
+    @State private var charging = false
     @State private var status: Status = .composing
     @FocusState private var writing: Bool
 
@@ -246,8 +248,10 @@ struct DumpView: View {
         GeometryReader { geo in
             DumpFlight(
                 pieces: flight,
-                destination: CGPoint(x: geo.size.width / 2, y: geo.size.height - 18),
-                phase: flightPhase
+                // The Dump it button, which is what they are being thrown into.
+                destination: CGPoint(x: geo.size.width / 2, y: geo.size.height * 0.78),
+                phase: flightPhase,
+                size: geo.size
             )
         }
     }
@@ -340,9 +344,13 @@ struct DumpView: View {
                 in: RoundedRectangle(cornerRadius: 16)
             )
             .shadow(
-                color: Brand.violet.opacity(hasSomethingToDump ? 0.34 : 0),
-                radius: 14, y: 6
+                color: Brand.violet.opacity(charging ? 0.9 : (hasSomethingToDump ? 0.34 : 0)),
+                radius: charging ? 34 : 14, y: 6
             )
+            // Winding up: it swells and its glow builds as the pieces converge, so the blast
+            // reads as something the button did rather than something that happened near it.
+            .scaleEffect(charging ? 1.07 : 1)
+            .animation(.easeIn(duration: 0.34), value: charging)
         }
         .buttonStyle(.pressablePrimary)
         .disabled(!hasSomethingToDump || status == .dumping)
@@ -414,18 +422,19 @@ struct DumpView: View {
         var pieces: [DumpFlight.Piece] = []
         var delay = 0.0
         func add(_ symbol: String, _ tint: Color, _ x: CGFloat) {
+            // Unit coordinates: the mode-button row, wherever it happens to be.
             pieces.append(.init(symbol: symbol, tint: tint,
-                                origin: CGPoint(x: x, y: 240), delay: delay))
-            delay += 0.055
+                                originUnit: CGPoint(x: x, y: 0.58), delay: delay))
+            delay += 0.05
         }
         if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            add("text.alignleft", Brand.Mode.text, 90)
+            add("text.alignleft", Brand.Mode.text, 0.16)
         }
-        if pendingAudio != nil { add("mic.fill", Brand.Mode.voice, 150) }
+        if pendingAudio != nil { add("mic.fill", Brand.Mode.voice, 0.38) }
         for item in staged.prefix(4) {
             add(item.kind == .video ? "video.fill" : "photo.fill",
                 item.kind == .video ? Brand.Mode.video : Brand.Mode.photo,
-                210 + CGFloat(pieces.count) * 34)
+                0.62 + CGFloat(pieces.count % 2) * 0.22)
         }
         return pieces
     }
@@ -473,20 +482,32 @@ struct DumpView: View {
             writing = false
             status = .composing
 
-            flightPhase = .falling
             Task {
-                // The plunge, then the hit. The haptic fires with the impact frame, not with
-                // the button press, because that is the moment being described.
-                try? await Task.sleep(for: .milliseconds(300))
+                // One frame at rest first. Inserting the pieces with the phase already
+                // flipped gives SwiftUI no "from" state, so the swirl simply never played -
+                // which is why the last build looked like a freeze and then a bang.
+                try? await Task.sleep(for: .milliseconds(20))
+                flightPhase = .falling
+                charging = true
+
+                // They converge for most of the flight; the button is winding up throughout.
+                try? await Task.sleep(for: .milliseconds(430))
                 Haptics.thud()
                 impact.blast()
+                charging = false
                 flightPhase = .impact
 
-                try? await Task.sleep(for: .milliseconds(320))
-                flight = []
-                flightPhase = .idle
+                // Short tail. The old 320ms held a still screen after the bang and then cut,
+                // which read as a hang; leaving while the shockwave is still expanding
+                // carries the motion into the push instead.
+                try? await Task.sleep(for: .milliseconds(150))
                 syncStagedCount()
                 onDumped(created)
+
+                // Cleaned up after the navigation, so nothing pops before the screen leaves.
+                try? await Task.sleep(for: .milliseconds(260))
+                flight = []
+                flightPhase = .idle
             }
         } catch {
             Haptics.failed()

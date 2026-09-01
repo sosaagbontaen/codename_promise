@@ -36,7 +36,7 @@ struct DumpDestinationSheet: View {
                             selected: appendTo == nil
                         )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.row)
                 } footer: {
                     Text("Each dump becomes its own page, which is what makes them easy to find later.")
                 }
@@ -71,7 +71,7 @@ struct DumpDestinationSheet: View {
                                     selected: appendTo?.id == page.id
                                 )
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.row)
                         }
                     }
                 } header: {

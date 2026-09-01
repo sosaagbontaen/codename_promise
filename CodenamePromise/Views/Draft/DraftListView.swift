@@ -136,7 +136,7 @@ struct DraftListView: View {
                     OpenDaysPrompt(mostRecentOpenDay: mostRecentOpenDay) {
                         showingOpenDays = true
                     }
-                    .listRowBackground(Brand.surface)
+                    .listRowBackground(Color.clear)
                 }
             }
 
@@ -156,10 +156,13 @@ struct DraftListView: View {
             ForEach(groupedDrafts, id: \.day) { group in
                 Section {
                     ForEach(group.drafts, id: \.id) { draft in
-                        NavigationLink(value: OpeningDraft(id: draft.id)) {
+                        Button {
+                            path.append(OpeningDraft(id: draft.id))
+                        } label: {
                             DraftRow(summary: draft, fileStore: files)
                         }
-                        .listRowBackground(Brand.surface)
+                        .buttonStyle(.row)
+                        .listRowBackground(Color.clear)
                         // Swipe the opposite way from delete. Duplicating is the safe action,
                         // so it gets the leading edge where an accidental swipe costs nothing.
                         .swipeActions(edge: .leading) {
@@ -366,120 +369,87 @@ struct DraftRow: View {
     let fileStore: MediaFileStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(summary.title)
-                .font(Type.label(16.5, .semibold))
-                .lineLimit(1)
+        VStack(alignment: .leading, spacing: 10) {
+            // Title and time on one line. The timeline header already said which day this
+            // was, so repeating the date here only crowded it.
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(summary.title)
+                    .font(Type.label(17, .semibold))
+                    .foregroundStyle(Brand.ink)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Text(summary.time)
+                    .font(Type.caption(11.5))
+                    .foregroundStyle(Brand.muted)
+            }
 
             if !summary.preview.isEmpty {
                 Text(summary.preview)
-                    .font(Type.body(14))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .font(Type.body(14.5))
+                    .foregroundStyle(Brand.muted)
+                    .lineLimit(3)
+                    .lineSpacing(2)
             }
 
-            // A strip of what's actually attached, rather than a count. Seeing the day's
-            // photos is the point of opening the list — "3 photos" tells you nothing about
-            // which day this was.
             if !summary.thumbnails.isEmpty {
-                HStack(spacing: 5) {
-                    ForEach(summary.thumbnails) { thumb in
-                        RowThumbnail(thumb: thumb, fileStore: fileStore)
-                    }
-                    if summary.hiddenThumbnailCount > 0 {
-                        Text("+\(summary.hiddenThumbnailCount)")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 54, height: 54)
-                            .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
-                    }
-                }
-                // Belt and braces: even if the strip is ever too wide again, it must clip
-                // rather than drag the rest of the row off-screen with it.
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .clipped()
-                .padding(.vertical, 2)
-            }
-
-            HStack(spacing: 8) {
-                if summary.pendingRecordings > 0 {
-                    badge("waveform", "\(summary.pendingRecordings)", .secondary)
-                }
-                if summary.isFormatted {
-                    // Purple is the app's mark for anything the AI touched.
-                    badge("sparkles", "formatted", Brand.ai)
-                }
-                syncBadge
-            }
-            .font(Type.caption(11.5, .semibold))
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 4)
-    }
-
-    /// Green when the destination holds what you see; amber when it doesn't yet.
-    @ViewBuilder
-    private var syncBadge: some View {
-        switch summary.sync {
-        case .hidden:
-            EmptyView()
-        case .syncing:
-            badge("arrow.up.circle", "syncing", .secondary)
-        case .failed:
-            badge("exclamationmark.icloud", "sync failed", Brand.failed)
-        case .synced:
-            badge("checkmark.icloud.fill", "synced", Brand.reached)
-        case .unsyncedChanges:
-            badge("arrow.triangle.2.circlepath", "unsynced changes", Brand.waiting)
-        case .notSynced:
-            badge("icloud.slash", "not synced", Brand.waiting)
-        }
-    }
-
-    private func badge(_ symbol: String, _ text: String, _ tint: Color) -> some View {
-        HStack(spacing: 3) {
-            Image(systemName: symbol)
-            Text(text)
-        }
-        .foregroundStyle(tint)
-    }
-}
-
-/// A small thumbnail for the list. Uses the shared downsampling cache — decoding full-size
-/// originals while scrolling would make the list stutter badly.
-private struct RowThumbnail: View {
-    let thumb: DraftSummary.Thumb
-    let fileStore: MediaFileStore
-
-    @State private var image: UIImage?
-
-    var body: some View {
-        Group {
-            if let image {
-                Image(uiImage: image).resizable().scaledToFill()
-            } else {
-                Color.secondary.opacity(0.15)
-            }
-        }
-        .frame(width: 54, height: 54)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(alignment: .bottomTrailing) {
-            if thumb.isVideo {
-                Image(systemName: "play.fill")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.white)
-                    .shadow(radius: 2)
-                    .padding(4)
-            }
-        }
-        .task {
-            if image == nil {
-                image = await ThumbnailCache.shared.thumbnail(
-                    id: thumb.id, relativePath: thumb.relativePath, isVideo: thumb.isVideo,
-                    fileStore: fileStore, maxPixel: 140
+                MediaCollage(
+                    thumbs: summary.thumbnails,
+                    overflow: summary.hiddenThumbnailCount,
+                    fileStore: fileStore
                 )
             }
+
+            // Metadata, and it should read as metadata. Previously "not synced" carried the
+            // same visual weight as the entry itself, which put a housekeeping detail on a
+            // level with somebody's evening.
+            if !statusLabel.isEmpty {
+                HStack(spacing: 5) {
+                    Image(systemName: statusIcon).font(.system(size: 9, weight: .semibold))
+                    Text(statusLabel)
+                    if summary.pendingRecordings > 0 {
+                        Text("\u{00B7} \(summary.pendingRecordings) to transcribe")
+                    }
+                    if summary.isFormatted {
+                        Text("\u{00B7} structured")
+                    }
+                }
+                .font(Type.caption(10.5, .medium))
+                .foregroundStyle(statusTint)
+                .opacity(0.85)
+            }
+        }
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
+    /// Quiet by default: "synced" is the expected state and does not need announcing, so the
+    /// only loud case is a genuine failure.
+    private var statusLabel: String {
+        switch summary.sync {
+        case .hidden: ""
+        case .syncing: "Sending"
+        case .failed: "Didn't send"
+        case .synced: "In Notion"
+        case .unsyncedChanges: "Edited since sending"
+        case .notSynced: "Not sent yet"
+        }
+    }
+
+    private var statusIcon: String {
+        switch summary.sync {
+        case .failed: "exclamationmark.triangle.fill"
+        case .synced: "checkmark"
+        case .syncing: "arrow.up"
+        default: "bolt.horizontal"
+        }
+    }
+
+    private var statusTint: Color {
+        switch summary.sync {
+        case .failed: Brand.failed
+        case .synced: Brand.reached
+        default: Brand.muted
         }
     }
 }
@@ -496,16 +466,16 @@ private struct DayHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            VStack(alignment: .leading, spacing: -1) {
                 Text(weekday)
-                    .font(Type.title(20))
-                    .foregroundStyle(.primary)
+                    .font(Type.display(22, .bold))
+                    .foregroundStyle(Brand.ink)
                 Text(rest)
                     .font(Type.caption(13))
-                    .foregroundStyle(.secondary)
-                Spacer()
+                    .foregroundStyle(Brand.muted)
             }
             .textCase(nil)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             LinearGradient(
                 colors: [Brand.ripple, Brand.ripple.opacity(0)],
@@ -528,10 +498,15 @@ private struct DayHeader: View {
         return calendarDay.representativeDate().formatted(.dateTime.weekday(.wide))
     }
 
+    /// The year is only worth the space when it is not this one.
     private var rest: String {
         guard let calendarDay = CalendarDay(rawValue: day) else { return "" }
-        return calendarDay.representativeDate()
-            .formatted(.dateTime.month(.wide).day().year())
+        let date = calendarDay.representativeDate()
+        let thisYear = Calendar.current.component(.year, from: Date())
+        let year = Calendar.current.component(.year, from: date)
+        return year == thisYear
+            ? date.formatted(.dateTime.month(.wide).day())
+            : date.formatted(.dateTime.month(.wide).day().year())
     }
 }
 
