@@ -447,22 +447,19 @@ struct DraftRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // Title and time on one line. The timeline header already said which day this
-            // was, so repeating the date here only crowded it.
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                // Literata, not the UI font. A title is something the person wrote, so it
-                // belongs to the same voice as the entry underneath it - and setting the two
-                // in opposed faces at nearly the same size is what made the card look like a
-                // component rather than a memory.
-                Text(summary.title)
-                    .font(Type.journal(17, 600))
-                    .foregroundStyle(Brand.ink)
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                Text(summary.edited)
-                    .font(Type.caption(11.5))
-                    .foregroundStyle(Brand.muted)
-            }
+            // The title line is the entry's, and nothing else's. The edit time moved down to
+            // the metadata row: it was sharing a baseline with the one piece of the card the
+            // person actually wrote, which put a housekeeping fact in the loudest position on
+            // the row and made every title read as if it came with a receipt attached.
+            //
+            // The journal face, not the UI font - a title is something the person wrote, and
+            // setting it against the entry text in an opposed face at nearly the same size is
+            // what made the card look like a component rather than a memory.
+            Text(summary.title)
+                .font(Type.journal(17, 600))
+                .foregroundStyle(Brand.ink)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             if !summary.preview.isEmpty {
                 Text(summary.preview)
@@ -493,7 +490,7 @@ struct DraftRow: View {
                         Image(systemName: statusIcon).font(.system(size: 10, weight: .semibold))
                         Text(statusLabel)
                     }
-                    .font(Type.caption(11, .semibold))
+                    .font(Type.caption(11, statusWeight))
                     .foregroundStyle(statusTint)
                 }
 
@@ -505,6 +502,12 @@ struct DraftRow: View {
                 if summary.isFormatted {
                     badge("sparkles", "formatted", Brand.ai)
                 }
+
+                Spacer(minLength: 6)
+
+                Text(summary.edited)
+                    .font(Type.caption(11))
+                    .foregroundStyle(Brand.muted.opacity(0.75))
             }
         }
         .padding(.horizontal, 14)
@@ -542,29 +545,38 @@ struct DraftRow: View {
         }
     }
 
-    /// Colour-coded, and small.
-    ///
-    /// Greying everything but failures was an overcorrection: colour is what marks this as a
-    /// *different channel* from the entry's own words, and losing it made status read as more
-    /// body text. What made it shout before was its size and weight, not its hue - so it
-    /// keeps the colour and gives up the size.
+    /// Small, and coloured only where colour earns it.
     private func badge(_ symbol: String, _ text: String, _ tint: Color) -> some View {
         HStack(spacing: 4) {
             Image(systemName: symbol).font(.system(size: 10, weight: .semibold))
             Text(text)
         }
-        .font(Type.caption(11, .semibold))
+        .font(Type.caption(11, .medium))
         .foregroundStyle(tint)
     }
 
+    /// Amber-and-bold was reserved for the *normal* state, which is backwards twice over.
+    ///
+    /// "Sync is optional — an entry that never syncs is complete and valid" is a design tenet,
+    /// not a caveat, so an entry sitting unsynced has nothing wrong with it and must not be
+    /// dressed as a warning. And because most entries are in that state most of the time, the
+    /// list came out covered in amber — at which point amber stops distinguishing anything and
+    /// is merely loud. Same failure as violet-on-everything, in a colour that means danger.
+    ///
+    /// Colour now marks the exception. A failure is red because a failure is genuinely news.
+    /// Syncing is violet because it is happening right now and will stop. Everything else is
+    /// grey, and reads by its symbol and its word, which was always enough.
     private var statusTint: Color {
         switch summary.sync {
         case .failed: Brand.failed
-        case .synced: Brand.reached
         case .syncing: Brand.violet
-        case .unsyncedChanges, .notSynced: Brand.waiting
-        case .hidden: Brand.muted
+        case .synced, .unsyncedChanges, .notSynced, .hidden: Brand.muted
         }
+    }
+
+    /// Only a failure gets weight, for the same reason only a failure gets colour.
+    private var statusWeight: Type.Weight {
+        summary.sync == .failed ? .semibold : .medium
     }
 }
 
