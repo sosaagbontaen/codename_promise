@@ -241,6 +241,10 @@ struct DraftListView: View {
                 firstEntryDay: try store.earliestEntryDay()
             ).first
 
+            // Exactly one nudge is pending at a time, recomputed whenever the journal
+            // changes rather than incremented.
+            services.reminders.reschedule(using: store)
+
             loadError = nil
         } catch {
             loadError = error.localizedDescription

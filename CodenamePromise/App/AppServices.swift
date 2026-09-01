@@ -11,6 +11,9 @@ import SwiftData
 @MainActor
 @Observable
 final class AppServices {
+    /// Scheduled on the device, never from a server. See `ReminderScheduler`.
+    let reminders = ReminderScheduler()
+
     struct Ready {
         let store: DraftStore
         let files: MediaFileStore

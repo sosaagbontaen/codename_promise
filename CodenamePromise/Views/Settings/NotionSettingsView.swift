@@ -51,6 +51,7 @@ struct NotionSettingsView: View {
             }
         }
         .task {
+            await services.reminders.refreshAuthorization()
             serverURL = AppServices.backendSettings.overrideValue
                 ?? AppServices.backendSettings.bundled ?? ""
             if coordinator == nil, let service = services.connectionService {
@@ -138,6 +139,39 @@ struct NotionSettingsView: View {
             }
         } footer: {
             Text("Ideas, problems, or just hello. Nothing from your entries is ever attached.")
+        }
+
+        Section {
+            Toggle(isOn: reminderBinding) {
+                Label("Remind me to write", systemImage: "bell")
+            }
+        } footer: {
+            Text(reminderFooter)
+        }
+    }
+
+    /// A toggle rather than a request on launch: a journaling app that demands notification
+    /// access before you have written anything is asking for a favour it has not earned.
+    private var reminderBinding: Binding<Bool> {
+        Binding(
+            get: { services.reminders.isEnabled },
+            set: { wanted in
+                guard let store = services.store else { return }
+                if wanted {
+                    Task { await services.reminders.enable(using: store) }
+                } else {
+                    services.reminders.disable()
+                }
+            }
+        )
+    }
+
+    private var reminderFooter: String {
+        switch services.reminders.authorization {
+        case .denied:
+            "Notifications are off for this app in iOS Settings."
+        default:
+            "One quiet nudge after a few days without an entry, at the hour you usually write. It is scheduled on this device \u{2014} nothing about your habits leaves the phone."
         }
     }
 

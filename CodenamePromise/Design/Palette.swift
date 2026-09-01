@@ -69,3 +69,19 @@ extension UIColor {
         )
     }
 }
+
+extension View {
+    /// The surface someone actually writes on.
+    ///
+    /// A journal is read as much as it is written, often years later, and the default
+    /// `TextEditor` metrics are tuned for form fields rather than for paragraphs. Line
+    /// spacing and a slightly larger face are the cheapest thing that makes long-form typing
+    /// feel unhurried instead of cramped.
+    func writingSurface(minHeight: CGFloat = 320) -> some View {
+        self
+            .font(.system(size: 17))
+            .lineSpacing(5)
+            .scrollContentBackground(.hidden)
+            .frame(minHeight: minHeight)
+    }
+}

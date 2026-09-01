@@ -129,15 +129,34 @@ struct CaptureView: View {
         }
     }
 
+    /// Whether there is anything to say about this entry beyond its own words.
+    private var hasFooterNotes: Bool {
+        controller.pendingTranscriptionCount > 0
+            || attachProgress != nil
+            || controller.appendsToExistingPage
+            || !statusMessages.isEmpty
+            || controller.destinationLink != nil
+    }
+
     // MARK: - Editor
 
     private var editor: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 14) {
+                // A page for a day. The nav bar already carries the date, but small and in
+                // chrome; saying it here gives the entry somewhere to be rather than making
+                // it a text box that happens to be open.
+                Text(controller.entryDate.representativeDate()
+                    .formatted(.dateTime.weekday(.wide).month(.wide).day()))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Brand.azure)
+                    .textCase(.uppercase)
+                    .tracking(0.6)
+                    .padding(.top, 6)
+
                 TextField("Title (optional)", text: $controller.title)
                     .font(.title2.weight(.semibold))
                     .textInputAutocapitalization(.sentences)
-                    .padding(.top, 4)
 
                 if controller.hasFormatting {
                     Picker("View", selection: $mode) {
@@ -148,69 +167,82 @@ struct CaptureView: View {
                     .onChange(of: mode) { Haptics.picked() }
                 }
 
-                if mode == .formatted, controller.hasFormatting {
-                    TextEditor(text: $controller.formatted)
-                        .font(.body)
-                        .frame(minHeight: 320)
-                } else {
-                    TextEditor(text: $controller.text)
-                        .font(.body)
-                        .frame(minHeight: 320)
-                        .overlay(alignment: .topLeading) {
-                            if controller.text.isEmpty {
-                                Text("What went well today?")
-                                    .foregroundStyle(.tertiary)
-                                    .padding(.top, 8)
-                                    .allowsHitTesting(false)
+                Group {
+                    if mode == .formatted, controller.hasFormatting {
+                        TextEditor(text: $controller.formatted)
+                            .writingSurface()
+                    } else {
+                        TextEditor(text: $controller.text)
+                            .writingSurface()
+                            .overlay(alignment: .topLeading) {
+                                if controller.text.isEmpty {
+                                    Text("What went well today?")
+                                        .font(.body)
+                                        .foregroundStyle(.tertiary)
+                                        .padding(.top, 8)
+                                        .padding(.leading, 5)
+                                        .allowsHitTesting(false)
+                                }
                             }
-                        }
+                    }
                 }
+                .animation(.easeInOut(duration: 0.18), value: mode)
 
                 if !controller.orderedMedia.isEmpty {
                     mediaStrip
                 }
 
-                if controller.pendingTranscriptionCount > 0 {
-                    queuedRecordingsNotice
-                }
+                // Everything below is *about* the entry rather than part of it, so it sits
+                // together on its own ground instead of trailing off as loose grey text.
+                if hasFooterNotes {
+                    VStack(alignment: .leading, spacing: 10) {
+                        if controller.pendingTranscriptionCount > 0 {
+                            queuedRecordingsNotice
+                        }
 
-                if let attachProgress {
-                    HStack(spacing: 8) {
-                        ProgressView().controlSize(.mini)
-                        Text("Adding \(attachProgress.done) of \(attachProgress.total)…")
+                        if let attachProgress {
+                            HStack(spacing: 8) {
+                                ProgressView().controlSize(.mini)
+                                Text("Adding \(attachProgress.done) of \(attachProgress.total)\u{2026}")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        if controller.appendsToExistingPage {
+                            Label(
+                                controller.notionSyncState?.externalTitle.map {
+                                    "Will be added to the end of \"\($0)\""
+                                } ?? "Will be added to the end of an existing Notion entry",
+                                systemImage: "text.append"
+                            )
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        }
+
+                        ForEach(statusMessages, id: \.self) { message in
+                            Text(message)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        // Right after a sync this is where you're already looking, so put
+                        // the way to go and see the result here rather than only in a menu.
+                        if controller.destinationLink != nil {
+                            Button {
+                                openInDestination()
+                            } label: {
+                                Label("Open in Notion", systemImage: "arrow.up.forward.app")
+                                    .font(.caption.weight(.medium))
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Brand.azure)
+                        }
                     }
-                }
-
-                if controller.appendsToExistingPage {
-                    Label(
-                        controller.notionSyncState?.externalTitle.map {
-                            "Will be added to the end of \"\($0)\""
-                        } ?? "Will be added to the end of an existing Notion entry",
-                        systemImage: "text.append"
-                    )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                ForEach(statusMessages, id: \.self) { message in
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                // Right after a sync this is where you're already looking, so put the way to
-                // go and see the result here rather than only in a menu.
-                if controller.destinationLink != nil {
-                    Button {
-                        openInDestination()
-                    } label: {
-                        Label("Open in Notion", systemImage: "arrow.up.forward.app")
-                            .font(.caption)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.tint)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+                    .background(.quaternary.opacity(0.28), in: RoundedRectangle(cornerRadius: 12))
+                    .padding(.top, 4)
                 }
             }
             .padding(.horizontal, 16)
