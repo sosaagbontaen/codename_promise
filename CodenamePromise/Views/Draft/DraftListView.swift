@@ -145,7 +145,13 @@ struct DraftListView: View {
                     OpenDaysPrompt(mostRecentOpenDay: mostRecentOpenDay) {
                         showingOpenDays = true
                     }
-                    .listRowBackground(Color.clear)
+                    .listRowBackground(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Brand.surface)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                    )
+                    .listRowSeparator(.hidden)
                 }
             }
 
@@ -175,7 +181,16 @@ struct DraftListView: View {
                             }
                         }
                         .buttonStyle(.row)
-                        .listRowBackground(Color.clear)
+                        // A quiet container, not the old heavy card. Removing them entirely
+                        // left days and entries separated identically, so the grouping
+                        // stopped being readable - a day heading looked like just more list.
+                        .listRowBackground(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(Brand.surface)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                        )
+                        .listRowSeparator(.hidden)
                         // Swipe the opposite way from delete. Duplicating is the safe action,
                         // so it gets the leading edge where an accidental swipe costs nothing.
                         .swipeActions(edge: .leading) {
@@ -432,7 +447,8 @@ struct DraftRow: View {
                 .foregroundStyle(statusTint)
             }
         }
-        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 13)
         .frame(maxWidth: .infinity, alignment: .leading)
         .clipped()
         .contentShape(Rectangle())
@@ -507,9 +523,11 @@ private struct DayHeader: View {
             .frame(height: 1.5)
             .frame(maxWidth: 190)
         }
-        .padding(.top, 14)
-        .padding(.bottom, 4)
-        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 6, trailing: 16))
+        // Much more space above a day than between its entries: that difference is what
+        // makes the grouping legible at a glance.
+        .padding(.top, 26)
+        .padding(.bottom, 6)
+        .listRowInsets(EdgeInsets(top: 0, leading: 18, bottom: 8, trailing: 16))
     }
 
     /// "Friday" carries the feel of a day; "August 14, 2026" carries the fact.
