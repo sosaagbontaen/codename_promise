@@ -50,11 +50,16 @@ struct CaptureView: View {
         VStack(spacing: 0) {
             editor
             syncProgressBar
-            Divider()
-            footer
         }
         .navigationTitle(dayLabel)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { hideKeyboard() }
+                    .font(Type.label(15, .semibold))
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -63,8 +68,10 @@ struct CaptureView: View {
                     Label("Change day", systemImage: "calendar")
                 }
             }
+            // The save state is the one thing that must stay visible: not knowing whether
+            // your words are safe is the anxiety this project exists to remove (ADR-001).
             ToolbarItem(placement: .topBarTrailing) {
-                syncButton
+                saveStateLabel
             }
         }
         .confirmationDialog(
@@ -191,6 +198,10 @@ struct CaptureView: View {
                 if !controller.orderedMedia.isEmpty {
                     mediaStrip
                 }
+
+                actionRow
+                destinationRow
+                sendButton
 
                 // Everything below is *about* the entry rather than part of it, so it sits
                 // together on its own ground instead of trailing off as loose grey text.
@@ -374,50 +385,148 @@ struct CaptureView: View {
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
     }
 
-    // MARK: - Footer
+    // MARK: - Actions, inline
 
-    private var footer: some View {
-        HStack(spacing: 16) {
-            if recorder.isRecording {
-                dictationButton
-            } else {
-                idleFooter
-            }
-        }
-        .padding(.horizontal, 18)
-        .padding(.top, 10)
-        .padding(.bottom, 6)
-        .background(.bar)
-        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: recorder.isRecording)
-    }
-
-    @ViewBuilder
-    private var idleFooter: some View {
-        Group {
-            saveStateLabel
-
-            Spacer()
-
-            // `maxSelectionCount: nil` means unlimited — reopening the picker for every
-            // single photo is needless friction when someone is writing up a whole day.
+    /// The same three circles as the Dump screen, in the same confetti colours.
+    ///
+    /// They used to sit in a second bottom bar stacked on top of the tab bar - two rows of
+    /// chrome on a screen whose whole job is a page of text. Inline they cost nothing while
+    /// you are reading and are where your thumb already is when you are adding.
+    private var actionRow: some View {
+        HStack(spacing: 14) {
             PhotosPicker(
-                selection: $photoSelections,
-                maxSelectionCount: nil,
+                selection: $photoSelections, maxSelectionCount: nil,
                 matching: .any(of: [.images, .videos])
             ) {
-                // Labelled, because an icon alone has to be learned and there is nothing
-                // to learn it from. The three actions here are the whole app.
-                VStack(spacing: 2) {
-                    Image(systemName: "photo.on.rectangle.angled").font(.system(size: 19))
-                    Text("Attach").font(Type.caption(10.5, .semibold))
-                }
-                .foregroundStyle(Brand.azure)
+                ActionCircle(title: "Attach", symbol: "photo.on.rectangle.angled", tint: Brand.Mode.photo)
             }
+            .disabled(recorder.isRecording)
 
-            formatButton
-            dictationButton
+            Button {
+                Haptics.committed()
+                Task { await recorder.start() }
+            } label: {
+                ActionCircle(title: "Voice", symbol: "mic.fill", tint: Brand.Mode.voice)
+            }
+            .buttonStyle(.pressable)
+            .disabled(recorder.isRecording)
+
+            Button {
+                formatOrConfirm()
+            } label: {
+                ActionCircle(title: "Structure", symbol: "sparkles", tint: Brand.ai)
+            }
+            .buttonStyle(.pressable)
+            .disabled(controller.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
+        .opacity(recorder.isRecording ? 0.3 : 1)
+        .overlay { if recorder.isRecording { recordingCapsule } }
+        .animation(.easeOut(duration: 0.18), value: recorder.isRecording)
     }
+
+    private var recordingCapsule: some View {
+        Button {
+            Haptics.committed()
+            stopRecording()
+        } label: {
+            HStack(spacing: 12) {
+                LiveWaveform(levels: recorder.levels, tint: .white)
+                    .frame(height: 22).frame(maxWidth: .infinity)
+                Text(elapsedLabel).font(Type.mono(14)).foregroundStyle(.white)
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 48)
+            .background(Brand.gradient, in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Where this entry goes, stated plainly instead of hidden behind an arrow.
+    ///
+    /// The old menu changed shape depending on whether the entry already owned a page,
+    /// which was correct but invisible - you had to open it to find out what it would do.
+    private var destinationRow: some View {
+        Button {
+            showingEntryPicker = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: controller.appendsToExistingPage ? "text.append" : "doc.badge.plus")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Brand.violet)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(destinationTitle)
+                        .font(Type.caption(13, .semibold))
+                        .foregroundStyle(Brand.ink).lineLimit(1)
+                    Text(destinationDetail)
+                        .font(Type.caption(11.5)).foregroundStyle(Brand.muted).lineLimit(1)
+                }
+                Spacer(minLength: 6)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(Brand.muted)
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 52)
+            .background(Brand.surface, in: RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.pressable)
+        .disabled(services.connectionService == nil)
+    }
+
+    private var destinationTitle: String {
+        if controller.appendsToExistingPage { return controller.syncActionLabel }
+        return controller.isLinkedToPage ? "Its own page in Notion" : "A new page in Notion"
+    }
+
+    private var destinationDetail: String {
+        if services.connectionService == nil { return "Notion isn\u{2019}t connected" }
+        if controller.isLinkedToPage { return "Sending again updates that page" }
+        return "Tap to add to an existing page instead"
+    }
+
+    /// One obvious primary action, where a small arrow in the toolbar used to open a menu.
+    private var sendButton: some View {
+        Button {
+            Task { await pushToNotion() }
+        } label: {
+            Group {
+                if services.sync?.isSyncing(controller.draftId) == true {
+                    ProgressView().tint(.white)
+                } else {
+                    Label(sendTitle, systemImage: canSend ? "arrow.up" : "checkmark")
+                        .font(Type.label(16, .semibold))
+                }
+            }
+            .foregroundStyle(canSend ? .white : Brand.muted)
+            .frame(maxWidth: .infinity).frame(height: 52)
+            .background(
+                canSend ? AnyShapeStyle(Brand.gradient)
+                        : AnyShapeStyle(Brand.muted.opacity(0.16)),
+                in: RoundedRectangle(cornerRadius: 15)
+            )
+            .shadow(color: Brand.violet.opacity(canSend ? 0.32 : 0), radius: 14, y: 6)
+        }
+        .buttonStyle(.pressablePrimary)
+        .disabled(!canSend)
+        .animation(.easeOut(duration: 0.18), value: canSend)
+    }
+
+    private var canSend: Bool {
+        controller.needsSync
+            && !controller.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && services.sync?.isSyncing(controller.draftId) != true
+    }
+
+    private var sendTitle: String {
+        if !controller.needsSync && controller.isLinkedToPage { return "Up to date in Notion" }
+        if controller.appendsToExistingPage { return controller.syncActionLabel }
+        return controller.isLinkedToPage ? "Update its Notion page" : "Send to Notion"
+    }
+
+    // MARK: - Footer
+
+
 
     @ViewBuilder
     private var saveStateLabel: some View {
@@ -441,95 +550,7 @@ struct CaptureView: View {
         }
     }
 
-    @ViewBuilder
-    private var dictationButton: some View {
-        switch recorder.state {
-        case .recording:
-            Button {
-                Haptics.committed()
-                stopRecording()
-            } label: {
-                HStack(spacing: 12) {
-                    // Live levels, not a spinner: the only question anyone has while
-                    // talking into a phone is whether it can hear them.
-                    LiveWaveform(levels: recorder.levels, tint: .white)
-                        .frame(height: 26)
-                        .frame(maxWidth: .infinity)
 
-                    Text(elapsedLabel)
-                        .font(Type.mono(15))
-
-                    Image(systemName: "stop.fill").font(.system(size: 14, weight: .bold))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 18)
-                .frame(height: 52)
-                .frame(maxWidth: .infinity)
-                .background(Brand.gradient, in: Capsule())
-                .shadow(color: Brand.violet.opacity(0.3), radius: 10, y: 4)
-            }
-            .accessibilityLabel("Stop dictation")
-            .transition(.scale(scale: 0.94).combined(with: .opacity))
-        case .denied:
-            // Actionable rather than merely informative — the fix lives in iOS Settings.
-            Button {
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(url)
-                }
-            } label: {
-                Label("Mic off", systemImage: "mic.slash")
-                    .font(.footnote)
-                    .foregroundStyle(Brand.failed)
-            }
-        case .failed(let message):
-            // Previously fell into `default`, which drew the mic button again — so a failure
-            // looked exactly like a button that does nothing.
-            Button {
-                Task { await recorder.start() }
-            } label: {
-                Label(message, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .lineLimit(2)
-                    .foregroundStyle(Brand.failed)
-            }
-        case .idle:
-            Button {
-                Haptics.committed()
-                Task { await recorder.start() }
-            } label: {
-                // The one filled control in the bar. Talking is the primary action of a
-                // voice-first journal, and until now it looked exactly as important as
-                // attaching a photo.
-                Image(systemName: "mic.fill")
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 46, height: 46)
-                    .background(Brand.gradient, in: Circle())
-                    .shadow(color: Brand.violet.opacity(0.28), radius: 8, y: 3)
-            }
-            .accessibilityLabel("Start dictation")
-        }
-    }
-
-    @ViewBuilder
-    private var formatButton: some View {
-        if services.formatting?.isFormatting(controller.draftId) == true {
-            ProgressView().controlSize(.small)
-        } else {
-            Button {
-                formatOrConfirm()
-            } label: {
-                VStack(spacing: 2) {
-                    Image(systemName: "sparkles").font(.system(size: 19))
-                    Text("Structure").font(Type.caption(10.5, .semibold))
-                }
-                // Violet marks what the model touched, here and on the entry list. The
-                // control that invites it wears the same colour.
-                .foregroundStyle(Brand.ai)
-            }
-            .disabled(controller.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        }
-    }
 
     /// Transcription and sync fail for the same reasons and phrase them the same way, so
     /// showing both verbatim prints the identical sentence twice. Deduplicated, order kept.
@@ -561,74 +582,6 @@ struct CaptureView: View {
         }
     }
 
-    @ViewBuilder
-    private var syncButton: some View {
-        if services.sync?.isSyncing(controller.draftId) == true {
-            ProgressView().controlSize(.small)
-        } else {
-            // The menu depends on where this entry currently lives, because otherwise the
-            // options are either duplicates or quietly destructive. A brand-new entry was
-            // offered both "Send to Notion" and "Send as a new page" — the same action twice
-            // — while an entry that already owned a page was offered "Add to an existing
-            // entry", which would have re-pointed it and orphaned the page it had created.
-            Menu {
-                if controller.isLinkedToPage {
-                    if controller.destinationLink != nil {
-                        Button {
-                            openInDestination()
-                        } label: {
-                            Label("Open in Notion", systemImage: "arrow.up.forward.app")
-                        }
-
-                        Divider()
-                    }
-
-                    Button {
-                        Task { await pushToNotion() }
-                    } label: {
-                        Label(
-                            controller.syncActionLabel,
-                            systemImage: "arrow.triangle.2.circlepath"
-                        )
-                    }
-                    .disabled(!controller.needsSync || controller.text.isEmpty)
-
-                    if controller.appendsToExistingPage {
-                        Button {
-                            showingEntryPicker = true
-                        } label: {
-                            Label("Choose a different entry…", systemImage: "text.append")
-                        }
-                    }
-
-                    Divider()
-
-                    Button {
-                        Task { await pushAsNewPage() }
-                    } label: {
-                        Label("Send as a new page instead", systemImage: "doc.badge.plus")
-                    }
-                    .disabled(controller.text.isEmpty)
-                } else {
-                    Button {
-                        Task { await pushToNotion() }
-                    } label: {
-                        Label("Send to Notion", systemImage: "arrow.up.circle")
-                    }
-                    .disabled(!controller.needsSync || controller.text.isEmpty)
-
-                    Button {
-                        showingEntryPicker = true
-                    } label: {
-                        Label("Add to an existing entry…", systemImage: "text.append")
-                    }
-                    .disabled(services.connectionService == nil)
-                }
-            } label: {
-                Label("Sync", systemImage: controller.needsSync ? "arrow.up.circle" : "checkmark.icloud")
-            }
-        }
-    }
 
     private var elapsedLabel: String {
         let total = Int(recorder.elapsed)
@@ -779,6 +732,28 @@ struct CaptureView: View {
 }
 
 // MARK: - Supporting views
+
+/// One of the three round actions, sharing the Dump screen's language.
+///
+/// A view rather than a method on `CaptureView`: `PhotosPicker`'s label closure is
+/// nonisolated and cannot call a main-actor member.
+struct ActionCircle: View {
+    let title: String
+    let symbol: String
+    let tint: Color
+
+    var body: some View {
+        VStack(spacing: 7) {
+            Image(systemName: symbol)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 52, height: 52)
+                .background(tint.opacity(0.13), in: Circle())
+            Text(title).font(Type.caption(11.5, .medium)).foregroundStyle(Brand.muted)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
 
 struct MediaThumbnail: View {
     let item: MediaItem

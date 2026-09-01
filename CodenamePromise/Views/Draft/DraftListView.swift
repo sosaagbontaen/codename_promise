@@ -38,7 +38,10 @@ struct DraftListView: View {
                     ContentUnavailableView("Journal unavailable", systemImage: "exclamationmark.triangle")
                 }
             }
-            .navigationTitle(Bundle.main.appDisplayName)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) { Wordmark(size: 19) }
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     if editMode == .active {
@@ -239,7 +242,11 @@ struct DraftListView: View {
 
     /// Snapshot limit for the row strip: enough to recognise a day at a glance without
     /// turning the list into a gallery.
-    private static let thumbnailLimit = 6
+    /// Four at 54pt plus the overflow chip is ~285pt, which fits the narrowest row this app
+    /// runs in. It used to be six at 58pt - about 431pt - and an `HStack` that wide does not
+    /// clip, it widens its parent: the row's title, preview and badges were pushed out of
+    /// frame to the left, which looked like text randomly disappearing.
+    private static let thumbnailLimit = 4
 
     /// The window the prompt row talks about. The sheet itself can widen it.
     private static let promptWindowDays = 30
@@ -383,10 +390,14 @@ struct DraftRow: View {
                         Text("+\(summary.hiddenThumbnailCount)")
                             .font(.caption.weight(.medium))
                             .foregroundStyle(.secondary)
-                            .frame(width: 58, height: 58)
+                            .frame(width: 54, height: 54)
                             .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
                     }
                 }
+                // Belt and braces: even if the strip is ever too wide again, it must clip
+                // rather than drag the rest of the row off-screen with it.
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .clipped()
                 .padding(.vertical, 2)
             }
 
@@ -401,7 +412,9 @@ struct DraftRow: View {
                 syncBadge
             }
             .font(Type.caption(11.5, .semibold))
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 4)
     }
 
@@ -449,7 +462,7 @@ private struct RowThumbnail: View {
                 Color.secondary.opacity(0.15)
             }
         }
-        .frame(width: 58, height: 58)
+        .frame(width: 54, height: 54)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(alignment: .bottomTrailing) {
             if thumb.isVideo {

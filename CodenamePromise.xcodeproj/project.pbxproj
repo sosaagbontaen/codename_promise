@@ -188,6 +188,7 @@
 		1A000000000000000000000D /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				BACKEND_BASE_URL = "";
 				CODE_SIGNING_ALLOWED = YES;
@@ -225,6 +226,7 @@
 		1A000000000000000000000E /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				BACKEND_BASE_URL = "";
 				CODE_SIGNING_ALLOWED = YES;

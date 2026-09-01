@@ -33,8 +33,10 @@ struct HomeView: View {
                     openEntry = draftId
                     tab = .entries
                 }
-                .navigationTitle(Bundle.main.appDisplayName)
                 .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .principal) { Wordmark(size: 19) }
+                }
             }
             .tabItem { Label("Dump", systemImage: "tray.and.arrow.down.fill") }
             .tag(Tab.dump)

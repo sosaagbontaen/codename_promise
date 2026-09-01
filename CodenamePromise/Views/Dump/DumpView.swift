@@ -63,11 +63,24 @@ struct DumpView: View {
                 statusLine
             }
             .padding(.horizontal, 20)
-            .padding(.top, 8)
-            .padding(.bottom, 32)
+            .padding(.vertical, 18)
+            // A ScrollView sizes to its content, so `maxHeight: .infinity` does nothing
+            // inside one - the stack stayed pinned to the top with a void beneath it.
+            // Matching the container's height is what lets it sit optically centred, and it
+            // still scrolls once the keyboard or a long dump makes it taller.
+            .containerRelativeFrame(.vertical) { height, _ in height }
         }
         .background(Brand.ground)
         .scrollDismissesKeyboard(.interactively)
+        // iOS gives a plain TextEditor no way out: with no return key to dismiss and no
+        // accessory, the only exit is tapping some arbitrary blank area.
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { writing = false }
+                    .font(Type.label(15, .semibold))
+            }
+        }
         .photosPicker(isPresented: $showingPhotos, selection: $picked,
                       maxSelectionCount: nil, matching: .images)
         .photosPicker(isPresented: $showingVideos, selection: $picked,
@@ -99,7 +112,7 @@ struct DumpView: View {
                     .padding(.vertical, 8)
                     .focused($writing)
             }
-            .frame(minHeight: 132)
+            .frame(minHeight: 190)
             .background(Brand.surface, in: RoundedRectangle(cornerRadius: 18))
             .overlay(
                 RoundedRectangle(cornerRadius: 18)
@@ -211,7 +224,7 @@ struct DumpView: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable)
         .disabled(recorder.isRecording)
         .opacity(recorder.isRecording ? 0.4 : 1)
     }
@@ -252,7 +265,7 @@ struct DumpView: View {
             .frame(height: 52)
             .background(Brand.surface, in: RoundedRectangle(cornerRadius: 14))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable)
         .sheet(isPresented: $showingDestination) {
             DumpDestinationSheet(
                 connection: connection,
@@ -300,11 +313,15 @@ struct DumpView: View {
             .frame(height: 54)
             .background(
                 hasSomethingToDump ? AnyShapeStyle(Brand.gradient)
-                                   : AnyShapeStyle(Brand.muted.opacity(0.25)),
+                                   : AnyShapeStyle(Brand.muted.opacity(0.2)),
                 in: RoundedRectangle(cornerRadius: 16)
             )
+            .shadow(
+                color: Brand.violet.opacity(hasSomethingToDump ? 0.34 : 0),
+                radius: 14, y: 6
+            )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressablePrimary)
         .disabled(!hasSomethingToDump || status == .dumping)
         .animation(.easeOut(duration: 0.18), value: hasSomethingToDump)
     }
