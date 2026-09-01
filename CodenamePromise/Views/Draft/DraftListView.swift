@@ -634,17 +634,16 @@ private struct DayHeader: View {
                 // no extra height - and height is the whole currency of this screen.
                 .foregroundStyle(isToday ? Brand.violet : Brand.muted)
                 .textCase(nil)
-                .frame(maxWidth: .infinity, alignment: .center)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Tapers from the middle out, now that the date it underlines is centred. A rule
-            // that fades to the right under text centred on the screen reads as a mistake.
+            // Tapers away to the right, from the same edge the heading starts on.
             LinearGradient(
-                colors: [Brand.ripple.opacity(0), Brand.ripple, Brand.ripple.opacity(0)],
+                colors: [Brand.ripple, Brand.ripple.opacity(0)],
                 startPoint: .leading, endPoint: .trailing
             )
             .frame(height: 1.5)
             .frame(maxWidth: 190)
-            .frame(maxWidth: .infinity, alignment: .center)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         // Much more space above a day than between its entries: that difference is what
         // makes the grouping legible at a glance. The asymmetry is the whole point - the

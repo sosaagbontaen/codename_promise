@@ -175,11 +175,8 @@ struct CaptureView: View {
     private var editor: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                // Centred to match the card, so an entry looks the same whether you are
-                // reading it in the list or writing it here.
                 TextField("Title (optional)", text: $controller.title)
                     .font(Type.title(25))
-                    .multilineTextAlignment(.center)
                     .textInputAutocapitalization(.sentences)
 
                 if controller.hasFormatting {
@@ -283,7 +280,10 @@ struct CaptureView: View {
                 .foregroundStyle(Brand.azure)
                 .textCase(.uppercase)
                 .tracking(1.1)
-                .frame(maxWidth: .infinity)
+                // Aligned to the same 16pt margin the content below it uses, so the date and
+                // the first line of the entry start on one edge.
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
                 .padding(.vertical, 9)
                 .background(Brand.ground)
         }
