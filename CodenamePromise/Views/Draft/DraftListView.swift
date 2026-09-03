@@ -58,12 +58,22 @@ struct DraftListView: View {
                         }
                     }
                 }
+                // An icon, not the word - which is worth about sixty points of toolbar, and
+                // toolbar width is what the wordmark was losing. It goes back to being a word
+                // in edit mode, where "Cancel" is consequential enough to spell out and the
+                // trailing tools have stepped aside anyway.
                 ToolbarItem(placement: .topBarLeading) {
                     if !drafts.isEmpty {
-                        Button(editMode == .active ? "Cancel" : "Select") {
+                        Button {
                             withAnimation {
                                 selection.removeAll()
                                 editMode = editMode == .active ? .inactive : .active
+                            }
+                        } label: {
+                            if editMode == .active {
+                                Text("Cancel")
+                            } else {
+                                Label("Select", systemImage: "checklist")
                             }
                         }
                         .tint(Brand.ink)
@@ -77,6 +87,7 @@ struct DraftListView: View {
                 // it stops being an accent and becomes the app's grey. It now marks two
                 // things: the brand, and what is selected or pressable *right now*.
                 ToolbarItem(placement: .topBarTrailing) {
+                    if editMode != .active {
                     Button {
                         withAnimation(.easeInOut(duration: 0.22)) { density = density.next }
                         Haptics.picked()
@@ -84,6 +95,7 @@ struct DraftListView: View {
                         Label("Density", systemImage: density.next.symbol)
                     }
                     .tint(Brand.ink)
+                    }
                 }
                 // Both catch-up tools behind one visible button.
                 //
@@ -98,6 +110,7 @@ struct DraftListView: View {
                 // a long-press - that is the thing nobody discovers; this is a plain button
                 // that opens a labelled list.
                 ToolbarItem(placement: .topBarTrailing) {
+                    if editMode != .active {
                     Menu {
                         Button {
                             openDaysMode = .missingDays
@@ -121,14 +134,17 @@ struct DraftListView: View {
                         Label("Catch up", systemImage: "clock.arrow.circlepath")
                     }
                     .tint(Brand.ink)
+                    }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
+                    if editMode != .active {
                     Button {
                         createDraft()
                     } label: {
                         Label("New entry", systemImage: "square.and.pencil")
                     }
                     .tint(Brand.ink)
+                    }
                 }
             }
             // One destination for both tapping a row and creating an entry, resolved by

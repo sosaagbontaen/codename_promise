@@ -22,11 +22,18 @@ struct Wordmark: View {
         .font(Type.display(size, .bold))
         .tracking(-0.3)
         .lineLimit(1)
-        // A toolbar squeezes its principal item between the leading and trailing groups and
-        // will happily truncate it - "Du...Not..." - rather than let it claim the width it
-        // needs. fixedSize takes the intrinsic width; the scale factor is the fallback when
-        // even that will not fit, so it shrinks instead of losing letters.
-        .fixedSize(horizontal: true, vertical: false)
+        // Scales rather than truncating, and deliberately does *not* take a fixed size.
+        //
+        // fixedSize was here to stop the toolbar squeezing this into "Du...Not...", and it
+        // worked by making the item unshrinkable - which left the toolbar with exactly one
+        // remaining move when the leading and trailing groups did not leave room: drop it.
+        // On a phone with four other toolbar items and larger text, the wordmark simply was
+        // not there, which is a worse failure than a truncated one and much harder to spot,
+        // because nothing is drawn to notice.
+        //
+        // lineLimit plus minimumScaleFactor gets the original result honestly: it shrinks to
+        // 75% before it will lose a letter, and it can always be given less width than it
+        // wants, so it is never the thing that has to disappear.
         .minimumScaleFactor(0.75)
         .accessibilityElement()
         .accessibilityLabel(Bundle.main.appDisplayName)
