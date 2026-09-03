@@ -245,6 +245,30 @@
           <label class="task-title" for="i-privacy-policy">Write the privacy policy and put it at a public URL<span class="badge stop">Blocker</span><span class="badge size">~2 hours</span></label>
           <p class="task-why">Apple will not accept a submission without one, and Notion
             will not approve a public integration without one. Two gates, one document.</p><span class="done-when">the URL loads for a logged-out stranger.</span>
+          <p class="task-why"><strong>Written and live.</strong>
+            <a href="https://sosaagbontaen.github.io/codename_promise/privacy.html">sosaagbontaen.github.io/codename_promise/privacy.html</a>,
+            verified with no credentials and no cookies: HTTP 200, real content. It is served
+            from a <code>gh-pages</code> branch holding only the pages meant to be public,
+            rather than from <code>main/docs</code>, which would also have put the launch
+            notes behind a tidy URL.</p>
+          <p class="task-why"><strong>Still blocked on one thing:</strong> see the contact
+            address below. The document is accurate and complete apart from that.</p>
+        </div>
+      </div>
+
+      <div class="task" data-kind="stop" data-title="Put a real contact address in the policy and the app" data-done="a stranger can email you from the policy page and from Settings, and it arrives.">
+        <input type="checkbox" data-task="contact-address" id="i-contact-address">
+        <div class="task-body">
+          <label class="task-title" for="i-contact-address">Put a real contact address in the policy and the app<span class="badge stop">Blocker</span><span class="badge size">~15 minutes</span></label>
+          <p class="task-why">The policy page carries a marked placeholder where the contact
+            has to be, and the app&rsquo;s own feedback button in Settings still opens a mail
+            composer addressed to <code>hello@example.com</code>, which reaches nobody. Both
+            App Review and Notion&rsquo;s integration review check that an address exists and
+            is reachable, so this is the small item that fails a submission rather than a
+            cosmetic one.</p>
+          <p class="task-why">Two edits once you decide the address:
+            <code>docs/legal/privacy.html</code> and <code>FeedbackView.address</code>. Fifteen
+            minutes of work being held up by a decision, not by effort.</p><span class="done-when">a stranger can email you from the policy page and from Settings, and it arrives.</span>
         </div>
       </div>
       <div class="task" data-kind="need" data-title="Build a first run that explains itself" data-done="someone who has never seen it reaches their first saved entry without you speaking.">

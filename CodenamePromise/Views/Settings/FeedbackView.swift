@@ -22,6 +22,13 @@ struct FeedbackView: View {
     @State private var showingDiagnostics = false
 
     /// Where feedback goes. One address, changed in one place.
+    /// **Placeholder. This has to be a real address before submission.**
+    ///
+    /// As it stands the feedback button opens a mail composer addressed to a domain reserved
+    /// for documentation, so every message a user sends goes nowhere and they get no bounce
+    /// telling them so. It is also one of the two places the contact has to exist for App
+    /// Review and for Notion's integration review; the other is the privacy policy at
+    /// https://sosaagbontaen.github.io/codename_promise/privacy.html
     static let address = "hello@example.com"
 
     enum Kind: String, CaseIterable, Identifiable {
