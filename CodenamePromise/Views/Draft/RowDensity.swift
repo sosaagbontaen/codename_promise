@@ -45,10 +45,13 @@ enum RowDensity: String, CaseIterable, Identifiable {
 /// every time the card changed.
 struct CompactDraftRow: View {
     let summary: DraftSummary
+    var hasDestination: Bool = false
 
     var body: some View {
         EntryCard {
-            EntryTitleBar(summary: summary, showsTopEdge: false)
+            EntryTitleBar(
+                summary: summary, showsTopEdge: false, hasDestination: hasDestination
+            )
         }
     }
 }

@@ -16,6 +16,13 @@ struct DraftListView: View {
     @State private var showingOpenDays = false
     /// Which half of the gap finder to open on.
     @State private var openDaysMode: OpenDaysView.Mode = .missingDays
+    /// Whether Notion is connected *and* pointed at a database.
+    ///
+    /// Deliberately readiness rather than "is there a backend". A server with no database
+    /// picked is not a destination: nothing can be sent, so "not synced" on every card is a
+    /// restatement of the setup rather than a status. Read once when the list loads, the same
+    /// way the Dump screen reads it.
+    @State private var hasDestination = false
     @AppStorage(RowDensity.storageKey) private var density: RowDensity = .comfortable
     /// Recomputed on every reload; drives the prompt row at the top of the list.
     @State private var mostRecentOpenDay: CalendarDay?
@@ -68,96 +75,72 @@ struct DraftListView: View {
                                 }
                             }
                         }
-                    } else if !drafts.isEmpty {
-                        // An icon, not the word, which is worth about sixty points of
-                        // toolbar. Toolbar width is what the wordmark was losing.
-                        Button {
-                            withAnimation {
-                                selection.removeAll()
-                                editMode = .active
+                    }
+                }
+
+                // Two trailing controls, not four.
+                //
+                // The header had Select, density, catch-up and compose all competing with the
+                // wordmark, which made a stream of things you dumped read like a workspace -
+                // and it is what was squeezing the wordmark off the screen entirely on a
+                // phone with larger text.
+                //
+                // Compose stays visible because it is the second most likely reason to be on
+                // this screen. Everything else is one menu: they are all occasional, and a
+                // labelled list is more discoverable than three unlabelled glyphs anyway.
+                // The gap finder keeps its own door at the top of the list, so burying it
+                // here costs nothing.
+                ToolbarItem(placement: .topBarTrailing) {
+                    if editMode != .active {
+                        Menu {
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.22)) { density = density.next }
+                                Haptics.picked()
+                            } label: {
+                                Label(density.next.label, systemImage: density.next.symbol)
+                            }
+                            if !drafts.isEmpty {
+                                Button {
+                                    withAnimation {
+                                        selection.removeAll()
+                                        editMode = .active
+                                    }
+                                } label: {
+                                    Label("Select entries", systemImage: "checklist")
+                                }
+                            }
+                            Divider()
+                            Button {
+                                openDaysMode = .missingDays
+                                showingOpenDays = true
+                            } label: {
+                                Label("Fill in a missing day", systemImage: "calendar.badge.plus")
+                            }
+                            Button {
+                                openDaysMode = .unfinished
+                                showingOpenDays = true
+                            } label: {
+                                Label("Finish an unfinished entry", systemImage: "square.dashed")
+                            }
+                            Button {
+                                showingImport = true
+                            } label: {
+                                Label("Import photos by date", systemImage: "photo.stack")
                             }
                         } label: {
-                            Label("Select", systemImage: "checklist")
+                            Label("More", systemImage: "ellipsis")
                         }
                         .tint(Brand.ink)
                     }
                 }
-
-                // Neutral, all of them. Violet was on the wordmark, Select, three toolbar
-                // icons, the day rule, "Today" and the selected tab at once - at which point
-                // it stops being an accent and becomes the app's grey. It now marks two
-                // things: the brand, and what is selected or pressable *right now*.
-                // In edit mode the trailing tools step aside for the one action that acts
-                // on a selection. Export used to be all-or-nothing and buried in Settings,
-                // which is right for a backup and wrong for sending somebody one trip.
-                ToolbarItem(placement: .topBarTrailing) {
-                    if editMode == .active, !selection.isEmpty {
-                        Button {
-                            exportingSelection = true
-                        } label: {
-                            Label("Export \(selection.count)", systemImage: "square.and.arrow.up")
-                        }
-                        .tint(Brand.violet)
-                    }
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     if editMode != .active {
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.22)) { density = density.next }
-                        Haptics.picked()
-                    } label: {
-                        Label("Density", systemImage: density.next.symbol)
-                    }
-                    .tint(Brand.ink)
-                    }
-                }
-                // Both catch-up tools behind one visible button.
-                //
-                // The gap finder used to be reachable only from the prompt at the top of the
-                // list, which scrolls away and - once it was flattened to a line - stopped
-                // looking like a button at all. A feature people find by accident is one that
-                // may as well not ship.
-                //
-                // A menu rather than a fourth icon: this trades one unlabelled glyph
-                // ("photo.stack", which nobody reads as "import by date") for two named
-                // items, so the toolbar gets no busier and both tools say what they are. Not
-                // a long-press - that is the thing nobody discovers; this is a plain button
-                // that opens a labelled list.
-                ToolbarItem(placement: .topBarTrailing) {
-                    if editMode != .active {
-                    Menu {
                         Button {
-                            openDaysMode = .missingDays
-                            showingOpenDays = true
+                            createDraft()
                         } label: {
-                            Label("Fill in a missing day", systemImage: "calendar.badge.plus")
+                            Label("New entry", systemImage: "square.and.pencil")
                         }
-                        Button {
-                            openDaysMode = .unfinished
-                            showingOpenDays = true
-                        } label: {
-                            Label("Finish an unfinished entry", systemImage: "square.dashed")
-                        }
-                        Divider()
-                        Button {
-                            showingImport = true
-                        } label: {
-                            Label("Import photos by date", systemImage: "photo.stack")
-                        }
-                    } label: {
-                        Label("Catch up", systemImage: "clock.arrow.circlepath")
-                    }
-                    .tint(Brand.ink)
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    if editMode != .active {
-                    Button {
-                        createDraft()
-                    } label: {
-                        Label("New entry", systemImage: "square.and.pencil")
-                    }
-                    .tint(Brand.ink)
+                        .tint(Brand.ink)
                     }
                 }
             }
@@ -199,7 +182,11 @@ struct DraftListView: View {
                     PhotoImportView(store: store, fileStore: files) { reload() }
                 }
             }
-            .task { reload(); consumeOpenRequest() }
+            .task {
+                reload()
+                consumeOpenRequest()
+                hasDestination = (try? await services.connectionService?.status())?.ready ?? false
+            }
             // Both, on purpose. A dump sets the id and switches tab in the same update, and
             // whether this view is alive to observe the change depends on whether the tab has
             // been visited before - so the request is also drained on appear.
@@ -254,9 +241,14 @@ struct DraftListView: View {
                             path.append(OpeningDraft(id: draft.id))
                         } label: {
                             if density == .compact {
-                                CompactDraftRow(summary: draft)
+                                CompactDraftRow(
+                                    summary: draft, hasDestination: hasDestination
+                                )
                             } else {
-                                DraftRow(summary: draft, fileStore: files)
+                                DraftRow(
+                                    summary: draft, fileStore: files,
+                                    hasDestination: hasDestination
+                                )
                             }
                         }
                         .buttonStyle(.row)
@@ -483,6 +475,7 @@ struct DraftRow: View {
     /// A snapshot, never a model — see `DraftSummary` for the crash that bought this rule.
     let summary: DraftSummary
     let fileStore: MediaFileStore
+    var hasDestination: Bool = false
 
     var body: some View {
         EntryCard {
@@ -520,7 +513,8 @@ struct DraftRow: View {
             // object with and without content rather than two designs of a row.
             EntryTitleBar(
                 summary: summary,
-                showsTopEdge: !summary.preview.isEmpty || !summary.thumbnails.isEmpty
+                showsTopEdge: !summary.preview.isEmpty || !summary.thumbnails.isEmpty,
+                hasDestination: hasDestination
             )
         }
     }

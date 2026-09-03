@@ -14,6 +14,9 @@ struct EntryTitleBar: View {
     let summary: DraftSummary
     /// False when it is the whole row and there is nothing above it to divide from.
     var showsTopEdge: Bool = true
+    /// Whether a Notion database is connected at all. Decides whether "not synced" is a
+    /// status or just noise. See `showsStatus`.
+    var hasDestination: Bool = false
 
     /// The name of the entry, and everything that is true *about* it rather than in it.
     ///
@@ -36,7 +39,7 @@ struct EntryTitleBar: View {
 
             Spacer(minLength: 8)
 
-            if !statusLabel.isEmpty {
+            if showsStatus {
                 Image(systemName: statusIcon)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(statusTint)
@@ -85,6 +88,24 @@ struct EntryTitleBar: View {
     /// makes a symbol decorative rather than informative - you had to read the words anyway,
     /// so the icon was costing space and adding doubt. These are all from the cloud family
     /// so they read as one vocabulary about one thing, and each state owns exactly one.
+    /// Sync only when it says something.
+    ///
+    /// With no Notion connected every single card carried "not synced", which is not a status
+    /// so much as a restatement of the setup: nothing is synced, nothing was going to be, and
+    /// a symbol repeated on every row in a list is decoration with a tooltip. The states worth
+    /// a glyph are the ones that differ from what you would assume - something failed,
+    /// something is in flight, something arrived, something changed since it arrived.
+    ///
+    /// "Not synced" survives only where a destination exists, because there it means an entry
+    /// that could have gone and has not.
+    private var showsStatus: Bool {
+        switch summary.sync {
+        case .hidden: false
+        case .failed, .syncing, .synced, .unsyncedChanges: true
+        case .notSynced: hasDestination
+        }
+    }
+
     /// What is *in* the entry, which is the one thing this slot can say that the title cannot.
     ///
     /// Borrowed from Notion, where the page glyph means "this row is a page" and is worth its

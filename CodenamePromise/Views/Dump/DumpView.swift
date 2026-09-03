@@ -66,7 +66,12 @@ struct DumpView: View {
             VStack(spacing: 22) {
                 composer
                 modeButtons
-                destinationRow
+                // Only when there is a destination to choose. With no Notion connected the
+                // row said "Saved on this device / Notion isn't connected", which the footer
+                // two lines down already says, and it put a settings-shaped control between
+                // the thing you are writing and the button that saves it. A capture screen
+                // should not have a configuration row in the middle of it.
+                if hasDestination { destinationRow }
                 dumpButton
                 statusLine
             }
@@ -315,6 +320,12 @@ struct DumpView: View {
 
     /// What is guaranteed, not what is hoped for. Saving is local and certain; reaching
     /// Notion is neither, and only worth mentioning once there is a Notion to reach.
+    /// Whether Notion is connected *and* pointed at a database. Anything less and there is
+    /// nothing to pick between, so nothing to show.
+    private var hasDestination: Bool {
+        services.connectionService != nil && (connection?.ready ?? false)
+    }
+
     private var statusLineText: String {
         guard let connection, connection.ready else {
             return "Saved on this device. Nothing leaves it."
@@ -347,14 +358,25 @@ struct DumpView: View {
                     Text("Dump it").font(Type.display(19, .semibold))
                 }
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(hasSomethingToDump ? .white : Brand.violet)
             .frame(maxWidth: .infinity)
-            .frame(height: 54)
+            .frame(height: 58)
             .background(
                 hasSomethingToDump ? AnyShapeStyle(Brand.gradient)
-                                   : AnyShapeStyle(Brand.muted.opacity(0.2)),
-                in: RoundedRectangle(cornerRadius: 16)
+                                   : AnyShapeStyle(Brand.violet.opacity(0.14)),
+                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
             )
+            // Empty, it was flat grey and read as one more settings row. This is the action
+            // the app is named after; at rest it should look like the thing you are about to
+            // press, not like something switched off. Violet at low alpha with the brand
+            // outline keeps it unmistakably the primary control while still being visibly
+            // not-yet-available.
+            .overlay {
+                if !hasSomethingToDump {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(Brand.violet.opacity(0.38), lineWidth: 1.5)
+                }
+            }
             .shadow(
                 color: Brand.violet.opacity(charging ? 0.9 : (hasSomethingToDump ? 0.34 : 0)),
                 radius: charging ? 34 : 14, y: 6
