@@ -180,3 +180,61 @@ Clear across all seven storefronts, no mark found, and a nice second meaning for
 a thunk is a piece of work you defer until later, which is what an entry is. But the domains
 are poor: `.com`, `.app`, `getthunk.com` and `thunkapp.com` are all taken, leaving only
 `thunkjar.com` and `thunk.so`. `thunk.com` serves nothing.
+
+## Everything screened, and where it landed
+
+About 60 names across five passes. Two patterns held every time, and they are the reason to
+stop searching rather than keep going.
+
+**One.** Every single common word has its `.com` gone. Without exception.
+
+**Two.** The App Store is only clear for words nobody would name an app. That leaves exactly
+two veins, and they trade against each other.
+
+### Sound effects: clear, but they read as games
+
+| Name | App Store | Best domains |
+|---|---|---|
+| **Whump** | clear, 7 storefronts | **whump.app**, whump.so, getwhump.com |
+| **Flump** | clear | **flump.app**, flump.so, getflump.com |
+| Thwack | clear | thwack.so, getthwack.com |
+| Thunk | clear, 7 storefronts | thunkjar.com, thunk.so |
+| Clunk / Whomp / Kelter | clear | .so and get*.com only |
+
+The objection to this whole vein is fair: they are sound effects, so they sound like games.
+That is also exactly *why* they are clear, since nobody names a journal that. Note it applies
+to the vein, not to Whump specifically.
+
+### Rare and warm: fewer survive, but they suit a thing you keep
+
+| Name | App Store | Best domains |
+|---|---|---|
+| **Oddment / Oddments** | clear | oddment.so, oddments.so |
+| Ragbag | clear | .so only |
+| Nightjar | 3 apps | nightjar.so |
+| Skein, Sundry, Mantel, Bobbin, Motley, Sill | 4 to 7 apps each | none free |
+| Curio, Almanac, Keepsake, Jumble | 19 to 27 apps | none free |
+
+An **oddment** is a small leftover piece, which is what a stray thought is. It is warm rather
+than percussive, and it is the only non-sound-effect name that came back clear.
+
+### Killed by the search
+
+- **Unspool** - *Unspool - Voice based Journal* exists. Same category exactly.
+- **Blurt** - 11 apps. Conceptually perfect, commercially gone.
+- **Plop** - sits beside *Plop - Poop Tracker & Log*.
+- **Creel** - *Creel: Fishing Log & Journal*.
+- **Mantel** - *Mantel, Voice To-Do List*. Same neighbourhood.
+- **Warren, Lull, Wisp, Cubby** - 21 to 38 apps each.
+
+## Where this leaves it
+
+Two real options, and they are a choice about tone rather than about availability:
+
+- **Whump** if the app is the gesture. Best domain position of anything screened, the only
+  name whose `.app` is free, and it is already the sound the impact animation makes.
+- **Oddment** if the app is the thing you keep. Warm, clear, and not a sound effect, but
+  only `.so` is free.
+
+Further searching has stopped paying. The constraint now is a decision, not more data, and
+the bundle identifier is what makes it urgent.
