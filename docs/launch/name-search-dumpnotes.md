@@ -103,3 +103,80 @@ conversation about the app.
 The repository, bundle identifier and source are still on `codename_promise`. That rename is
 deliberately **held** pending this decision, because renaming several hundred files to a
 contested name and then renaming them again is the AutoReflect mistake twice.
+
+---
+
+# Replacement candidates, screened 3 September 2026
+
+Same method as above: Apple's search API filtered to real name matches, RDAP for domains,
+register mirrors for marks. Chosen to fail differently from DumpNotes, which failed by being
+descriptive.
+
+## The structural finding
+
+**Every single common word has its `.com` taken.** Cairn, Kiln, Loam, Larder, Plink, Dollop,
+Thunk, Lob, Strata, Ember, Bramble, Hopper, Chute, Scuttle, Bushel, Trove, Satchel: all gone,
+most for decades. This is not bad luck and no amount of further searching changes it. A free
+`.com` means a coined word or a compound.
+
+For an iOS app that matters less than it feels like it does. The App Store name is the thing
+people search, and `.app` is a normal home for an app in 2026.
+
+## First pass
+
+| Name | .com | .app | App Store |
+|---|---|---|---|
+| Cairn | taken | taken | 22 apps |
+| Kiln | taken | taken | 12 apps |
+| Loam | taken | taken | 2 apps |
+| Larder | taken | - | 12 apps |
+| Plink | taken | - | 10 apps |
+| Dollop | taken | taken | 2 apps |
+| **Thunk** | taken | taken | **clear** |
+| Lob | taken | taken | 4 apps |
+| Unspool | - | - | **Unspool - Voice based Journal** |
+| Strata | - | - | 16 apps |
+| Ember | - | - | 23 apps |
+| Bramble | - | - | 13 apps |
+| Hopper | taken | taken | 2 apps |
+| Chute | taken | taken | 4 apps |
+| Scuttle | taken | taken | 1 app |
+| Bushel | taken | taken | 4 apps |
+| **Whump** | taken | **FREE** | **clear** |
+
+Unspool was the early favourite and is dead: *Unspool - Voice based Journal* already exists,
+which is this app's exact category. Exactly the collision this search is for.
+
+## Whump
+
+**The recommendation.**
+
+- **App Store: nothing.** Zero apps containing the word across US, UK, Canada, Australia,
+  Germany, France and Japan.
+- **No trademark found.** Nearest is WHUUPS INC, a different word, messaging.
+- **`whump.app` is free**, along with `whump.so`, `getwhump.com` and `whumpjar.com`.
+  `whump.com` is registered but serves nothing at all, so it is parked rather than used.
+- **Arbitrary, which is the point.** Onomatopoeia for a soft heavy landing. It describes no
+  product feature, so it sits at the strong end of the trademark spectrum, where DumpNotes
+  sat at the weak end. Nobody else reaches for it because it means nothing until you make it
+  mean something.
+- **It already fits.** It is the sound the impact animation makes. The jar, the toss, the
+  landing, the violet, the confetti modes all survive untouched, and the name finally
+  describes the *gesture* rather than the file format.
+
+Costs, honestly:
+
+- It says nothing about what the app does, so the App Store subtitle and icon carry more
+  weight. That is the trade for a defensible mark.
+- Harder to spell from hearing it than DumpNotes.
+- The two-tone wordmark splits on an interior capital (`Dump` + `Notes`). One word means one
+  colour, so `Wordmark` needs a small change or a compound like WhumpJar.
+
+## Thunk
+
+**The runner-up**, and worth keeping if Whump does not land.
+
+Clear across all seven storefronts, no mark found, and a nice second meaning for a programmer:
+a thunk is a piece of work you defer until later, which is what an entry is. But the domains
+are poor: `.com`, `.app`, `getthunk.com` and `thunkapp.com` are all taken, leaving only
+`thunkjar.com` and `thunk.so`. `thunk.com` serves nothing.
