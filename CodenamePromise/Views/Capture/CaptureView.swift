@@ -529,7 +529,7 @@ struct CaptureView: View {
                 if services.sync?.isSyncing(controller.draftId) == true {
                     ProgressView().tint(.white)
                 } else {
-                    Label(sendTitle, systemImage: canSend ? "arrow.up" : "checkmark")
+                    Label(sendTitle, systemImage: sendSymbol)
                         .font(Type.label(14.5, .semibold))
                         .lineLimit(1)
                 }
@@ -548,16 +548,33 @@ struct CaptureView: View {
         .animation(.easeOut(duration: 0.18), value: canSend)
     }
 
+    /// Whether there is anywhere to send to at all. Nil when no backend is configured, which
+    /// is how the app ships and therefore what every new user sees.
+    private var hasDestination: Bool { services.connectionService != nil }
+
     private var canSend: Bool {
-        controller.needsSync
+        // The destination check was missing, so on a fresh install the biggest, brightest
+        // control on the screen read "Send to Notion", was fully enabled, and failed when
+        // pressed. For someone who has just been told on the first-run screen that Notion is
+        // optional and nothing is uploaded, that is the app immediately contradicting itself
+        // and then not working.
+        hasDestination
+            && controller.needsSync
             && !controller.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && services.sync?.isSyncing(controller.draftId) != true
     }
 
     private var sendTitle: String {
+        if !hasDestination { return "Notion isn\u{2019}t connected" }
         if !controller.needsSync && controller.isLinkedToPage { return "Up to date" }
         if controller.appendsToExistingPage { return "Add to page" }
         return controller.isLinkedToPage ? "Update page" : "Send to Notion"
+    }
+
+    /// A tick means "done"; without a destination nothing is done, it is simply not offered.
+    private var sendSymbol: String {
+        if canSend { return "arrow.up" }
+        return hasDestination ? "checkmark" : "icloud.slash"
     }
 
     // MARK: - Footer

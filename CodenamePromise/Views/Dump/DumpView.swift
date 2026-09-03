@@ -313,9 +313,18 @@ struct DumpView: View {
         return connection.databaseTitle ?? "Your Notion database"
     }
 
+    /// What is guaranteed, not what is hoped for. Saving is local and certain; reaching
+    /// Notion is neither, and only worth mentioning once there is a Notion to reach.
+    private var statusLineText: String {
+        guard let connection, connection.ready else {
+            return "Saved on this device. Nothing leaves it."
+        }
+        return "Saved here first, then sent to Notion"
+    }
+
     private var destinationDetail: String {
         if appendTo != nil { return "Appends to that page instead of making a new one" }
-        guard let connection else { return "Checking Notion\u{2026}" }
+        guard let connection else { return "Notion isn\u{2019}t connected" }
         if !connection.configurable { return "Notion isn\u{2019}t set up on the server" }
         if !connection.connected { return "Connect Notion in Settings to sync" }
         if !connection.ready { return "Pick a database in Settings" }
@@ -364,10 +373,16 @@ struct DumpView: View {
     private var statusLine: some View {
         switch status {
         case .composing:
-            // Says where it goes before you commit, not after.
-            // States what is guaranteed, not what is hoped for. Saving is local and
-            // certain; reaching Notion is neither, and the journal says so per entry.
-            Label("Saved here first, then sent to Notion", systemImage: "tray.and.arrow.down")
+            // Says where it goes before you commit, not after, and only promises the part
+            // that is actually true right now.
+            //
+            // This used to read "Saved here first, then sent to Notion" unconditionally,
+            // which on a fresh install directly contradicts the first-run screen the person
+            // has just read: they were told Notion is optional and that nothing is uploaded,
+            // and the first screen they land on says their entry is going to Notion. Copy
+            // that promises a destination nobody has connected is not reassuring, it is the
+            // thing that makes the honest claim next to it look like marketing.
+            Label(statusLineText, systemImage: "tray.and.arrow.down")
                 .font(Type.caption(12.5))
                 .foregroundStyle(Brand.muted)
         case .dumping:

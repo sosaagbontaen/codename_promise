@@ -22,6 +22,12 @@ struct HomeView: View {
     /// Owned here so the blast reaches the tab bar too, not just the screen that caused it.
     @State private var impact = DumpImpact()
 
+    /// Shown once, on the first launch, and never again unless Settings asks for it.
+    @AppStorage(Self.onboardedKey) private var hasOnboarded = false
+    @State private var showingOnboarding = false
+
+    static let onboardedKey = "hasSeenOnboarding"
+
     enum Tab: Hashable { case entries, dump, settings }
 
     var body: some View {
@@ -64,6 +70,17 @@ struct HomeView: View {
         // the crowding does.
         .modifier(MinimizingTabBar())
         .dumpImpact(impact)
+        // Full screen and not dismissible by swipe: it is three sentences and one button,
+        // and someone who flicks it away by accident has learned none of them.
+        .fullScreenCover(isPresented: $showingOnboarding) {
+            OnboardingView {
+                hasOnboarded = true
+                showingOnboarding = false
+                // Lands on Dump, which is where the button it was just pressed says to go.
+                tab = .dump
+            }
+        }
+        .task { if !hasOnboarded { showingOnboarding = true } }
     }
 }
 

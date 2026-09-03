@@ -191,6 +191,17 @@ struct NotionSettingsView: View {
 
         Section {
             Button {
+                UserDefaults.standard.set(false, forKey: HomeView.onboardedKey)
+                Haptics.picked()
+            } label: {
+                Label("Show the welcome again", systemImage: "sparkles.rectangle.stack")
+            }
+        } footer: {
+            Text("Reappears next time you open the app. Useful for showing somebody what this is.")
+        }
+
+        Section {
+            Button {
                 showingFeedback = true
             } label: {
                 Label("Send feedback", systemImage: "envelope")
