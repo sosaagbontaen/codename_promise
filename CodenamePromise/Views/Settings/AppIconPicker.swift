@@ -64,7 +64,7 @@ struct AppIconPicker: View {
         } header: {
             Text("App icon")
         } footer: {
-            Text("iOS shows its own confirmation when the icon changes \u{2014} that alert is Apple's, not ours.")
+            Text("iOS shows its own confirmation when the icon changes. That alert is Apple's, not ours.")
         }
         .task { current = UIApplication.shared.alternateIconName }
     }

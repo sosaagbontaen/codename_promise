@@ -54,7 +54,7 @@ struct ExportView: View {
                 } header: {
                     Text("Your whole journal, as files")
                 } footer: {
-                    Text("One markdown file per entry, named by its day, with photos and videos beside it. Recordings that were never transcribed come too \u{2014} their words exist nowhere else. Nothing in the export needs this app to read it.")
+                    Text("One markdown file per entry, named by its day, with photos and videos beside it. Recordings that were never transcribed come too, because their words exist nowhere else. Nothing in the export needs this app to read it.")
                 }
             }
             .navigationTitle("Export")

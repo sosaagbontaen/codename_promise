@@ -54,19 +54,19 @@ public enum APIError: Error, Sendable, Equatable {
     public var userFacingMessage: String {
         switch self {
         case .notConfigured:
-            "No backend configured yet — saved on this device."
+            "No backend configured yet. Saved on this device."
         case .offline:
-            "Offline — saved on this device, will sync when you're back."
+            "Offline. Saved on this device, and it will sync when you're back."
         case .transport:
-            "Couldn't reach the server — saved on this device."
+            "Couldn't reach the server. Saved on this device."
         case .server(let status, _) where status == 429:
-            "Server is busy — will try again shortly."
+            "Server is busy. Will try again shortly."
         case .server:
-            "The server had a problem — saved on this device."
+            "The server had a problem. Saved on this device."
         case .decoding:
-            "The server sent something unexpected — saved on this device."
+            "The server sent something unexpected. Saved on this device."
         case .unauthorized:
-            "Couldn't authenticate — check the API key in Settings."
+            "Couldn't authenticate. Check the API key in Settings."
         }
     }
 }

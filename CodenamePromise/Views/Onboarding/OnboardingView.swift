@@ -37,7 +37,7 @@ struct OnboardingView: View {
                         symbol: "bolt.fill",
                         tint: Brand.Mode.voice,
                         title: "Nothing to set up",
-                        body: "Type it, say it, or drop in a photo. It's saved the moment you make it — before anything else happens."
+                        body: "Type it, say it, or drop in a photo. It saves the moment you make it, before anything else happens."
                     )
                     point(
                         symbol: "cloud",
@@ -60,7 +60,7 @@ struct OnboardingView: View {
                         symbol: "lock.fill",
                         tint: Brand.reached,
                         title: "Your words stay on this phone",
-                        body: "No account, no analytics, nothing uploaded. They're part of your iPhone backup, so they follow you to a new phone — and you can export the lot any time.",
+                        body: "No account, no analytics, nothing uploaded. Your journal is part of your iPhone backup, so it moves to a new phone with you, and you can export all of it any time.",
                         emphasised: true
                     )
                 }

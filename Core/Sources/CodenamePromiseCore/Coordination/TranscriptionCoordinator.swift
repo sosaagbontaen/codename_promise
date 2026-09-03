@@ -132,7 +132,7 @@ public final class TranscriptionCoordinator {
                     nextAttemptAt: clock().addingTimeInterval(60 * 60 * 24 * 365)
                 )
                 try store.flush()
-                blockedReason = "A recording had no audible speech — it's still saved."
+                blockedReason = "A recording had no audible speech. It's still saved."
                 return .permanentlyFailed
             }
 

@@ -77,7 +77,7 @@ struct DumpDestinationSheet: View {
                 } header: {
                     Text("Or add to an existing page")
                 } footer: {
-                    Text("Appends to the end. Only the blocks this app wrote are ever replaced \u{2014} the rest of that page is left alone.")
+                    Text("Appends to the end. Only the blocks this app wrote are ever replaced. The rest of that page is left alone.")
                 }
             }
             .navigationTitle("Where it goes")

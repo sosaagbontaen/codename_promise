@@ -79,7 +79,7 @@ struct FeedbackView: View {
                             .textSelection(.enabled)
                     }
                 } footer: {
-                    Text("Nothing from your entries is ever included \u{2014} not text, not titles, not recordings.")
+                    Text("Nothing from your entries is ever included: not text, not titles, not recordings.")
                 }
 
                 Section {

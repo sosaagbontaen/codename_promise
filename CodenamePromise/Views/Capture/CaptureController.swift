@@ -130,7 +130,7 @@ final class CaptureController {
         case .synced:
             return needsSync ? "Edited since last sync" : "Synced to Notion"
         case .failed:
-            return state.lastSyncError ?? "Sync failed — will retry"
+            return state.lastSyncError ?? "Sync failed. Will retry."
         case .syncing:
             return "Syncing…"
         case .pending:

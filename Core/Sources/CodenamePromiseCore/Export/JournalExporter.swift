@@ -264,7 +264,7 @@ public struct JournalExporter: Sendable {
         out += ".\n\n"
         out += "One markdown file per entry, named by the day it is about so they sort in "
         out += "order. Attachments sit in `media/` beside the entry that owns them, linked "
-        out += "relatively \u{2014} keep the folder together and the links keep working.\n\n"
+        out += "relatively. Keep the folder together and the links keep working.\n\n"
         out += "Nothing here needs the app that wrote it. That is the point.\n"
 
         if !summary.missingFiles.isEmpty {

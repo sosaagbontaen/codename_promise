@@ -55,7 +55,7 @@ public final class FormattingCoordinator {
             guard let draft = try? store.draft(id: draftId) else { return .vanished }
             guard draft.contentHash == result.sourceContentHash else {
                 // The user kept writing. Their words win; this result is simply out of date.
-                blockedReason = "You've written more since — run formatting again when you're ready."
+                blockedReason = "You've written more since. Run formatting again when you're ready."
                 return .discardedStale
             }
 

@@ -68,7 +68,7 @@ struct PhotoImportView: View {
         ContentUnavailableView {
             Label("Import a few days at once", systemImage: "photo.stack")
         } description: {
-            Text("Pick everything from the last few days. Each photo's own date decides which entry it belongs to — no need to remember.")
+            Text("Pick everything from the last few days. Each photo's own date decides which entry it belongs to, so there is nothing to remember.")
         } actions: {
             PhotosPicker(
                 selection: $selections,
@@ -85,7 +85,7 @@ struct PhotoImportView: View {
         VStack(spacing: 12) {
             ProgressView(value: Double(done), total: Double(max(total, 1)))
                 .frame(maxWidth: 220)
-            Text("Reading dates — \(done) of \(total)")
+            Text("Reading dates: \(done) of \(total)")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -114,7 +114,7 @@ struct PhotoImportView: View {
                     Text(header(for: group))
                 } footer: {
                     if group.isUndated {
-                        Text("These files carry no date — a screenshot, or an image an app re-saved. Choose where they go.")
+                        Text("These files carry no date, like a screenshot or an image another app re-saved. Choose where they go.")
                     }
                 }
             }
@@ -176,10 +176,10 @@ struct PhotoImportView: View {
     private func header(for group: MediaDayGrouping.Group) -> String {
         let count = group.items.count
         let noun = count == 1 ? "item" : "items"
-        guard let day = group.day else { return "No date — \(count) \(noun)" }
+        guard let day = group.day else { return "No date, \(count) \(noun)" }
         let formatted = day.representativeDate()
             .formatted(.dateTime.weekday(.wide).month(.wide).day())
-        return "\(formatted) — \(count) \(noun)"
+        return "\(formatted) \u{00B7} \(count) \(noun)"
     }
 
     private func existingDrafts(for day: CalendarDay?) -> [EntryDraft] {

@@ -438,7 +438,7 @@ public final class DraftStore {
         for state in try context.fetch(
             FetchDescriptor<SyncState>(predicate: #Predicate { $0.statusRaw == syncing })
         ) where state.isStale(now: now, timeout: staleOperationTimeout) {
-            state.markFailed("Interrupted — the app closed before this sync finished.")
+            state.markFailed("Interrupted. The app closed before this sync finished.")
             report.recoveredSyncStates += 1
         }
 
@@ -446,7 +446,7 @@ public final class DraftStore {
         for item in try context.fetch(
             FetchDescriptor<MediaItem>(predicate: #Predicate { $0.uploadStatusRaw == uploading })
         ) where item.isUploadStale(now: now, timeout: staleOperationTimeout) {
-            item.markUploadFailed("Interrupted — the app closed before this upload finished.")
+            item.markUploadFailed("Interrupted. The app closed before this upload finished.")
             report.recoveredUploads += 1
         }
 

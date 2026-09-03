@@ -542,7 +542,7 @@ struct OpenDaysView: View {
             loadError = nil
 
             guard let connection else {
-                check = .notConnected("Notion isn't connected — showing this device only")
+                check = .notConnected("Notion isn't connected. Showing this device only.")
                 return
             }
 
@@ -572,18 +572,18 @@ struct OpenDaysView: View {
     /// Distinguishes "not set up" from "went wrong", because only the second deserves red.
     private static func checkState(for error: Error) -> DestinationCheck {
         guard let apiError = error as? APIError else {
-            return .failed("Couldn't check Notion — showing this device only")
+            return .failed("Couldn't check Notion. Showing this device only.")
         }
         switch apiError {
         case .notConfigured:
-            return .notConnected("No backend configured — showing this device only")
+            return .notConnected("No backend configured. Showing this device only.")
         case .server(let status, let message) where status == 409:
             // "Pick a Notion database first" is a setup step, not a fault.
             return .notConnected(message ?? "Pick a Notion database to include it")
         case .offline:
-            return .failed("Offline — showing this device only")
+            return .failed("Offline. Showing this device only.")
         default:
-            return .failed("Couldn't reach Notion — showing this device only")
+            return .failed("Couldn't reach Notion. Showing this device only.")
         }
     }
 

@@ -165,7 +165,7 @@ struct NotionSettingsView: View {
             // about what it does, so it read as a heading for settings *about* entries.
             Text("Journal font")
         } footer: {
-            Text("Sets the type your entries are shown in \u{2014} titles, text and previews. Buttons and labels keep the system font.")
+            Text("Sets the type your entries are shown in: titles, text and previews. Buttons and labels keep the system font.")
         }
 
         Section {
@@ -176,7 +176,7 @@ struct NotionSettingsView: View {
             }
             .pickerStyle(.menu)
         } footer: {
-            Text("Dark by default \u{2014} the brand was drawn that way, and most dumping happens at the end of a day.")
+            Text("Dark by default. The brand was drawn that way, and most dumping happens at the end of a day.")
         }
 
         Section {
@@ -240,7 +240,7 @@ struct NotionSettingsView: View {
         case .denied:
             "Notifications are off for this app in iOS Settings."
         default:
-            "One quiet nudge after a few days without an entry, at the hour you usually write. It is scheduled on this device \u{2014} nothing about your habits leaves the phone."
+            "One quiet nudge after a few days without an entry, at the hour you usually write. It is scheduled on this device, so nothing about your habits leaves the phone."
         }
     }
 
@@ -265,7 +265,7 @@ struct NotionSettingsView: View {
                 .disabled(!serverURL.isEmpty && !BackendSettings.isValid(serverURL))
 
             if serverSaved {
-                Label("Saved — reopen the app to apply.", systemImage: "checkmark.circle")
+                Label("Saved. Reopen the app to apply.", systemImage: "checkmark.circle")
                     .font(.footnote)
                     .foregroundStyle(Brand.reached)
             }
@@ -276,7 +276,7 @@ struct NotionSettingsView: View {
                AppServices.backendSettings.isUsingOverride {
                 Text("Overriding the built-in address (\(bundled)). Leave blank to go back to it. On a physical device use your Mac's IP on the local network, not localhost.")
             } else {
-                Text("On a physical device use your Mac's IP on the local network — localhost points at the phone itself. Leave blank to use the built-in address.")
+                Text("On a physical device use your Mac's IP on the local network. Localhost points at the phone itself. Leave blank to use the built-in address.")
             }
         }
     }

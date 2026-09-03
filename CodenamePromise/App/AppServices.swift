@@ -148,6 +148,6 @@ final class AppServices {
             parts.append("\(report.recoveredSyncStates) sync\(report.recoveredSyncStates == 1 ? "" : "s") to retry")
         }
         // Deliberately reassuring about the thing that matters: nothing was lost.
-        return "Picked up where you left off — " + parts.joined(separator: ", ") + ". Nothing was lost."
+        return "Picked up where you left off: " + parts.joined(separator: ", ") + ". Nothing was lost."
     }
 }

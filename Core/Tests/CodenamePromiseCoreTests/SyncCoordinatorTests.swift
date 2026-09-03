@@ -164,7 +164,7 @@ struct SyncCoordinatorTests {
         // Content lands, then the very next step fails — the classic lost-response shape.
         await api.setFailure(.updateProperties)
         let first = await sut.sync(draftId: h.draft.id)
-        #expect(first == .deferred("The server had a problem — saved on this device."))
+        #expect(first == .deferred("The server had a problem. Saved on this device."))
         #expect(await api.callCount(.insertContent) == 1)
         #expect(await api.pageBodyCount == 1)
 
