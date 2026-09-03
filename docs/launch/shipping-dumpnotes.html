@@ -312,6 +312,43 @@
         <div class="task-body">
           <label class="task-title" for="i-trademark">Search the trademark register for the name<span class="badge need">Needed</span><span class="badge size">~1 hour</span></label>
           <p class="task-why">Redo for <strong>DumpNotes</strong>. AutoReflect was taken, which is exactly why this comes before anything with the name on it.</p><span class="done-when">you have checked USPTO and the App Store and written down what you found.</span>
+          <p class="task-why"><strong>Searched, written up, and it is not clean.</strong> Full
+            record in <code>docs/launch/name-search-dumpnotes.md</code>. No USPTO registration
+            surfaced and no app is called DumpNotes in five storefronts, so nothing blocks a
+            submission. But <strong>dumpnotes.app was registered five weeks ago</strong> and is
+            a deployed app scaffold titled DumpNotes, and <strong>dumpnotes.com</strong> has
+            carried a note-taking product since 2024. Both good domains are gone. The decision
+            is yours and the two follow-ups below are what settle it.</p>
+          <p class="task-why"><strong>The rename is held.</strong> Repo, bundle id and source
+            are still <code>codename_promise</code> on purpose: renaming hundreds of files to a
+            contested name and then renaming them again is the AutoReflect mistake twice.</p>
+        </div>
+      </div>
+
+      <div class="task" data-kind="stop" data-title="Run the USPTO search yourself" data-done="you have searched DUMPNOTES in classes 9 and 42 on tmsearch.uspto.gov with your own eyes.">
+        <input type="checkbox" data-task="uspto-confirm" id="i-uspto-confirm">
+        <div class="task-body">
+          <label class="task-title" for="i-uspto-confirm">Run the USPTO search yourself<span class="badge stop">Blocker</span><span class="badge size">~5 minutes</span></label>
+          <p class="task-why">The one gap in the search above. Every direct route into USPTO&rsquo;s
+            database is blocked to automated requests, so what I have is the absence of a record
+            on mirrors rather than a search of the register itself.
+            <a href="https://tmsearch.uspto.gov/">tmsearch.uspto.gov</a>, search <code>DUMPNOTES</code>
+            then <code>DUMP*NOTE*</code>, classes 9 and 42. Free, and it is the only source that
+            counts.</p><span class="done-when">you have searched DUMPNOTES in classes 9 and 42 on tmsearch.uspto.gov with your own eyes.</span>
+        </div>
+      </div>
+
+      <div class="task" data-kind="stop" data-title="Decide whether DumpNotes survives the domain problem" data-done="you have decided to keep the name or replace it, and the rename can start.">
+        <input type="checkbox" data-task="name-decision" id="i-name-decision">
+        <div class="task-body">
+          <label class="task-title" for="i-name-decision">Decide whether DumpNotes survives the domain problem<span class="badge stop">Blocker</span><span class="badge size">~30 minutes of thinking</span></label>
+          <p class="task-why">Everything with the name on it waits behind this: the rename, the
+            bundle identifier, the landing page, the App Store listing. Both <code>.com</code> and
+            <code>.app</code> are taken, one of them by somebody who started building five weeks
+            ago. Even at zero legal risk you would launch onto <code>dumpnotes.io</code> while a
+            stranger&rsquo;s half-built site sits at the address people type.</p>
+          <p class="task-why">The cheapest moment to change a name is before it is on anything.
+            That moment is now.</p><span class="done-when">you have decided to keep the name or replace it, and the rename can start.</span>
         </div>
       </div>
       <div class="task" data-kind="need" data-title="Get five external testers into TestFlight" data-done="five people who are not you have opened it on their own phones.">
