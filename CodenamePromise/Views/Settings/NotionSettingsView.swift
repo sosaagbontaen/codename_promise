@@ -18,6 +18,7 @@ struct NotionSettingsView: View {
     @AppStorage(Appearance.storageKey) private var appearance: Appearance = .dark
     @AppStorage(JournalFont.storageKey) private var journalFont: JournalFont = .sans
     @State private var showingExport = false
+    @State private var showingImport = false
     @State private var showingFeedback = false
 
     var body: some View {
@@ -44,6 +45,11 @@ struct NotionSettingsView: View {
             .sheet(isPresented: $showingExport) {
                 if let store = services.store, let files = services.files {
                     ExportView(store: store, fileStore: files)
+                }
+            }
+            .sheet(isPresented: $showingImport) {
+                if let store = services.store, let files = services.files {
+                    ImportView(store: store, fileStore: files)
                 }
             }
             .sheet(isPresented: $showingFeedback) { FeedbackView() }
@@ -185,8 +191,13 @@ struct NotionSettingsView: View {
             } label: {
                 Label("Export your journal", systemImage: "square.and.arrow.up.on.square")
             }
+            Button {
+                showingImport = true
+            } label: {
+                Label("Import a journal", systemImage: "square.and.arrow.down.on.square")
+            }
         } footer: {
-            Text("Markdown and media, saved wherever you like. Works offline and needs nothing else to read it.\n\nYour journal is part of your iPhone backup too, so it comes across to a new phone on its own. An export is the copy that doesn\u{2019}t need this app at all.")
+            Text("Markdown and media, saved wherever you like. Works offline and needs nothing else to read it.\n\nImport takes a folder an export produced, so a journal can come back after a new phone or a reinstall. It only ever adds: nothing already here is changed, and importing the same folder twice is safe.\n\nYour journal is part of your iPhone backup too, so it comes across to a new phone on its own. An export is the copy that doesn\u{2019}t need this app at all.")
         }
 
         Section {

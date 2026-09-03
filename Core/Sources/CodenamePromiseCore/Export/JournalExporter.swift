@@ -200,6 +200,12 @@ public struct JournalExporter: Sendable {
 
         // Front matter, so a tool can read this back without parsing prose.
         out += "---\n"
+        // The entry's own id, so a later import can tell "this is the entry I already have"
+        // from "this is a new one". Without it a re-import has nothing to match on but the
+        // day, and several entries can share a day, so it would either duplicate everything
+        // or merge things that were never the same entry. Harmless to every markdown reader
+        // that ignores front matter it does not know.
+        out += "id: \(entry.id.uuidString)\n"
         out += "date: \(entry.entryDateKey)\n"
         if let title = entry.title, !title.trimmingCharacters(in: .whitespaces).isEmpty {
             out += "title: \(title.replacingOccurrences(of: "\n", with: " "))\n"

@@ -52,8 +52,18 @@ public final class DraftStore {
     // MARK: - Drafts
 
     @discardableResult
-    public func createDraft(entryDate: CalendarDay? = nil, timeZone: TimeZone = .current) throws -> EntryDraft {
-        let draft = EntryDraft(createdAt: clock(), entryDate: entryDate, timeZone: timeZone)
+    /// `id` is defaulted because only one caller ever supplies it: import, which has to keep
+    /// the id the export recorded so a second run recognises what it already has rather than
+    /// doubling the journal. `EntryDraft.id` is deliberately `private(set)`, so it is passed
+    /// in here rather than assigned afterwards.
+    public func createDraft(
+        id: UUID = UUID(),
+        entryDate: CalendarDay? = nil,
+        timeZone: TimeZone = .current
+    ) throws -> EntryDraft {
+        let draft = EntryDraft(
+            id: id, createdAt: clock(), entryDate: entryDate, timeZone: timeZone
+        )
         context.insert(draft)
         try flush()
         return draft

@@ -22,6 +22,7 @@ struct DraftListView: View {
     @State private var selection = Set<UUID>()
     @State private var editMode: EditMode = .inactive
     @State private var confirmingBulkDelete = false
+    @State private var exportingSelection = false
     /// The navigation stack's path.
     ///
     /// Rows push a *value*, not a view. `NavigationLink { CaptureView(...) }` stores its
@@ -46,46 +47,59 @@ struct DraftListView: View {
                 ToolbarItem(placement: .principal) { Wordmark(size: 17) }
             }
             .toolbar {
+                // One leading item that swaps its contents, not two that take turns being
+                // empty. A `ToolbarItem` whose body is conditionally nothing still occupies
+                // the leading group, and the empty one was sitting in front of Select and
+                // eating the tap, so the button looked dead.
                 ToolbarItem(placement: .topBarLeading) {
                     if editMode == .active {
-                        Button(selection.isEmpty ? "Done" : "Delete \(selection.count)",
-                               role: selection.isEmpty ? nil : .destructive) {
-                            if selection.isEmpty {
-                                editMode = .inactive
-                            } else {
-                                confirmingBulkDelete = true
+                        HStack(spacing: 14) {
+                            Button("Cancel") {
+                                withAnimation {
+                                    selection.removeAll()
+                                    editMode = .inactive
+                                }
+                            }
+                            .tint(Brand.ink)
+
+                            if !selection.isEmpty {
+                                Button("Delete \(selection.count)", role: .destructive) {
+                                    confirmingBulkDelete = true
+                                }
                             }
                         }
-                    }
-                }
-                // An icon, not the word - which is worth about sixty points of toolbar, and
-                // toolbar width is what the wordmark was losing. It goes back to being a word
-                // in edit mode, where "Cancel" is consequential enough to spell out and the
-                // trailing tools have stepped aside anyway.
-                ToolbarItem(placement: .topBarLeading) {
-                    if !drafts.isEmpty {
+                    } else if !drafts.isEmpty {
+                        // An icon, not the word, which is worth about sixty points of
+                        // toolbar. Toolbar width is what the wordmark was losing.
                         Button {
                             withAnimation {
                                 selection.removeAll()
-                                editMode = editMode == .active ? .inactive : .active
+                                editMode = .active
                             }
                         } label: {
-                            if editMode == .active {
-                                Text("Cancel")
-                            } else {
-                                Label("Select", systemImage: "checklist")
-                            }
+                            Label("Select", systemImage: "checklist")
                         }
                         .tint(Brand.ink)
                     }
                 }
-                // Two visible buttons rather than a menu behind a long-press. Importing by
-                // date is one of the more useful things this app does, and nobody discovers a
-                // long-press.
+
                 // Neutral, all of them. Violet was on the wordmark, Select, three toolbar
                 // icons, the day rule, "Today" and the selected tab at once - at which point
                 // it stops being an accent and becomes the app's grey. It now marks two
                 // things: the brand, and what is selected or pressable *right now*.
+                // In edit mode the trailing tools step aside for the one action that acts
+                // on a selection. Export used to be all-or-nothing and buried in Settings,
+                // which is right for a backup and wrong for sending somebody one trip.
+                ToolbarItem(placement: .topBarTrailing) {
+                    if editMode == .active, !selection.isEmpty {
+                        Button {
+                            exportingSelection = true
+                        } label: {
+                            Label("Export \(selection.count)", systemImage: "square.and.arrow.up")
+                        }
+                        .tint(Brand.violet)
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     if editMode != .active {
                     Button {
@@ -169,6 +183,15 @@ struct DraftListView: View {
                         reload()
                         path.append(OpeningDraft(id: draft.id))
                     }
+                }
+            }
+            .sheet(isPresented: $exportingSelection) {
+                if let store = services.store, let files = services.files {
+                    ExportView(
+                        store: store, fileStore: files,
+                        // Newest first, matching the order they are shown in.
+                        selection: drafts.map(\.id).filter { selection.contains($0) }
+                    )
                 }
             }
             .sheet(isPresented: $showingImport) {

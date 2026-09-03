@@ -11,6 +11,13 @@ import UniformTypeIdentifiers
 struct ExportView: View {
     let store: DraftStore
     let fileStore: MediaFileStore
+    /// Nil exports the whole journal. A selection exports only those entries, in the order
+    /// they were picked.
+    ///
+    /// All-or-nothing is right for a backup and wrong for the other half of what people do
+    /// with an export: sending one trip, or one month, to somebody. The writer always took an
+    /// array; only the caller insisted on handing it everything.
+    var selection: [UUID]? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var phase: Phase = .idle
@@ -22,6 +29,16 @@ struct ExportView: View {
         case failed(String)
     }
 
+    private var headerTitle: String {
+        guard let selection, !selection.isEmpty else { return "Your whole journal, as files" }
+        return "The entries you picked, as files"
+    }
+
+    private var exportTitle: String {
+        guard let selection, !selection.isEmpty else { return "Export everything" }
+        return selection.count == 1 ? "Export this entry" : "Export these \(selection.count) entries"
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -31,7 +48,7 @@ struct ExportView: View {
                         Button {
                             Task { await run() }
                         } label: {
-                            Label("Export everything", systemImage: "square.and.arrow.up.on.square")
+                            Label(exportTitle, systemImage: "square.and.arrow.up.on.square")
                         }
 
                     case .working:
@@ -52,7 +69,7 @@ struct ExportView: View {
                         Button("Try again") { Task { await run() } }
                     }
                 } header: {
-                    Text("Your whole journal, as files")
+                    Text(headerTitle)
                 } footer: {
                     Text("One markdown file per entry, named by its day, with photos and videos beside it. Recordings that were never transcribed come too, because their words exist nowhere else. Nothing in the export needs this app to read it.")
                 }
@@ -97,7 +114,12 @@ struct ExportView: View {
                 .appendingPathComponent("export-\(UUID().uuidString)", isDirectory: true)
             let folder = staging.appendingPathComponent(name, isDirectory: true)
 
-            let summary = try store.exportAll(to: folder, fileStore: fileStore)
+            let summary: JournalExporter.Summary
+            if let selection, !selection.isEmpty {
+                summary = try store.export(ids: selection, to: folder, fileStore: fileStore)
+            } else {
+                summary = try store.exportAll(to: folder, fileStore: fileStore)
+            }
             let zipped = try Self.zip(folder, named: name, in: staging)
             phase = .ready(zipped, summary)
         } catch {

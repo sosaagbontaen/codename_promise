@@ -11,6 +11,14 @@ import Foundation
 
 public enum MediaKind: String, Codable, Sendable, CaseIterable {
     case photo, video
+
+    /// What a file on disk most likely is, for the one caller that has bytes and no picker
+    /// to ask: import. Defaults to photo, because a still that turns out to be a video plays
+    /// its first frame, while a video row pointing at a JPEG shows a play button over
+    /// something that will never play.
+    public static func forExtension(_ ext: String) -> MediaKind {
+        ["mov", "mp4", "m4v", "avi", "hevc"].contains(ext.lowercased()) ? .video : .photo
+    }
 }
 
 public enum CompressionLevel: String, Codable, Sendable, CaseIterable {
