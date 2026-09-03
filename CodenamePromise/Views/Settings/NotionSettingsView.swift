@@ -186,7 +186,7 @@ struct NotionSettingsView: View {
                 Label("Export your journal", systemImage: "square.and.arrow.up.on.square")
             }
         } footer: {
-            Text("Markdown and media, saved wherever you like. Works offline and needs nothing else to read it.")
+            Text("Markdown and media, saved wherever you like. Works offline and needs nothing else to read it.\n\nYour journal is part of your iPhone backup too, so it comes across to a new phone on its own. An export is the copy that doesn\u{2019}t need this app at all.")
         }
 
         Section {

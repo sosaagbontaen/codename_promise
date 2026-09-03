@@ -46,11 +46,21 @@ struct OnboardingView: View {
                         body: "Connect a database when you want entries to land there too. Everything works without it."
                     )
                     // The differentiator, and the one worth a raised voice.
+                    //
+                    // The second sentence is not padding. "Stays on this phone" is accurate
+                    // about privacy and, left there, quietly implies that losing the phone
+                    // loses the journal - which is the exact fear an app whose first tenet is
+                    // "never lose what you wrote" cannot afford to plant. It does not lose it:
+                    // the store and the media both live in Application Support and nothing is
+                    // marked excluded from backup, so they ride along in the iPhone backup and
+                    // come back on a new phone. That is designed for rather than incidental -
+                    // every media reference is relative precisely so a restored container with
+                    // a different UUID still resolves (ADR-007).
                     point(
                         symbol: "lock.fill",
                         tint: Brand.reached,
                         title: "Your words stay on this phone",
-                        body: "No account, no analytics, nothing uploaded. That's the default, not a setting you have to go and find.",
+                        body: "No account, no analytics, nothing uploaded. They're part of your iPhone backup, so they follow you to a new phone — and you can export the lot any time.",
                         emphasised: true
                     )
                 }
