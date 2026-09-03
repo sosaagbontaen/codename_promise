@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DumpNotes Privacy Policy</title>
+<meta name="description" content="What DumpNotes does and does not do with your journal.">
+<style>
+  :root {
+    --ink: #14161c; --muted: #5b6170; --ground: #ffffff; --panel: #f5f6f9;
+    --edge: rgba(15,17,21,0.10); --violet: #5b3ce0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #edeff6; --muted: #98a0b4; --ground: #0e1119; --panel: #171b26;
+      --edge: rgba(255,255,255,0.09); --violet: #9d86ff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0 20px 96px;
+    background: var(--ground); color: var(--ink);
+    font: 17px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  main { max-width: 44rem; margin: 0 auto; }
+  header { padding: 56px 0 8px; }
+  .mark { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
+  .mark span { color: var(--violet); }
+  h1 { font-size: 26px; font-weight: 650; letter-spacing: -0.01em; margin: 28px 0 6px; }
+  h2 { font-size: 19px; font-weight: 650; margin: 40px 0 8px; letter-spacing: -0.005em; }
+  p, li { color: var(--ink); }
+  .lede { color: var(--muted); font-size: 18px; }
+  .stamp { color: var(--muted); font-size: 14px; margin-top: 4px; }
+  ul { padding-left: 22px; }
+  li { margin: 6px 0; }
+  strong { font-weight: 650; }
+  .callout {
+    background: var(--panel); border: 1px solid var(--edge);
+    border-radius: 14px; padding: 18px 20px; margin: 24px 0;
+  }
+  .callout p:first-child { margin-top: 0; }
+  .callout p:last-child { margin-bottom: 0; }
+  .todo {
+    border: 1px dashed var(--violet); border-radius: 14px;
+    padding: 16px 20px; margin: 24px 0; color: var(--muted);
+  }
+  hr { border: 0; border-top: 1px solid var(--edge); margin: 44px 0 0; }
+  footer { color: var(--muted); font-size: 14px; padding-top: 20px; }
+  a { color: var(--violet); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="mark">Dump<span>Notes</span></div>
+  </header>
+
+  <h1>Privacy Policy</h1>
+  <p class="stamp">Last updated 3 September 2026</p>
+
+  <p class="lede">DumpNotes is a journal that lives on your phone. This policy explains
+    what it does with what you write, and it is short because the app does very little.</p>
+
+  <div class="callout">
+    <p><strong>The short version.</strong> There is no account. There is no analytics and no
+      tracking of any kind. Everything you capture is stored on your device, and none of it
+      is sent anywhere unless you connect the app to a Notion database yourself.</p>
+  </div>
+
+  <h2>Who is responsible</h2>
+  <p>DumpNotes is made and published by Samuel Osa-Agbontaen, an individual developer. There
+    is no company, no team, and nobody else with access to anything described below.</p>
+
+  <h2>What is stored on your device</h2>
+  <p>Everything the app is for:</p>
+  <ul>
+    <li>The text you type and any titles you give an entry.</li>
+    <li>Photos and videos you attach.</li>
+    <li>Voice recordings, and any transcript produced from them.</li>
+    <li>The date each entry is filed under, and when it was created and last edited.</li>
+    <li>Your settings, such as appearance and which font your entries are shown in.</li>
+  </ul>
+  <p>This is held in the app's own storage on the device. It is included in your normal
+    encrypted iPhone backup, which is how a journal survives onto a new phone. It is not
+    uploaded to us, because there is no us to upload it to.</p>
+
+  <h2>What is not collected</h2>
+  <ul>
+    <li><strong>No account.</strong> There is nothing to sign up for and no profile.</li>
+    <li><strong>No analytics.</strong> No usage statistics, no crash reporting, no session
+      recording, no advertising identifiers, no third-party SDKs of any kind.</li>
+    <li><strong>No location.</strong> The app never asks for it and never reads it.</li>
+    <li><strong>No contacts, no calendar, no health data.</strong></li>
+    <li><strong>No tracking across apps or websites</strong>, and nothing is sold or shared
+      with data brokers.</li>
+  </ul>
+  <p>The app contains exactly one piece of code capable of making a network request, and it
+    is inactive unless you configure a server address yourself. As distributed, no server
+    address is set.</p>
+
+  <h2>If you connect Notion</h2>
+  <p>Sending entries to Notion is optional and off by default. It requires you to run or
+    connect a server and sign in to Notion. If you choose to do that, then and only then:</p>
+  <ul>
+    <li>The content of an entry you send, including its text and any attached photos or
+      videos, is transmitted to that server and on to Notion so that it can be written into
+      the database you picked.</li>
+    <li>If you use dictation, the audio is transmitted to that server to be turned into text.</li>
+    <li>If you use the formatting feature, the entry's text is transmitted to that server to
+      be restructured. The wording is never changed, only its arrangement.</li>
+  </ul>
+  <p>Where that server is configured to use them, transcription and formatting are performed
+    by <a href="https://groq.com/privacy-policy/">Groq</a>, and storage is performed by
+    <a href="https://www.notion.so/notion/Privacy-Policy-3468d120cf614d4c9014c09f6adc9091">Notion</a>.
+    Their handling of that content is governed by their own policies. Nothing is sent to
+    either of them unless you have connected them.</p>
+  <p>Your Notion authorisation is held by the server you connected, in a file readable only
+    by that server's own account, and it is never sent back to the app. The app only ever
+    learns whether a connection exists, the workspace name, and which database you chose.</p>
+
+  <h2>Feedback</h2>
+  <p>If you use the feedback option in Settings, the app opens your own mail app with a
+    message you can read and edit before sending. It attaches only the app version, your iOS
+    version, and your device model, so that a bug report is actionable. It never attaches any
+    part of an entry: not text, not titles, not photos, not recordings.</p>
+
+  <h2>Keeping and deleting your journal</h2>
+  <ul>
+    <li>Entries stay on your device until you delete them.</li>
+    <li>Deleting an entry removes its text and its attached files from the device.</li>
+    <li>Deleting the app removes all of it. There is no copy held anywhere else.</li>
+    <li>You can export the whole journal, or any entries you select, as plain markdown files
+      with the media beside them. Nothing in an export needs this app to read it.</li>
+    <li>Anything already written into Notion stays in Notion. Deleting it there is done in
+      Notion, and deleting an entry in DumpNotes does not remove the Notion page.</li>
+  </ul>
+
+  <h2>Children</h2>
+  <p>DumpNotes is not directed at children under 13 and does not knowingly collect anything
+    from them. Since the app collects nothing at all, there is nothing held about any user of
+    any age.</p>
+
+  <h2>Your rights</h2>
+  <p>Laws such as the GDPR and the CCPA give you rights to access, correct, export and delete
+    personal data held about you. In this case those rights are satisfied by the app itself:
+    the data is on your device, you can read and edit all of it, the export feature gives you
+    a complete portable copy, and deleting the app destroys it. There is no server-side record
+    to request, because none is kept.</p>
+
+  <h2>Changes</h2>
+  <p>If this policy changes, the date at the top changes with it, and the previous versions
+    remain in the app's public source history. If a change ever means the app collects
+    something it did not collect before, that will be said plainly here before it ships.</p>
+
+  <h2>Contact</h2>
+  <div class="todo">
+    <p><strong>Contact address not yet set.</strong> This policy is not ready for App Store
+      or Notion submission until a working address appears here. Both reviews check it.</p>
+  </div>
+
+  <hr>
+  <footer>
+    <p>DumpNotes is open source. The claims on this page can be checked against the code at
+      <a href="https://github.com/sosaagbontaen/codename_promise">github.com/sosaagbontaen/codename_promise</a>.</p>
+  </footer>
+</main>
+</body>
+</html>
