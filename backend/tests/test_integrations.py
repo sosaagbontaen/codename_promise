@@ -979,3 +979,68 @@ class TestStubCoverage:
         await notion.ensure_page("2026-01-04", "Old", None)
 
         assert await notion.entry_coverage("2026-08-01", "2026-08-31") == []
+
+
+class TestModelVerification:
+    """The check that would have caught a retired model before a user did.
+
+    `llama-3.3-70b-versatile` was Groq's default here and Groq retired it. Every formatting
+    request began returning 404, nothing in the app or the server said so, and the only
+    symptom was a feature that silently stopped working in a shipped build. These tests are
+    the tripwire.
+    """
+
+    def _app(self, available, has_key=True):
+        async def fake_lister(api_key):
+            if available is None:
+                from app.providers.groq import GroqError
+                raise GroqError("Groq returned 503 listing models.")
+            return set(available)
+
+        settings = Settings(groq_api_key="k" if has_key else "")
+        return TestClient(create_app(settings=settings, model_lister=fake_lister))
+
+    def test_configured_models_are_visible_without_a_network_call(self):
+        """You should not have to read the source to find out what it is calling."""
+        body = self._app(["anything"]).get("/health").json()
+        assert body["models"]["formatting"]
+        assert body["models"]["transcription"]
+        # No verification unless asked: /health stays cheap enough to poll.
+        assert "models_verified" not in body
+
+    def test_a_retired_model_makes_health_degraded(self):
+        from app.providers.groq import DEFAULT_TRANSCRIPTION_MODEL
+
+        body = self._app([DEFAULT_TRANSCRIPTION_MODEL]).get("/health?verify=true").json()
+
+        assert body["status"] == "degraded"
+        assert body["models_verified"]["formatting"] == "MISSING"
+        assert body["models_verified"]["transcription"] == "available"
+
+    def test_everything_present_stays_ok(self):
+        from app.providers.groq import (
+            DEFAULT_FORMATTING_MODEL,
+            DEFAULT_TRANSCRIPTION_MODEL,
+        )
+
+        body = self._app(
+            [DEFAULT_FORMATTING_MODEL, DEFAULT_TRANSCRIPTION_MODEL]
+        ).get("/health?verify=true").json()
+
+        assert body["status"] == "ok"
+        assert set(body["models_verified"].values()) == {"available"}
+
+    def test_a_provider_outage_is_degraded_rather_than_a_500(self):
+        """Not being able to check is not the same as knowing something is wrong, but it is
+        not 'ok' either. Either way /health must answer rather than throw."""
+        body = self._app(None).get("/health?verify=true").json()
+
+        assert body["status"] == "degraded"
+        assert "could not check" in body["models_verified"]
+
+    def test_no_provider_configured_is_not_a_failure(self):
+        """Running on stubs is a supported state, not a fault."""
+        body = self._app([], has_key=False).get("/health?verify=true").json()
+
+        assert body["status"] == "ok"
+        assert "skipped" in body["models_verified"]

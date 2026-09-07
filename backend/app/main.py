@@ -19,7 +19,14 @@ from .config import Settings
 from .connections import ConnectionStore
 from .idempotency import IdempotencyStore
 from .oauth import NotionOAuth
-from .providers.groq import GroqError, GroqFormatter, GroqTranscriber
+from .providers.groq import (
+    DEFAULT_FORMATTING_MODEL,
+    DEFAULT_TRANSCRIPTION_MODEL,
+    GroqError,
+    GroqFormatter,
+    GroqTranscriber,
+    list_models,
+)
 from .providers.notion_api import (
     NotionError,
     NotionGatewayHTTP,
@@ -52,8 +59,11 @@ def create_app(
     notion: Any = None,
     connections: Optional[ConnectionStore] = None,
     vocabulary: Optional[VocabularyStore] = None,
+    #: Injectable so the health check is testable without reaching Groq.
+    model_lister: Any = None,
 ) -> FastAPI:
     settings = settings or Settings.from_env()
+    model_lister = model_lister or list_models
     connections = connections if connections is not None else ConnectionStore()
     vocabulary = vocabulary if vocabulary is not None else VocabularyStore()
 
@@ -149,9 +159,18 @@ def create_app(
         return {"terms": vocabulary.remove(term)}
 
     @app.get("/health")
-    async def health() -> dict:
+    async def health(verify: bool = False) -> dict:
+        """What this server is wired to, and optionally whether that still exists.
+
+        `verify=true` asks the provider which models the account can actually call and
+        compares them against the ones configured here. It is opt-in because it costs a
+        network round trip, and it exists because the alternative already happened:
+        `llama-3.3-70b-versatile` was retired by Groq, every formatting request began
+        returning 404, and nothing anywhere said so until somebody tried to format an entry.
+        A deploy check that calls this with `verify=true` would have caught it the same day.
+        """
         connection = connections.get()
-        return {
+        body = {
             "status": "ok",
             "auth_required": settings.requires_auth,
             "formatter_version": settings.formatter_version,
@@ -160,7 +179,32 @@ def create_app(
             "formatting": "groq" if settings.has_groq else "stub",
             "notion": "connected" if (connection and connection.is_ready) else "stub",
             "notion_oauth_configured": oauth.is_configured,
+            # Always visible, no network needed: you can see what is configured without
+            # having to read the source to find out.
+            "models": {
+                "transcription": DEFAULT_TRANSCRIPTION_MODEL,
+                "formatting": DEFAULT_FORMATTING_MODEL,
+            },
         }
+
+        if verify:
+            if not settings.has_groq:
+                body["models_verified"] = "skipped: no provider configured"
+                return body
+            try:
+                available = await model_lister(settings.groq_api_key)
+            except GroqError as exc:
+                body["status"] = "degraded"
+                body["models_verified"] = f"could not check: {exc}"
+                return body
+            checked = {
+                name: ("available" if model in available else "MISSING")
+                for name, model in body["models"].items()
+            }
+            body["models_verified"] = checked
+            if any(v == "MISSING" for v in checked.values()):
+                body["status"] = "degraded"
+        return body
 
     # --- Transcription ------------------------------------------------------------
 

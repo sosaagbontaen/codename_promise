@@ -10,7 +10,7 @@ never written to disk. See ADR-022.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Set
 
 import httpx
 
@@ -21,7 +21,10 @@ GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 #: Groq's Whisper deployment. Turbo is fast and cheap enough to retry freely, which matters
 #: because the client queues recordings and drains them in bulk.
 DEFAULT_TRANSCRIPTION_MODEL = "whisper-large-v3-turbo"
-DEFAULT_FORMATTING_MODEL = "llama-3.3-70b-versatile"
+#: Retired models 404 at request time with nothing at startup to warn you, which is exactly
+#: how `llama-3.3-70b-versatile` sat broken in a shipped build. `list_models` plus the
+#: verification in `/health` is what turns the next retirement into a visible failure.
+DEFAULT_FORMATTING_MODEL = "openai/gpt-oss-120b"
 
 #: The prompt is a *request* to preserve wording. `wordguard` is the enforcement — see
 #: `GroqFormatter.format`. Never rely on this text alone.
@@ -296,3 +299,22 @@ def _correction_message(failure: FormattingAlteredWordsError) -> str:
         "different words, add anything, or leave anything out."
     )
     return " ".join(parts)
+
+
+async def list_models(api_key: str, base_url: str = GROQ_BASE_URL) -> Set[str]:
+    """Model ids this account can actually call.
+
+    Exists because a provider can retire a model underneath a running app. Nothing in the
+    request path notices until a user hits it, and then the failure is a 404 from a request
+    nobody changed. Asking up front is a few hundred milliseconds and turns that into
+    something a deploy check can see.
+    """
+    headers = {"Authorization": f"Bearer {api_key}"}
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(f"{base_url.rstrip('/')}/models", headers=headers)
+    except httpx.HTTPError as exc:
+        raise GroqError(f"Could not reach Groq to list models: {exc}") from exc
+    if response.status_code >= 400:
+        raise GroqError(f"Groq returned {response.status_code} listing models.")
+    return {m.get("id", "") for m in response.json().get("data", [])}
