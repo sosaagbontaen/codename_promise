@@ -1,0 +1,285 @@
+<title>Voice First, Notion Optional</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+  :root{
+    --violet:#6C4CFF; --violet-deep:#5033D6;
+    --ink:#0F1115; --muted:#6B7280; --ground:#F2F4F7; --surface:#FFFFFF;
+    --line:#E4E7EE; --line-soft:#EFF1F5;
+    --keep:#15803D; --demote:#B45309; --build:#6C4CFF; --cut:#DC2626;
+    --font:'Poppins',-apple-system,'Helvetica Neue',sans-serif;
+    --mono:'JetBrains Mono','SF Mono',Menlo,monospace;
+    --shadow:0 1px 2px rgba(15,17,21,.05), 0 10px 28px rgba(15,17,21,.06);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --violet:#8F76FF; --violet-deep:#6C4CFF;
+      --ink:#F2F4F7; --muted:#9AA2B1; --ground:#0F1115; --surface:#181B22;
+      --line:#272B36; --line-soft:#1E222B;
+      --keep:#4ADE80; --demote:#FFB02E; --build:#8F76FF; --cut:#F87171;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.3);
+    }
+  }
+  :root[data-theme="dark"]{
+    --violet:#8F76FF; --violet-deep:#6C4CFF;
+    --ink:#F2F4F7; --muted:#9AA2B1; --ground:#0F1115; --surface:#181B22;
+    --line:#272B36; --line-soft:#1E222B;
+    --keep:#4ADE80; --demote:#FFB02E; --build:#8F76FF; --cut:#F87171;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.3);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+  body{background:var(--ground);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.62;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:790px;margin:0 auto;padding:0 22px}
+  a{color:var(--violet)}
+  code{font-family:var(--mono);font-size:.88em;background:var(--line-soft);padding:1px 5px;border-radius:5px}
+
+  header{padding:56px 0 10px}
+  .eyebrow{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--violet);margin-bottom:12px}
+  h1{font-size:clamp(34px,6vw,50px);font-weight:700;letter-spacing:-.035em;line-height:1.04;text-wrap:balance}
+  .sub{margin-top:14px;color:var(--muted);max-width:60ch}
+
+  h2{font-size:13px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-family:var(--mono);margin:52px 0 14px}
+  h3{font-size:19px;font-weight:650;letter-spacing:-.015em;margin:26px 0 7px;text-wrap:balance}
+  p{max-width:66ch;margin-bottom:12px}
+  p+p{margin-top:0}
+  ul{margin:10px 0 14px 20px;max-width:66ch}
+  li{margin:5px 0}
+  strong{font-weight:600}
+
+  .finding{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--cut);border-radius:14px;padding:22px 24px;margin:24px 0;box-shadow:var(--shadow)}
+  .finding .tag{font-family:var(--mono);font-size:10.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--cut);display:block;margin-bottom:9px}
+  .finding h3{margin-top:0}
+  .finding p:last-child{margin-bottom:0}
+
+  .quote{border-left:2px solid var(--line);padding-left:16px;color:var(--muted);font-style:italic;margin:14px 0;max-width:62ch}
+
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14.5px}
+  th{text-align:left;font-family:var(--mono);font-size:10.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:0 10px 8px 0;border-bottom:1px solid var(--line)}
+  td{padding:10px 10px 10px 0;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--muted);white-space:nowrap}
+  .disp{font-family:var(--mono);font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
+  .d-keep{color:var(--keep)} .d-demote{color:var(--demote)} .d-build{color:var(--build)} .d-cut{color:var(--cut)}
+  .scroller{overflow-x:auto}
+
+  .phase{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-bottom:12px;box-shadow:var(--shadow)}
+  .phase-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+  .phase-n{font-family:var(--mono);font-size:11px;font-weight:600;color:#fff;background:var(--violet);padding:3px 8px;border-radius:6px;letter-spacing:.06em}
+  .phase-name{font-size:18px;font-weight:650;letter-spacing:-.015em}
+  .phase-why{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.04em}
+  .phase p{margin-bottom:8px}
+  .phase p:last-child{margin-bottom:0}
+  .phase ul{margin-bottom:0}
+
+  footer{margin:56px 0 90px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:13.5px}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">Product direction &middot; 7 September 2026</div>
+  <h1>Voice first,<br>Notion optional.</h1>
+  <p class="sub">An assessment of the app as built against the direction you have just
+    described, and what it would take to get from one to the other. Measured against the
+    code, not against my memory of writing it.</p>
+</header>
+
+<h2>The headline</h2>
+
+<p>Your instinct is right, and the drift is real, but it is smaller than it feels. The
+  Notion-shaped code is about <strong>2,000 of roughly 15,500 lines</strong>, and almost none
+  of it is load-bearing for what you want to build. The durability machinery underneath it,
+  which is where most of the real work went, becomes <em>more</em> important under the new
+  direction rather than less.</p>
+
+<p>What is not smaller than it feels is one thing, and it is not a Notion problem at all.</p>
+
+<div class="finding">
+  <span class="tag">The finding that changes the plan</span>
+  <h3>The rule that makes the app safe is the rule that forbids the feature you want most</h3>
+  <p>Tenet 3 is <em>&ldquo;AI assists, never authors&rdquo;</em>, and it is not a slogan. It
+    is enforced by <code>backend/app/wordguard.py</code>, which compares formatted output
+    against the source word by word and returns a 422 if anything was introduced or dropped.
+    A word may only be replaced by one that is recognisably the same word, at a string
+    similarity of 0.72 or better. That is what makes <code>softwaaarre&nbsp;&rarr;&nbsp;software</code>
+    legal and <code>ran&nbsp;&rarr;&nbsp;jogged</code> illegal.</p>
+  <p>Now read what you asked for:</p>
+  <p class="quote">&ldquo;Minute 1: I talk about work. Minute 4: a relationship. Minute 8: I
+    remember something else about work &hellip; produce a coherent journal entry where related
+    thoughts are grouped together.&rdquo;</p>
+  <p>Doing that to a ten-minute ramble means <strong>dropping filler, cutting false starts,
+    and moving minute 8 up next to minute 1</strong>. Every one of those is a rejection under
+    the current guard. The formatter is a copy-editor by design, by prompt, and by
+    enforcement. You are asking for an editor. <strong>This is the single biggest piece of
+    work, and it is not UI.</strong></p>
+</div>
+
+<h3>The resolution, and why it keeps the promise</h3>
+
+<p>Do not weaken the guard. Split it.</p>
+
+<ul>
+  <li><code>rawText</code> stays inviolate. Nothing may ever rewrite what you actually said,
+    and the recording stays until its transcript is merged. That is ADR-002 and it does not
+    move.</li>
+  <li>The organised entry becomes a <em>derived document</em> that is allowed to cut and
+    reorder, guarded by a different and still-mechanical rule: <strong>every section must cite
+    the transcript spans it came from</strong>, and every substantive sentence in the
+    transcript must be cited by some section.</li>
+</ul>
+
+<p>Coverage is checkable in code, exactly as word-identity is today. And the citations are not
+  just a guard, they are the best feature in the design: <strong>tap any line in your finished
+  entry and hear yourself say it.</strong> That is what makes an AI-organised journal
+  trustworthy instead of unnerving, and no competitor built on plain summarisation can offer
+  it, because they threw the mapping away.</p>
+
+<h2>What is genuinely Notion-shaped</h2>
+
+<p>Less than the file count suggests. Fifteen Core files mention Notion, but most only name it
+  as one destination among possible others.</p>
+
+<div class="scroller">
+<table>
+  <thead><tr><th>Component</th><th>Lines</th><th>Disposition</th><th>Reasoning</th></tr></thead>
+  <tbody>
+    <tr><td><code>SyncCoordinator</code></td><td class="n">335</td><td class="disp d-demote">Demote</td>
+      <td>Resumable idempotent push. Still exactly right for an <em>export</em> target; wrong as the thing the app is organised around.</td></tr>
+    <tr><td><code>SyncState</code></td><td class="n">229</td><td class="disp d-demote">Demote</td>
+      <td>Already per-destination and generic. Keep the model, stop letting it drive the UI.</td></tr>
+    <tr><td><code>NotionConnection</code></td><td class="n">210</td><td class="disp d-keep">Keep</td>
+      <td>Behind a settings screen it costs nothing and works.</td></tr>
+    <tr><td>Append-to-existing-page<br><span style="color:var(--muted);font-size:13px">DumpDestinationSheet, ExistingEntryPicker, <code>appendsToExistingPage</code>, <code>insertedBlockIds</code></span></td><td class="n">~400</td><td class="disp d-cut">Cut</td>
+      <td>This exists <em>only</em> because Notion was the home. If the app owns the journal, you never append to somebody else&rsquo;s page.</td></tr>
+    <tr><td><code>OpenDaysScope.deviceAndDestination</code></td><td class="n">~60</td><td class="disp d-cut">Cut</td>
+      <td>Asks Notion which days exist. Pure Notion-first thinking: the app owns the journal now, so local truth is the truth.</td></tr>
+    <tr><td>Sync badges on entry cards</td><td class="n">~40</td><td class="disp d-demote">Demote</td>
+      <td>Already reduced to appearing only when a database is connected. Finish the job.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>What survives, and matters more now than it did</h2>
+
+<p>This is the reassuring half, and it is real rather than consolation. The expensive work was
+  never the Notion integration.</p>
+
+<ul>
+  <li><strong>The durability layer becomes the spine.</strong> Audio is durable before
+    transcription is attempted and released only once merged (ADR-002). When voice was one
+    input among four that was prudent. When voice <em>is</em> the product, it is the whole
+    trust story: a ten-minute recording is now the most valuable object in the app.</li>
+  <li><strong>Local-first store, versioned schema, migration tests.</strong> The thing that
+    already broke twice on your own phone and now cannot.</li>
+  <li><strong>Export and import.</strong> You said you want a home you can move data into and
+    out of. That round trip exists, with 230 tests behind it, and it is now a headline feature
+    rather than a safety net.</li>
+  <li><strong>The gap-finder machinery.</strong> <code>JournalGaps</code> and
+    <code>JournalCompleteness</code> already answer &ldquo;which days are empty&rdquo; and
+    &ldquo;which entries are half-finished&rdquo;. Your #2 needs one new signal fed into the
+    same machine.</li>
+  <li><strong>The visual card and collage system, the design language, the whole capture
+    surface.</strong> Your #3 is largely built.</li>
+</ul>
+
+<h2>The MVP, in your words</h2>
+
+<p class="quote">&ldquo;I had a day. I open the app. I talk about it naturally. The app turns
+  my messy thoughts into a beautiful, organized record of that day.&rdquo;</p>
+
+<p>Everything in that sentence exists today except the word <em>organized</em>. Press record,
+  talk, stop, the audio is safe, it transcribes, you get an entry, you can browse it, you can
+  take it with you. The missing piece is the transformation in the middle, and the
+  <strong>MVP is that piece plus the trust mechanism that makes it safe to believe</strong>.</p>
+
+<h2>The architecture</h2>
+
+<p>The strongest recommendation in this document is about what <em>not</em> to build. You do
+  not need a pipeline, a vector store, an agent, or a RAG layer to ship the core magic. The
+  chain that exists is:</p>
+
+<p style="font-family:var(--mono);font-size:14px;color:var(--muted)">audio &rarr; transcript
+  &rarr; copy&#8209;edit &rarr; entry</p>
+
+<p>The chain you need is:</p>
+
+<p style="font-family:var(--mono);font-size:14px"><span style="color:var(--muted)">audio
+  &rarr; transcript &rarr;</span> <strong style="color:var(--violet)">organise</strong>
+  <span style="color:var(--muted)">&rarr; entry</span></p>
+
+<p><strong>That is one new service call, one new prompt, one new guard, and one new field.</strong>
+  The field goes on <code>EntryDraft</code> as a <code>@Model</code> attribute rather than
+  inside <code>EntryContent</code> &mdash; adding it to the composite would flatten into new
+  columns and break the store, which is ADR-008a and the bug that already cost two days.</p>
+
+<p>Everything else is reuse: <code>TranscriptionCoordinator</code> already leases, retries and
+  merges; <code>FormattingCoordinator</code> is 93 lines and already has the snapshot-and-discard
+  shape; the raw/organised toggle already exists in the editor.</p>
+
+<h2>The plan</h2>
+
+<div class="phase">
+  <div class="phase-head"><span class="phase-n">0</span><span class="phase-name">Prove the organiser before building anything around it</span><span class="phase-why">half a day</span></div>
+  <p><strong>Do this before any code.</strong> Record yourself rambling for ten real minutes
+    about a real day. Run the transcript through candidate prompts in a scratch script and read
+    the output. No app, no UI, no schema.</p>
+  <p>This is the entire product risk in one place. If the organiser is not good, nothing else
+    on this list matters; if it is good, everything else is mechanical. It is also the cheapest
+    test you will ever run, and doing it first is the difference between a week of work and a
+    month.</p>
+</div>
+
+<div class="phase">
+  <div class="phase-head"><span class="phase-n">1</span><span class="phase-name">The core magic</span><span class="phase-why">the MVP</span></div>
+  <ul>
+    <li>Long-form recording that is comfortable for ten minutes: elapsed time, pause, and a
+      visible guarantee that it is already saved.</li>
+    <li>The organiser endpoint, returning sections with transcript span citations.</li>
+    <li>The coverage guard, replacing word-identity on this path only.</li>
+    <li>The entry view: organised sections, with tap-to-reveal what you actually said.</li>
+    <li>One schema version bump, done by the existing rules.</li>
+  </ul>
+</div>
+
+<div class="phase">
+  <div class="phase-head"><span class="phase-n">2</span><span class="phase-name">Continuity from your camera roll</span><span class="phase-why">your #2</span></div>
+  <p>Today the app can only import photos you pick. It never asks the library what you did on
+    a day. Reading <code>PHAsset</code> counts by date turns
+    <em>&ldquo;August 17 is empty&rdquo;</em> into <em>&ldquo;August 17: 23 photos, 4
+    videos&rdquo;</em>, and then into a prompt that opens with those photos as memory
+    triggers.</p>
+  <p>Modest work on top of machinery that already exists, and it is the feature most likely to
+    make someone open the app on a day they would otherwise skip.</p>
+</div>
+
+<div class="phase">
+  <div class="phase-head"><span class="phase-n">3</span><span class="phase-name">The archive worth opening</span><span class="phase-why">your #3</span></div>
+  <p>Mostly built. What is missing is the year-scale view: months of days as imagery rather
+    than a scrolling list, so opening the app shows you your life rather than your filesystem.</p>
+</div>
+
+<div class="phase">
+  <div class="phase-head"><span class="phase-n">4</span><span class="phase-name">Talking to your journal</span><span class="phase-why">not yet</span></div>
+  <p>Deliberately last, and deliberately not designed for now. It needs a corpus that does not
+    exist yet, and every architectural decision made in its name today would be made
+    without evidence. The citation mapping built in phase 1 is the foundation it will want, so
+    building phase 1 properly <em>is</em> preparing for this.</p>
+</div>
+
+<h2>One thing I would push back on</h2>
+
+<p>You said not to let accuracy and liability concerns drive the architecture unnecessarily,
+  and for phase 4 I agree completely. For phase 1 I would not, and the citation design is why
+  I am comfortable with the rest.</p>
+
+<p>An app that rewrites your day and shows you only its version is asking for a kind of trust
+  no product has earned. The same app that shows you its version <em>and</em> lets you hear the
+  sentence behind any line has earned it cheaply, in about a day of extra work, and gets a
+  mechanical safety check for free. That is not caution slowing the product down. It is the
+  feature that makes the product credible.</p>
+
+<footer>
+  Measured against <code>main</code> at <code>f224c83</code>. Core 5,011 lines, app 7,766,
+  backend 2,794, 230 tests passing. Nothing in this document has been implemented.
+</footer>
+</div>
