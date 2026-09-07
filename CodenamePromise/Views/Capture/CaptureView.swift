@@ -34,7 +34,9 @@ struct CaptureView: View {
     /// Which version of the entry is on screen. `rawText` is always editable; the AI's
     /// structured pass is read-only, because it is a view of the user's words rather than a
     /// second place to write them.
-    enum Mode: String, CaseIterable { case raw = "Yours", formatted = "Structured" }
+    enum Mode: String, CaseIterable {
+        case raw = "Yours", organised = "Arranged", formatted = "Structured"
+    }
 
     private let fileStore: MediaFileStore
     /// Kept so the move sheet can list the other entries. The controller deliberately owns
@@ -179,9 +181,9 @@ struct CaptureView: View {
                     .font(Type.title(25))
                     .textInputAutocapitalization(.sentences)
 
-                if controller.hasFormatting {
+                if controller.hasFormatting || controller.organised != nil {
                     Picker("View", selection: $mode) {
-                        ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                        ForEach(availableModes, id: \.self) { Text($0.rawValue).tag($0) }
                     }
                     .pickerStyle(.segmented)
                     .padding(.bottom, 2)
@@ -189,7 +191,10 @@ struct CaptureView: View {
                 }
 
                 Group {
-                    if mode == .formatted, controller.hasFormatting {
+                    if mode == .organised, let organised = controller.organised {
+                        OrganisedEntryView(organised: organised, isStale: controller.organisedIsStale)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else if mode == .formatted, controller.hasFormatting {
                         TextEditor(text: $controller.formatted)
                             .writingSurface()
                     } else {
@@ -466,6 +471,21 @@ struct CaptureView: View {
                 .buttonStyle(.pressable)
                 .disabled(controller.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
+                // Organising sits beside formatting rather than replacing it. Formatting may
+                // not change a word; organising may not lose a thought. Two jobs, two
+                // guarantees, two buttons.
+                Button {
+                    Task { await organise() }
+                } label: {
+                    if services.organising?.isOrganising(controller.draftId) == true {
+                        CompactAction(symbol: "ellipsis", tint: Brand.violet)
+                    } else {
+                        CompactAction(symbol: "list.bullet.rectangle", tint: Brand.violet)
+                    }
+                }
+                .buttonStyle(.pressable)
+                .disabled(!canOrganise)
+
                 sendButton
             }
             .overlay { if recorder.isRecording { recordingCapsule } }
@@ -627,6 +647,7 @@ struct CaptureView: View {
         let candidates = [
             controller.pendingTranscriptionCount > 0 ? services.transcriptions?.blockedReason : nil,
             services.formatting?.blockedReason,
+            services.organising?.blockedReason,
             controller.syncSummary,
         ]
         for case let message? in candidates where seen.insert(message).inserted {
@@ -653,6 +674,39 @@ struct CaptureView: View {
     private var elapsedLabel: String {
         let total = Int(recorder.elapsed)
         return String(format: "%d:%02d", total / 60, total % 60)
+    }
+
+    /// Only offer a pane that has something in it. A tab that shows an empty state is worse
+    /// than no tab, because it reads as something broken rather than something unused.
+    private var availableModes: [Mode] {
+        var modes: [Mode] = [.raw]
+        if controller.organised != nil { modes.append(.organised) }
+        if controller.hasFormatting { modes.append(.formatted) }
+        return modes
+    }
+
+    /// False while a recording is still waiting to be transcribed: arranging a transcript
+    /// that is about to grow would produce half a day that looks finished. See ADR-002.
+    private var canOrganise: Bool {
+        services.organising?.canOrganise(draftId: controller.draftId) == true
+            && services.organising?.isOrganising(controller.draftId) != true
+    }
+
+    private func organise() async {
+        guard let organising = services.organising else { return }
+        let outcome = await organising.organise(draftId: controller.draftId)
+        controller.reload()
+        switch outcome {
+        case .organised:
+            Haptics.committed()
+            withAnimation { mode = .organised }
+        case .deferred, .failed:
+            // The reason is already on the coordinator, and `statusMessages` reads it from
+            // there. Keeping one source means the banner cannot disagree with the state.
+            Haptics.failed()
+        default:
+            break
+        }
     }
 
     private var dayLabel: String {

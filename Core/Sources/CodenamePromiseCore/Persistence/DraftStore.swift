@@ -200,6 +200,17 @@ public final class DraftStore {
         try flush()
     }
 
+    /// Stores an arrangement of the entry, leaving what the user said untouched.
+    ///
+    /// Deliberately does **not** bump `updatedAt`. That field means "the person changed
+    /// something", and organising is derived work: bumping it would mark the draft dirty the
+    /// instant the arrangement landed, re-triggering sync and inviting the loop ADR-016
+    /// exists to prevent. Same reasoning as `markSynced`.
+    public func applyOrganised(_ organised: OrganisedEntry, to draft: EntryDraft) throws {
+        draft.setOrganised(organised)
+        try flush()
+    }
+
     /// The user editing the structured text by hand.
     public func updateFormattedText(_ text: String, for draft: EntryDraft) throws {
         draft.updateFormattedText(text, now: clock())

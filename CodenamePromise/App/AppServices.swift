@@ -19,6 +19,7 @@ final class AppServices {
         let files: MediaFileStore
         let transcriptions: TranscriptionCoordinator
         let formatting: FormattingCoordinator
+        let organising: OrganisingCoordinator
         let sync: SyncCoordinator
         let connection: any NotionConnectionService
     }
@@ -71,6 +72,10 @@ final class AppServices {
                         store: store,
                         service: HTTPFormattingService(client: client)
                     ),
+                    organising: OrganisingCoordinator(
+                        store: store,
+                        service: HTTPOrganisingService(client: client)
+                    ),
                     sync: SyncCoordinator(
                         store: store,
                         fileStore: files,
@@ -94,6 +99,7 @@ final class AppServices {
     var files: MediaFileStore? { ready?.files }
     var transcriptions: TranscriptionCoordinator? { ready?.transcriptions }
     var formatting: FormattingCoordinator? { ready?.formatting }
+    var organising: OrganisingCoordinator? { ready?.organising }
     var sync: SyncCoordinator? { ready?.sync }
 
     /// `nil` when there is no backend at all, which the settings screen presents as

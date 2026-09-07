@@ -89,6 +89,28 @@ final class CaptureController {
 
     var entryDate: CalendarDay { draft.entryDate }
     var draftId: UUID { draft.id }
+
+    /// The arranged entry, if one has been made.
+    var organised: OrganisedEntry? { draft.organised }
+
+    /// Whether the arrangement was built from words that have since changed.
+    ///
+    /// Worth surfacing rather than hiding: an arrangement of yesterday's transcript sitting
+    /// above today's additions is not wrong so much as out of date, and the honest move is to
+    /// say so and let the person re-run it, not to quietly bin it or quietly keep it.
+    var organisedIsStale: Bool {
+        guard let organised else { return false }
+        let spoken = organised.sentences.joined(separator: " ")
+        let current = draft.content.rawText
+        return !current.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && spoken.count != current.trimmingCharacters(in: .whitespacesAndNewlines).count
+    }
+
+    /// Re-reads the draft after work done elsewhere, so the editor shows it.
+    func reload() {
+        text = draft.content.rawText
+        formatted = draft.content.formattedText ?? ""
+    }
     var mediaCount: Int { draft.media.count }
     var orderedMedia: [MediaItem] { draft.orderedMedia }
     var pendingTranscriptionCount: Int {
