@@ -110,3 +110,64 @@ daily users is around $30/month. That is not a dependency to be afraid of.
 The onboarding screen currently promises nothing is uploaded, so either that copy changes, or
 organising becomes an explicit per-entry choice, or it waits for a bigger on-device window.
 That decision is a product one and is not made here.
+
+---
+
+# Fixing the two seams, measured
+
+Eyeballing one run proves nothing here: the model is stochastic, and the first version's
+output varied between 484 and 589 words across identical inputs. `eval.py` runs the prompt N
+times and scores it against groupings that are known to be correct for this transcript.
+
+The two things the product actually promises, as assertions:
+
+| Check | Lines | Why |
+|---|---|---|
+| thread rejoins after 30 lines | 12 & 42 | Priya asks about the migration; thirty lines later he realises it clashes with Marcus's October plan. Same thread, far apart. **This is the headline promise.** |
+| transition sits with what it introduces | 30 & 31 | "And then, okay, the thing I actually keep circling back to" opens the Sam thread. It is not a closing line for lunch. |
+| unrelated topics stay apart | 4 & 17 | The deploy and calling his mother are not one section. A guard against merging everything. |
+
+## Result
+
+```
+                          v1        v2
+thread rejoins           3/5       4/5
+transition placement     3/5       5/5
+unrelated stay apart     5/5       5/5
+silent drops               0         0
+sections (avg)           7.0       6.2
+```
+
+Three changes did it. The prompt now works in two explicit steps, identify the threads and
+then write one section per thread; it emits a `threads` field **first**, so the model plans
+before it writes rather than discovering structure as it goes; and it says outright that
+writing a second section about the same thread is the failure to avoid, because distance in
+the transcript is the reason the job exists rather than a reason to split.
+
+The falling section count is the merging showing up as a number.
+
+A passing run, showing the promise working:
+
+```
+  threads: ['work', 'family', 'lunch', 'sam', 'health', 'overall']
+  [3-45] work      sources: [3..15, 42, 43, 44, 45]
+  [30-40] sam      sources: [30, 31, ..., 40]
+```
+
+## Honest limits
+
+- **This is tuned against one transcript.** 4/5 on a single input is a signal, not a
+  guarantee, and some of the gain may be fitted to this particular day. A second transcript
+  with a different shape is the next thing this eval needs, before anyone trusts the number.
+- **The remaining 1-in-5 is not catastrophic.** When it misses, work becomes two coherent
+  sections rather than one; nothing is lost or invented, and the coverage guard still holds at
+  zero silent drops across every run of both versions.
+
+## Free-tier rate limits, since it shapes the eval
+
+Groq's free tier caps **tokens per minute**, not requests, and one organiser call is roughly
+4,000 tokens, which is most of a minute's budget. Fanning out five runs in parallel just races
+the same bucket and earns a 429. The eval reads `x-ratelimit-remaining-tokens` and waits.
+
+Worth carrying into the product: on a free tier, concurrent users organising at the same
+moment will queue behind each other.

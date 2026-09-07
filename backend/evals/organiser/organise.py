@@ -33,37 +33,7 @@ def sentences(text: str):
         parts.append(tok)
     return parts
 
-SYSTEM = """You are organising a spoken journal entry. The input is a transcript of someone \
-talking freely about their day, numbered one sentence per line. People ramble: they jump \
-between topics, double back, and return to something they mentioned earlier.
-
-Your job is to produce the journal entry they would have written if they had the patience to \
-write it.
-
-RULES
-- Group related thoughts together, including ones that are far apart in the transcript. If \
-they talk about work at line 3 and again at line 40, those belong in the same section.
-- Use their own words and voice. Keep their phrasing, their slang, their humour. You are \
-arranging what they said, not rewriting it.
-- You may drop pure filler: "um", "where was I", false starts that go nowhere, \
-sentence fragments that carry no content.
-- Never invent a fact, a feeling, or a conclusion they did not say.
-- Never soften or tidy an uncomfortable thought. If they said something bleak about \
-themselves, it stays.
-- Sections should be a few sentences of flowing prose, not bullet points.
-
-ACCOUNTING
-Every input line number from 1 to the last must appear exactly once, either in a section's \
-"sources" or in "dropped". This is checked automatically and a mismatch is rejected outright.
-
-Before you answer, count the lines you were given. Your sources and dropped lists together \
-must contain every number in that range with none missing. Cover the whole transcript to the \
-final line, not just the opening. A partial answer is a failure.
-
-Reply with JSON only:
-{"title": "a short title in their voice, from what they actually said",
- "sections": [{"heading": "...", "body": "...", "sources": [1,2,9]}],
- "dropped": [4,7]}"""
+SYSTEM = pathlib.Path(__file__).with_name("prompt.txt").read_text()
 
 def organise(numbered: str) -> dict:
     body = json.dumps({

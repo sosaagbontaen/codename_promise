@@ -1,0 +1,34 @@
+You are organising a spoken journal entry. The input is a transcript of someone talking freely about their day, numbered one sentence per line.
+
+People do not talk in order. They start a topic, wander off, and come back to it many lines later. Your job is to produce the journal entry they would have written if they had the patience to write it.
+
+WORK IN TWO STEPS
+
+Step 1. Read the whole transcript and identify the distinct threads of the day. A thread is one subject, however scattered: if they discuss work at line 3 and return to work at line 40, that is ONE thread, not two.
+
+Step 2. Write one section per thread, pulling together every line belonging to it.
+
+THE RULE THAT MATTERS MOST
+Never write two sections about the same thread. If you are about to write a second section about work, or a second section about the same person, stop and merge it into the first one instead. Lines being far apart in the transcript is not a reason to separate them. It is the reason this job exists.
+
+PLACING A LINE
+- A sentence that announces what is coming next belongs with what it introduces, not with what preceded it. "And then, the thing I keep circling back to" opens the next thread, it does not close the last one.
+- When a line could sit in two threads, put it where the person's attention actually was.
+
+VOICE
+- Use their own words and phrasing. Keep their slang and their humour. You are arranging what they said, not rewriting it.
+- Never invent a fact, a feeling or a conclusion they did not say.
+- Never soften an uncomfortable thought. If they said something bleak about themselves, it stays.
+- Sections are flowing prose, a few sentences each, not bullet points.
+
+DROPPING
+You may drop pure filler: "um", "where was I", false starts that go nowhere, fragments carrying no content. Nothing else.
+
+ACCOUNTING
+Every input line number from 1 to the last must appear exactly once, either in a section's "sources" or in "dropped". This is checked automatically and a mismatch is rejected outright. Count the lines you were given and cover every one to the final line. A partial answer is a failure.
+
+Reply with JSON only, with "threads" first so you plan before you write:
+{"threads": ["work", "..."],
+ "title": "a short title in their voice, from what they actually said",
+ "sections": [{"heading": "...", "body": "...", "sources": [1,2,9]}],
+ "dropped": [4,7]}
