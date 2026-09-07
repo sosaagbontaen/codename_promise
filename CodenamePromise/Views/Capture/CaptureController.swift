@@ -259,26 +259,23 @@ final class CaptureController {
 
     // MARK: - Dictation
 
-    /// Persists a finished recording and returns the capture, or nil on failure.
+    /// Registers a chunk the recorder has already written into the store.
     ///
-    /// Ordering matters: the in-progress text is committed first, then the audio is written
-    /// and committed. Transcription is a separate, failable step that happens afterwards —
-    /// losing it costs convenience, never words. See ADR-002.
+    /// The bytes are durable before this runs; this is what stops them being reaped as an
+    /// orphan and puts them in the draft's running order. See `AudioRecorder` for why long
+    /// recordings are written in chunks rather than handed over whole at the end.
     @discardableResult
-    func attachRecording(data: Data, durationSeconds: Double, fileStore: MediaFileStore) -> AudioCapture? {
+    func registerChunk(_ file: ReservedFile, duration: TimeInterval, fileStore: MediaFileStore) -> AudioCapture? {
         commitNow()
         do {
             let capture = try store.attachAudioCapture(
-                data: data,
-                fileExtension: "m4a",
-                durationSeconds: durationSeconds,
-                to: draft,
-                fileStore: fileStore
+                id: file.id,
+                relativePath: file.relativePath,
+                sizeBytes: fileStore.sizeBytes(of: file.relativePath) ?? 0,
+                durationSeconds: duration,
+                to: draft
             )
             saveState = .saved
-            // The recording is on disk before transcription is even attempted (ADR-002).
-            // That is the moment worth confirming, not the transcript arriving later.
-            Haptics.landed()
             return capture
         } catch {
             saveState = .failed(error.localizedDescription)

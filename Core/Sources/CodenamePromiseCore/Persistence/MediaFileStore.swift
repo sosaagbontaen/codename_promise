@@ -83,6 +83,32 @@ public struct MediaFileStore: Sendable {
         return AdoptedFile(id: id, relativePath: relativePath, sizeBytes: size)
     }
 
+    /// Makes a place in the store for something that is about to be written *by someone
+    /// else*, and returns where it goes.
+    ///
+    /// Everything else here takes bytes that already exist. A recorder cannot work that way:
+    /// it streams to a file over minutes, and the whole point is that what it has written so
+    /// far survives the app dying. Handing it a temporary file and copying afterwards would
+    /// put every recording in a purgeable directory for the length of the recording, which is
+    /// the exact shape of the bug this store was built to prevent for photos.
+    ///
+    /// So the recorder writes straight into the container, and the returned relative path is
+    /// what the model stores (ADR-007). Nothing is created but the directory: if the caller
+    /// never writes, `reapOrphans` collects it.
+    public func reserve(
+        id: UUID = UUID(),
+        preferredName: String = "original",
+        extension ext: String
+    ) throws -> ReservedFile {
+        let directory = "media/\(id.uuidString.lowercased())"
+        let relativePath = "\(directory)/\(preferredName).\(ext)"
+        try fileManager.createDirectory(
+            at: root.appendingPathComponent(directory, isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        return ReservedFile(id: id, relativePath: relativePath, url: url(for: relativePath))
+    }
+
     /// Writes in-memory data (a finished audio chunk, a compressed derivative) into the
     /// store and returns its relative path.
     @discardableResult
@@ -157,4 +183,12 @@ public struct AdoptedFile: Sendable, Hashable {
     public let id: UUID
     public let relativePath: String
     public let sizeBytes: Int
+}
+
+/// A path the store has made room for, not yet written to.
+public struct ReservedFile: Sendable {
+    public let id: UUID
+    public let relativePath: String
+    /// Where to write. Never persist this; persist `relativePath`. See ADR-007.
+    public let url: URL
 }

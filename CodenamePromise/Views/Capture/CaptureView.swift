@@ -415,7 +415,11 @@ struct CaptureView: View {
     private var queuedRecordingsNotice: some View {
         HStack(spacing: 8) {
             Image(systemName: "waveform.badge.exclamationmark")
-            Text("\(controller.pendingTranscriptionCount) recording\(controller.pendingTranscriptionCount == 1 ? "" : "s") saved, waiting to transcribe")
+            // Deliberately not a count. A long recording is stored as several chunks so a
+            // crash costs one of them rather than all of them, but the person pressed record
+            // once: telling them "10 recordings saved" reports the implementation as though
+            // it were something they did.
+            Text("Your recording is saved, waiting to transcribe")
                 .font(.footnote)
             if services.transcriptions?.isRunning == true {
                 ProgressView().controlSize(.mini)
@@ -457,7 +461,7 @@ struct CaptureView: View {
 
                 Button {
                     Haptics.committed()
-                    Task { await recorder.start() }
+                    beginRecording()
                 } label: {
                     CompactAction(symbol: "mic.fill", tint: Brand.Mode.voice)
                 }
@@ -595,7 +599,7 @@ struct CaptureView: View {
             case .saved where controller.pendingTranscriptionCount > 0:
                 // Saved, but with words still waiting to become text. Say both.
                 Label(
-                    "Saved \u{00B7} \(controller.pendingTranscriptionCount) to transcribe",
+                    "Saved \u{00B7} waiting to transcribe",
                     systemImage: "waveform"
                 )
                 .foregroundStyle(Brand.waiting)
@@ -689,15 +693,27 @@ struct CaptureView: View {
 
     // MARK: - Actions
 
+    /// Wires the recorder to this draft, then starts it.
+    ///
+    /// Each chunk is registered the moment it closes, so a crash partway through costs the
+    /// chunk in progress rather than the whole recording.
+    private func beginRecording() {
+        recorder.reserveChunk = {
+            try fileStore.reserve(preferredName: "dictation", extension: "m4a")
+        }
+        recorder.onChunkFinished = { file, duration in
+            controller.registerChunk(file, duration: duration, fileStore: fileStore)
+        }
+        Task { await recorder.start() }
+    }
+
     private func stopRecording() {
-        guard let result = recorder.stop() else { return }
-        guard controller.attachRecording(
-            data: result.data,
-            durationSeconds: result.duration,
-            fileStore: fileStore
-        ) != nil else { return }
-        // The audio is committed at this point. Transcription is a separate, failable step —
-        // if this never succeeds, the recording is still safe and still queued. See ADR-002.
+        // Every chunk, the last one included, was written and registered as it closed. By the
+        // time this returns the audio is already safe, so there is nothing to persist here.
+        guard recorder.stop() != nil else { return }
+        Haptics.landed()
+        // Transcription is a separate, failable step. If it never succeeds the recording is
+        // still on disk and still queued. See ADR-002.
         Task {
             await services.drainTranscriptions()
             // The queue writes straight to the model, so the editor has to be told. Without

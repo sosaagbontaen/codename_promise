@@ -22,6 +22,9 @@ struct RecordView: View {
     /// Set as soon as the audio is on disk, so the escape hatch below has somewhere to go
     /// even while the rest of the work is still running.
     @State private var draftId: UUID?
+    /// Chunks safely registered this session, so an empty recording can be told from a
+    /// real one without asking the database.
+    @State private var chunkCount = 0
 
     /// What is happening, in the order it happens.
     ///
@@ -198,9 +201,50 @@ struct RecordView: View {
         if recorder.isRecording {
             finish()
         } else {
-            phase = .recording
-            Task { await recorder.start() }
+            begin()
         }
+    }
+
+    /// The entry exists before the first sentence does.
+    ///
+    /// The draft is created here rather than at stop because chunks need somewhere to land
+    /// while the person is still talking. That is also the honest shape for this app: press
+    /// record and there is already an entry, so there is no window in which the recording is
+    /// real but nothing in the database knows about it.
+    private func begin() {
+        guard let store = services.store, let files = services.files else {
+            phase = .failed("The journal is not ready yet. Try again in a moment.")
+            return
+        }
+        do {
+            let draft = try store.createDraft(entryDate: .today())
+            let id = draft.id
+            draftId = id
+            chunkCount = 0
+
+            recorder.reserveChunk = {
+                try files.reserve(preferredName: "dictation", extension: "m4a")
+            }
+            // Registered the moment the chunk closes. Until this runs the bytes are an
+            // orphan, so it does the least possible work and does it synchronously.
+            recorder.onChunkFinished = { file, duration in
+                guard let draft = try? store.draft(id: id) else { return }
+                try? store.attachAudioCapture(
+                    id: file.id,
+                    relativePath: file.relativePath,
+                    sizeBytes: files.sizeBytes(of: file.relativePath) ?? 0,
+                    durationSeconds: duration,
+                    to: draft
+                )
+                chunkCount += 1
+            }
+        } catch {
+            phase = .failed(error.localizedDescription)
+            return
+        }
+
+        phase = .recording
+        Task { await recorder.start() }
     }
 
     /// Stop, make the words durable, then try to make them useful.
@@ -209,36 +253,29 @@ struct RecordView: View {
     /// `attachAudioCapture` call is allowed to fail; none of it can take the recording with
     /// it, and a failure at any later step leaves an entry that is already openable.
     private func finish() {
-        guard let result = recorder.stop() else {
-            phase = .failed("The recording came back empty. Nothing was saved.")
-            return
-        }
-        guard let store = services.store, let files = services.files else {
+        guard let id = draftId, let store = services.store else {
             phase = .failed("The journal is not ready yet. Try again in a moment.")
             return
         }
 
         phase = .saving
-        let draft: EntryDraft
-        do {
-            draft = try store.createDraft(entryDate: .today())
-            _ = try store.attachAudioCapture(
-                data: result.data,
-                fileExtension: "m4a",
-                durationSeconds: result.duration,
-                to: draft,
-                fileStore: files
-            )
-        } catch {
-            phase = .failed(error.localizedDescription)
+        // Every chunk, including the last, has already been written and registered by the
+        // handler set up in `begin`. There is nothing left to persist here, which is the
+        // whole point: by the time this line runs the words were already safe.
+        let total = recorder.stop()
+
+        guard total != nil, chunkCount > 0 else {
+            // Nothing usable. Throw away the draft rather than leaving an empty entry behind
+            // for every accidental tap.
+            if let draft = try? store.draft(id: id) {
+                try? store.delete(draft, fileStore: services.files)
+            }
+            draftId = nil
+            phase = .failed("That recording came back empty. Nothing was saved.")
             return
         }
 
-        // Safe from here. Confirm it in the hand at the moment it becomes true, not when
-        // the transcript arrives several seconds later.
         Haptics.landed()
-        let id = draft.id
-        draftId = id
 
         Task {
             phase = .transcribing
@@ -246,7 +283,7 @@ struct RecordView: View {
 
             phase = .arranging
             // Organising needs the transcript. If it never arrived the entry still opens,
-            // holding a recording that is queued and will be picked up later.
+            // holding recordings that are queued and will be picked up later.
             if services.organising?.canOrganise(draftId: id) == true {
                 _ = await services.organising?.organise(draftId: id)
             }

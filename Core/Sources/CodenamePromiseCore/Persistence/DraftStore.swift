@@ -360,17 +360,53 @@ public final class DraftStore {
         fileStore: MediaFileStore
     ) throws -> AudioCapture {
         let written = try fileStore.write(data, preferredName: "dictation", extension: fileExtension)
-        let capture = AudioCapture(
+        return try attachAudioCapture(
             id: written.id,
             relativePath: written.relativePath,
-            durationSeconds: durationSeconds,
             sizeBytes: written.sizeBytes,
+            durationSeconds: durationSeconds,
+            to: draft
+        )
+    }
+
+    /// Attaches audio that is *already* in the store, written there by a recorder that
+    /// streamed straight into a reserved path.
+    ///
+    /// The distinction matters for long recordings. Taking bytes in memory means the audio
+    /// existed nowhere durable until the recording finished, so ten minutes of talking was
+    /// ten minutes of exposure. This overload is the other half of `MediaFileStore.reserve`:
+    /// the file is on disk before this row exists, and this row is what stops it being
+    /// reaped as an orphan.
+    @discardableResult
+    public func attachAudioCapture(
+        id: UUID = UUID(),
+        relativePath: String,
+        sizeBytes: Int,
+        durationSeconds: Double,
+        to draft: EntryDraft,
+        chunkIndex: Int? = nil
+    ) throws -> AudioCapture {
+        let capture = AudioCapture(
+            id: id,
+            relativePath: relativePath,
+            durationSeconds: durationSeconds,
+            sizeBytes: sizeBytes,
             recordedAt: clock()
         )
+        // Ordering is assigned here rather than left to the caller, because getting it wrong
+        // reorders somebody's sentences. Left at the default of 0 for every capture, a draft
+        // with two recordings on it fell back to sorting by UUID string, which is arbitrary.
+        capture.chunkIndex = chunkIndex ?? nextChunkIndex(in: draft)
         context.insert(capture)
         draft.attach(capture, now: clock())
         try flush()
         return capture
+    }
+
+    /// One past the highest chunk already on the draft, so recordings stay in the order they
+    /// were spoken.
+    public func nextChunkIndex(in draft: EntryDraft) -> Int {
+        (draft.audioCaptures.map(\.chunkIndex).max() ?? -1) + 1
     }
 
     /// Merges a transcript into the draft and only then marks the audio releasable.
