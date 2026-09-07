@@ -36,7 +36,14 @@ struct SendSheet: View {
         NavigationStack {
             List {
                 Section {
-                    ShareLink(item: markdown, subject: Text(subject)) {
+                    // The preview is what names the entry in the system sheet's header.
+                    // Without it a shared string shows a blank placeholder tile, which
+                    // reads as the app having nothing to hand over.
+                    ShareLink(
+                        item: markdown,
+                        subject: Text(subject),
+                        preview: SharePreview(subject, image: Image(systemName: "text.book.closed"))
+                    ) {
                         Label("Share", systemImage: "square.and.arrow.up")
                     }
                 } header: {
