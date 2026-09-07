@@ -255,3 +255,58 @@ the sleep goes away and the pipeline is unchanged.
 
 Worth carrying into the product either way, because it sets what "organising…" has to feel
 like in the UI for a long recording.
+
+## The hole in the guard, found by running it
+
+The paced two-pass run at 111 sentences reported **zero silent drops** and full accounting.
+It had also thrown away a third of the entry.
+
+The model declared **41 of 111 lines "filler" (36%)**, which the accounting guard happily
+accepted, because every line was accounted for. Eleven of those carried real content, and they
+were not incidental lines:
+
+```
+   12. I always do that.
+   13. I sit with something way too long before I ask anyone.
+   60. That's probably the actual thing today.
+   98. It's the same thing twice in one day.
+  102. There's a pattern here isn't there.
+  104. Things I've decided to deal with later and later has quietly become never.
+  107. a lot of separate things turned out to be the same thing
+```
+
+Those are the reflective lines. They are the reason a person keeps a journal at all, and the
+model discarded exactly them, because they read as asides next to "the boiler guy came at half
+seven". Then it passed the guard.
+
+**`dropped` was an unaudited escape hatch.** A model can summarise, call the remainder filler,
+and score 100% on accounting. That is the precise failure the guard exists to prevent, wearing
+a different hat.
+
+### The fix: verify drops, do not trust them
+
+Same principle as `wordguard` - do not believe the prompt, check the output. A line may be
+dropped only if it is **six words or fewer and made entirely of words that carry nothing on
+their own** ("um", "anyway", "where was I"). Anything with a real subject and verb survives
+regardless of what the model thinks of it, and is re-attached to the nearest section.
+
+Checked against the eleven lines it wrongly dropped and six genuine fillers:
+
+```
+  kept       I sit with something way too long before I ask anyone.
+  kept       There's a pattern here isn't there.
+  kept       Things I've decided to deal with later and later has quietly become never.
+  droppable  'Um.'   'Anyway.'   'Where was I.'   'Um, what else.'
+```
+
+Clean separation, no model judgement involved.
+
+A drop rate above 20% is now also reported as a warning, since genuine filler in speech runs
+maybe 5-15%. The rate is the smoke; the audit is the fire.
+
+### And the thread count over-corrected
+
+Constraining to three-to-six threads swung too far the other way: lunch, the pasta and the
+boiler ended up in one section spanning lines 23 to 111, while Deepa still appeared in two.
+Relaxed to four-to-eight. The lesson is that a single number is the wrong control here, and
+the honest state is that grouping quality is still the least settled of the four properties.

@@ -2,30 +2,16 @@
   "title": "",
   "sections": [
     {
-      "heading": "Pipeline chase finally over",
-      "body": "Right so I want to actually do this properly today because I keep saying I'm going to and then I don't\u2014work first, I guess. The thing with the pipeline finally got resolved, which I\u2019ve been chasing since like the second week of August, and it turned out it wasn\u2019t even our code but a config thing on their side, which is somehow both a relief and incredibly annoying. I spent two full days reading through our stuff convinced I\u2019d broken something, and Deepa found it in about twenty minutes once I finally asked her. Which is the lesson, isn\u2019t it? I always sit with something way too long before I ask anyone. So that\u2019s done. Then there was the standup, which was fine, nothing really.",
+      "heading": "Pipeline saga & Deepa dilemma",
+      "body": "Work first I guess. The thing with the pipeline finally got resolved, which \u2014 I've been chasing that since like the second week of August? And it turned out it wasn't even our code, it was a config thing on their side, which is somehow both a relief and incredibly annoying. Like I spent two full days reading through our stuff convinced I'd broken something. Deepa found it in about twenty minutes once I finally asked her. Which is the lesson isn't it. And then there was the standup which was fine, nothing really. Back to work for a second \u2014 the reason the Deepa thing is on my mind is that if she does leave, I'm the only person who understands the ingestion layer, and that's a genuinely bad situation. Not for her, she should absolutely go if it's better. Bad for me. I've been meaning to write that stuff down for eight months. This is the kick I need probably. Back to the Deepa thing for a minute because it keeps coming back. The right move is probably just to ask her directly. Not in a manager way, in a, hey, I noticed you mentioned interviewing, are you alright, is there something we should talk about. And the reason I haven't is that if she says yes I'm leaving, then it's real and I have to do something.",
       "sources": [
-        4,
         6,
         7,
         8,
         9,
         10,
         11,
-        12,
-        13,
-        15,
-        16
-      ]
-    },
-    {
-      "heading": "Deepa mentioned interviewing",
-      "body": "Oh, actually \u2014 Deepa mentioned she's interviewing somewhere. She didn't say where and I didn't ask, but she brought it up which means she wanted me to know. I don't know what to do with that; I don't think I'm supposed to do anything with it. Back to work for a second \u2014 the reason the Deepa thing is on my mind is that if she does leave, I'm the only person who understands the ingestion layer, and that's a genuinely bad situation. Not for her, she should absolutely go if it's better. Bad for me. I've been meaning to write that stuff down for eight months. This is the kick I need probably. Back to the Deepa thing for a minute because it keeps coming back. The right move is probably just to ask her directly, not in a manager way, in a, hey, I noticed you mentioned interviewing, are you alright, is there something we should talk about. And the reason I haven't is that if she says yes I'm leaving, then it's real and I have to do something.",
-      "sources": [
-        17,
-        18,
-        19,
-        20,
+        16,
         35,
         36,
         37,
@@ -38,24 +24,61 @@
       ]
     },
     {
-      "heading": "Lunch walk",
-      "body": "I went for a walk at lunch, first time in ages, and it was actually really nice, it's finally cooled down a bit. There's that little park behind the library that I always forget exists, and I sat there for like twenty minutes not doing anything which felt illegal. Then, um, on the way back from the park I bumped into Tom, from the old place\u2014 which was nice? It was nice. He's doing consultancy now, seemed genuinely happier, less grey, and he said something offhand like, \"I didn't realise how much I'd been dreading Mondays until I stopped.\" I laughed and then thought about it for the rest of the walk, because I don't dread Mondays exactly, but I don't not dread them.",
+      "heading": "Deepa, Priya, Tom & Monday Dread",
+      "body": "Deepa mentioned she's interviewing somewhere\u2014she didn't say where and I didn't ask, but she brought it up, which means she wanted me to know, and I don't know what to do with that. I don't think I'm supposed to do anything with it. I keep thinking about what Priya said last week, something like, you don't have to be the person who fixes everything; I brushed it off then but it's been rattling around because I think I've built quite a lot of who I am on being the one who sorts things out and I don't know what's underneath that if you take it away. On the way back from the park I bumped into Tom from the old place, which was nice\u2014he's doing consultancy now, seemed genuinely happier, less grey, and he said offhand, I didn't realise how much I'd been dreading Mondays until I stopped. I laughed and thought about it for the rest of the walk, because I don't dread Mondays exactly, but I don't not dread them. I replied to Nadia about the weekend, I said yes, I do actually want to go, but I noticed that little flicker of wanting to say no just because saying no is easier. I'm doing that more. That's worth watching.",
       "sources": [
-        23,
-        24,
-        25,
+        17,
+        18,
+        19,
+        20,
+        50,
+        51,
+        52,
         74,
         75,
         76,
         77,
         78,
         79,
-        80
+        80,
+        88,
+        89,
+        90
+      ]
+    },
+    {
+      "heading": "Lunch walk, pasta, and boiler drama",
+      "body": "I went for a walk at lunch, first time in ages, and it was actually really nice, it's finally cooled down a bit. There's that little park behind the library that I always forget exists. Sat there for like twenty minutes not doing anything which felt illegal. I finally cancelled the gym membership I haven't used since February\u2014forty pounds a month for eight months, that's what, three hundred and twenty pounds to feel guilty. Cancelled now though. I made that pasta thing again for dinner, the one with the lemon, and I think I finally got it right? Less garlic. Everyone was wrong about the garlic. Sleep's still bad. Four nights this week I've been up past one. I know exactly why and I keep not doing anything about it. So this morning before any of that, the boiler thing. The guy came at half seven which I did not agree to, I agreed to a window between eight and twelve, and he rang the bell at twenty\u2011five past seven and I answered the door looking like a crime scene. Anyway he was in and out in an hour and it's fixed, apparently it was a pressure thing, and he showed me how to top it up myself which I appreciated because normally they don't, normally they keep the mystery going so you have to call them again. Oh \u2014 the thing I keep forgetting to write down: I need to book the dentist. I've needed to book the dentist since roughly the coronation. Every time I remember it's outside working hours. This is a genuinely solvable problem and I have not solved it in eleven months. Um, and I paid the council tax thing that had been sitting there. I listened to that album on the walk, the one Sam sent me months ago that I never got round to, and it's good, it's really good, and I felt a bit stupid for sitting on it for so long. I'm going to say I'll be asleep by eleven and we both know that's not happening.",
+      "sources": [
+        23,
+        24,
+        25,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        62,
+        63,
+        64,
+        71,
+        72,
+        73,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        101,
+        111
       ]
     },
     {
       "heading": "Brother thing",
-      "body": "And then, right, the thing with my brother. He called last night and I didn't pick up, and then I felt bad about it all day today. It's not \u2014 we're fine, it's not like we're not talking. It's just that every time we talk now it turns into the thing about mum's house and I don't have the energy for it right now, but he's not wrong to want to sort it out. I know he's not wrong. I just keep pushing it and pushing it and at some point pushing it becomes the decision, doesn't it. And that connects to the brother thing actually.",
+      "body": "And then, right, the thing with my brother. He called last night and I didn't pick up and then I felt bad about it all day today. It's not \u2014 we're fine, it's not like we're not talking. It's just that every time we talk now it turns into the thing about mum's house and I don't have the energy for it right now. But he's not wrong to want to sort it out. I know he's not wrong. I just keep pushing it and pushing it and at some point pushing it becomes the decision, doesn't it. And that connects to the brother thing actually. That's exactly what I'm doing with the house. I'm not avoiding it because I don't care, I'm avoiding it because I can't fix it. Nobody can fix it. It's just sad and it has to be dealt with and I can't turn it into a problem with a solution, so I just \u2014 don't engage. Which is the same avoidance as the house.",
       "sources": [
         26,
         27,
@@ -64,117 +87,12 @@
         30,
         31,
         32,
-        53
-      ]
-    },
-    {
-      "heading": "Gym membership? Cancelled",
-      "body": "I finally cancelled the gym membership I haven't used since February. Forty pounds a month for eight months\u2014 that's, what, three hundred and twenty pounds to feel guilty. Cancelled now though.",
-      "sources": [
-        41,
-        42,
-        43,
-        44
-      ]
-    },
-    {
-      "heading": "Lemon pasta win",
-      "body": "I made that pasta thing again for dinner, the one with the lemon, and I think I finally got it right? Less garlic. Everyone was wrong about the garlic.",
-      "sources": [
-        45,
-        46,
-        47
-      ]
-    },
-    {
-      "heading": "Rattling Around",
-      "body": "Oh \u2014 I keep thinking about what Priya said last week, that you don't have to be the person who fixes everything, and I brushed it off at the time but it's been rattling around. I think I've built quite a lot of who I am on being the one who sorts things out and I don't know what's underneath that if you take it away. Which is the same avoidance as the house. There's a pattern here, isn't there? Things sitting. Things I've decided to deal with later and later has quietly become never. If I had to say one thing about today, it'd be that a lot of separate things turned out to be the same thing, which is either useful or extremely annoying, I genuinely can't tell yet.",
-      "sources": [
-        50,
-        51,
-        52,
-        95,
-        102,
-        103,
-        104,
-        107,
-        108
-      ]
-    },
-    {
-      "heading": "Doing the house thing",
-      "body": "That's exactly what I'm doing with the house. I'm not avoiding it because I don't care, I'm avoiding it because I can't fix it. Nobody can fix it. It's just sad and it has to be dealt with and I can't turn it into a problem with a solution, so I just \u2014 don't engage.",
-      "sources": [
+        53,
         54,
         55,
         56,
-        57
-      ]
-    },
-    {
-      "heading": "Just a day",
-      "body": "That's probably the actual thing today. That's it. That's the day. It wasn't bad. It was actually a fine day, I just \u2014 there's a lot sitting underneath it. It's the same thing twice in one day.",
-      "sources": [
-        60,
-        65,
-        66,
-        67,
-        68,
-        98
-      ]
-    },
-    {
-      "heading": "Sleep's still bad",
-      "body": "Sleep's still bad\u2014four nights this week I've been up past one. I know exactly why and I keep not doing anything about it. Bed. I say I'll be asleep by eleven, and we both know that's not happening.",
-      "sources": [
-        62,
-        63,
-        64,
-        110,
-        111
-      ]
-    },
-    {
-      "heading": "Boiler drama at half seven",
-      "body": "So this morning before any of that, the boiler thing. The guy came at half seven which I did not agree to, I agreed to a window between eight and twelve, and he rang the bell at twenty five past seven and I answered the door looking like a crime scene. Anyway he was in and out in an hour and it's fixed, apparently it was a pressure thing, and he showed me how to top it up myself which I appreciated because normally they don't, normally they keep the mystery going so you have to call them again.",
-      "sources": [
-        71,
-        72,
-        73
-      ]
-    },
-    {
-      "heading": "Dentist booking, again",
-      "body": "Oh \u2014 the thing I keep forgetting to write down: I need to book the dentist. I've needed to book the dentist since roughly the coronation, and every time I remember it's outside working hours. This is a genuinely solvable problem and I have not solved it in eleven months.",
-      "sources": [
-        82,
-        83,
-        84,
-        85,
-        86
-      ]
-    },
-    {
-      "heading": "Paid the council tax thing",
-      "body": "Um, and I paid the council tax thing that had been sitting there.",
-      "sources": [
-        87
-      ]
-    },
-    {
-      "heading": "Weekend reply to Nadia",
-      "body": "And I replied to Nadia about the weekend, I said yes, and I do actually want to go, but I noticed I had that little flicker of wanting to say no just because saying no is easier. I'm doing that more. That's worth watching.",
-      "sources": [
-        88,
-        89,
-        90
-      ]
-    },
-    {
-      "heading": "Finally on the walk",
-      "body": "I listened to that album on the walk, the one Sam sent me months ago that I never got round to. It's good, it's really good, and I felt a bit stupid for sitting on it for so long.",
-      "sources": [
-        101
+        57,
+        95
       ]
     }
   ],
@@ -182,8 +100,12 @@
     1,
     2,
     3,
+    4,
     5,
+    12,
+    13,
     14,
+    15,
     21,
     22,
     33,
@@ -193,34 +115,35 @@
     49,
     58,
     59,
+    60,
     61,
+    65,
+    66,
+    67,
+    68,
     69,
     70,
     81,
     96,
     97,
+    98,
     99,
     100,
+    102,
+    103,
+    104,
     105,
     106,
-    109
+    107,
+    108,
+    109,
+    110
   ],
   "threads": [
     "work",
-    "deepa",
-    "brother",
-    "house",
-    "boiler",
-    "gym",
-    "cooking",
-    "walk",
-    "dentist",
-    "finance",
-    "social",
-    "self",
-    "music",
-    "sleep",
-    "summary",
+    "family",
+    "self_care",
+    "relationships",
     "filler"
   ]
 }

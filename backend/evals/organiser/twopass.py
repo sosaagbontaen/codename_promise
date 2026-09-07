@@ -32,7 +32,7 @@ Lines that are pure filler ("um", "where was I", false starts carrying no conten
 thread "filler".
 
 HOW MANY THREADS
-A day has a few real subjects, not fifteen. Aim for three to six, plus "filler". If you find \
+A day has a few real subjects, not fifteen. Aim for four to eight, plus "filler". If you find \
 yourself naming a thread for a single passing mention, it is not a thread: put that line with \
 the nearest larger thread it sits beside, or with the general thread about how the day felt.
 
@@ -55,6 +55,39 @@ said, not rewriting it.
 - Do not add a heading, a preamble or a summary.
 
 Reply with JSON only: {"heading": "a short heading in their voice", "body": "the prose"}"""
+
+
+#: Words that can make up a whole line without the line meaning anything.
+_FILLER_WORDS = set("""um uh er erm hmm mm okay ok right so anyway well yeah yes no oh
+what else let me think where was i now then and but like just actually basically i mean
+you know sort of kind of""".split())
+
+def droppable(sentence: str) -> bool:
+    """Whether a line is filler in fact, rather than because a model said so.
+
+    The accounting guard proved every line was *accounted for*, and a model promptly
+    exploited it: on an eight-minute entry it declared 36% of lines filler and passed
+    perfectly. What it threw away was "I sit with something way too long before I ask
+    anyone", "that's probably the actual thing today" and "there's a pattern here isn't
+    there" - the reflective lines, which are the reason someone keeps a journal.
+
+    So "dropped" is verified rather than trusted, the same way `wordguard` verifies the
+    copy-editor instead of believing the prompt. A line may only be dropped if it is short
+    and made entirely of words that carry nothing on their own. Anything with a real subject
+    and verb survives, whatever the model thinks of it.
+    """
+    words = [w for w in re.findall(r"[a-z']+", sentence.lower())]
+    if not words:
+        return True
+    if len(words) > 6:
+        return False
+    return all(w in _FILLER_WORDS for w in words)
+
+
+def audit_drops(sents, dropped):
+    """Lines the model wanted to discard that are not filler by the rule above."""
+    return [i for i in dropped if not droppable(sents[i - 1])]
+
 
 def key():
     if os.environ.get("GROQ_API_KEY"): return os.environ["GROQ_API_KEY"]
@@ -126,7 +159,17 @@ def organise(sents):
         sections.append({"heading": out.get("heading", name),
                          "body": out.get("body", ""), "sources": lines})
     sections.sort(key=lambda s: min(s["sources"]))
-    return {"title": "", "sections": sections, "dropped": dropped, "threads": list(threads)}
+
+    # Anything the model called filler that is not filler goes back in, attached to the
+    # section nearest to it. The model does not get to decide what mattered.
+    rescued = audit_drops(sents, dropped)
+    for i in rescued:
+        dropped.remove(i)
+        if sections:
+            nearest = min(sections, key=lambda s: min(abs(i - j) for j in s["sources"]))
+            nearest["sources"] = sorted(nearest["sources"] + [i])
+    return {"title": "", "sections": sections, "dropped": sorted(dropped),
+            "threads": list(threads), "rescued": rescued}
 
 if __name__ == "__main__":
     import sys
@@ -138,5 +181,9 @@ if __name__ == "__main__":
     print(f"  sentences {len(sents)}   threads {r['threads']}")
     for s in r["sections"]:
         print(f"    [{min(s['sources'])}-{max(s['sources'])}] {s['heading']}  ({len(s['sources'])} lines)")
-    print(f"  cited {len(cited)}  dropped {len(r['dropped'])}  SILENT {len(missing)}")
+    rate = 100 * len(r["dropped"]) / len(sents)
+    print(f"  cited {len(cited)}  dropped {len(r['dropped'])} ({rate:.0f}%)  "
+          f"rescued {len(r['rescued'])}  SILENT {len(missing)}")
+    if rate > 20:
+        print(f"  WARNING drop rate {rate:.0f}% is too high to be filler")
     pathlib.Path("twopass_last.json").write_text(json.dumps(r, indent=2))
