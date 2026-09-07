@@ -10,8 +10,11 @@ import SwiftUI
 ///
 /// 1. **Capture is instant** - because the thing people expect from a journalling app is a
 ///    setup flow, and the answer here is that there isn't one.
-/// 2. **Notion is optional** - because the app mentions Notion everywhere and someone who
-///    does not use Notion needs to know within seconds that they are not in the wrong place.
+/// 2. **You can ramble** - because it is the reason to use this rather than the voice memo
+///    app already on the phone, and nobody can guess it from a record button. This slot used
+///    to explain that Notion was optional, which was necessary while the app mentioned Notion
+///    on every screen. It no longer does, so spending an introduction on a service most
+///    people do not use would be reintroducing the confusion the slide existed to prevent.
 /// 3. **Nothing leaves the phone** - last, and given the most weight, because it is the only
 ///    one of the three a competitor cannot also say.
 ///
@@ -37,13 +40,15 @@ struct OnboardingView: View {
                         symbol: "bolt.fill",
                         tint: Brand.Mode.voice,
                         title: "Nothing to set up",
-                        body: "Type it, say it, or drop in a photo. It saves the moment you make it, before anything else happens."
+                        body: "Press record and talk. It saves the moment you stop, before anything else happens."
                     )
+                    // The product, and the only one of the three that is not a promise
+                    // about what the app will refrain from doing.
                     point(
-                        symbol: "cloud",
+                        symbol: "list.bullet.rectangle",
                         tint: Brand.Mode.text,
-                        title: "Notion is optional",
-                        body: "Connect a database when you want entries to land there too. Everything works without it."
+                        title: "Say it however it comes out",
+                        body: "Jump between subjects and double back. Related thoughts get grouped together, and your exact words stay behind every section."
                     )
                     // The differentiator, and the one worth a raised voice.
                     //
@@ -59,7 +64,7 @@ struct OnboardingView: View {
                     point(
                         symbol: "lock.fill",
                         tint: Brand.reached,
-                        title: "Your words stay on this phone",
+                        title: "Your journal lives on this phone",
                         body: "No account, no analytics, nothing uploaded. Your journal is part of your iPhone backup, so it moves to a new phone with you, and you can export all of it any time.",
                         emphasised: true
                     )
@@ -72,7 +77,7 @@ struct OnboardingView: View {
                     Haptics.picked()
                     onDone()
                 } label: {
-                    Text("Write your first entry")
+                    Text("Record your first entry")
                         .font(Type.label(16.5, .bold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
