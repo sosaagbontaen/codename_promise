@@ -17,6 +17,11 @@ struct SettingsView: View {
     @State private var serverSaved = false
     @AppStorage(Appearance.storageKey) private var appearance: Appearance = .dark
     @AppStorage(JournalFont.storageKey) private var journalFont: JournalFont = .sans
+    // Stored as its raw string rather than as the enum. @AppStorage does support a
+    // RawRepresentable, so this is a preference for the unambiguous form rather than a
+    // workaround: what lands in UserDefaults is exactly what BackupMode(rawValue:) reads
+    // back, on both sides of the app/Core boundary.
+    @AppStorage(AppServices.backupModeKey) private var backupModeRaw = BackupMode.thisPhoneOnly.rawValue
     @State private var showingExport = false
     @State private var showingImport = false
     @State private var showingFeedback = false
@@ -124,6 +129,44 @@ struct SettingsView: View {
         }
     }
 
+    /// Backup, said in terms of where the journal is rather than which technology moves it.
+    ///
+    /// Two things here are deliberate. The switch reports what actually happened rather than
+    /// what was asked for, because a control reading iCloud while nothing syncs is worse than
+    /// no control at all. And the footer says the switch takes effect next launch instead of
+    /// quietly doing nothing until then: the store and the media root are both chosen when
+    /// they are opened.
+    @ViewBuilder
+    private var backupSection: some View {
+        Section {
+            Toggle(isOn: Binding(
+                get: { backupModeRaw == BackupMode.iCloud.rawValue },
+                set: { backupModeRaw = ($0 ? BackupMode.iCloud : .thisPhoneOnly).rawValue }
+            )) {
+                Label("Back up to iCloud", systemImage: "icloud")
+            }
+
+            if let why = services.backupUnavailable {
+                Label(why, systemImage: "exclamationmark.circle")
+                    .font(.footnote)
+                    .foregroundStyle(Brand.waiting)
+            } else if backupModeRaw == BackupMode.iCloud.rawValue, !services.isBackedUp {
+                Label(
+                    "Restart the app to start backing up.",
+                    systemImage: "arrow.clockwise"
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Backup")
+        } footer: {
+            // Says whose iCloud, because "backed up" in a journalling app raises exactly the
+            // question this sentence answers.
+            Text("Your own iCloud, not our servers. We never hold a copy and could not read one.\n\nPhotos and recordings saved before you turn this on stay where they are and are not moved, so they travel in your iPhone backup rather than in iCloud. Anything added afterwards is backed up.")
+        }
+    }
+
     /// Export and feedback sit here regardless of whether a backend is configured, because
     /// neither needs one. Getting your journal out must never depend on a server being up
     /// -- that would make the backup fail in exactly the circumstances you need it.
@@ -184,6 +227,8 @@ struct SettingsView: View {
         } footer: {
             Text("Dark by default. The brand was drawn that way, and most dumping happens at the end of a day.")
         }
+
+        backupSection
 
         Section {
             Button {

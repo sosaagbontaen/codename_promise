@@ -12,20 +12,48 @@ import Foundation
 ///     changes. Every reference is relative and resolved against `root` at read time, so
 ///     the whole library survives the container moving. See ADR-007.
 public struct MediaFileStore: Sendable {
+    /// Where new bytes are written.
     public let root: URL
+
+    /// Older roots that may still hold bytes, newest first.
+    ///
+    /// Turning on iCloud backup moves where media *goes*, and the tempting next step is to
+    /// sweep everything already on disk into the new root. That sweep is a bulk move of the
+    /// one category of data in this app that cannot be regenerated, and there is no version
+    /// of it that is safe to get wrong. So nothing moves. New files are written to the
+    /// current root, old files are read from wherever they already are, and a path resolves
+    /// against every root the app has ever used.
+    ///
+    /// The cost is that a file written before the switch is not backed up by the new
+    /// mechanism until something rewrites it. That is a smaller price than a migration that
+    /// can lose photos, and it is honest: the settings screen says which files are covered
+    /// rather than implying all of them are.
+    public let previousRoots: [URL]
 
     /// `FileManager` is not `Sendable`, so it is deliberately not stored — this type has to
     /// cross actor boundaries and `FileManager.default` is documented as safe to use
     /// concurrently for the single-file operations here.
     private var fileManager: FileManager { .default }
 
-    public init(root: URL) {
+    public init(root: URL, previousRoots: [URL] = []) {
         self.root = root
+        self.previousRoots = previousRoots
     }
 
     /// Default location: `Application Support/Media`, excluded from nothing — journal
     /// media *should* be backed up, and relative paths make restore work.
-    public static func makeDefault() throws -> MediaFileStore {
+    public static func makeDefault(backup: BackupMode = .thisPhoneOnly) throws -> MediaFileStore {
+        let local = try localRoot()
+
+        guard backup == .iCloud, let cloud = cloudRoot() else {
+            return MediaFileStore(root: local)
+        }
+        // The local root stays readable rather than being emptied into the cloud one. See
+        // `previousRoots`.
+        return MediaFileStore(root: cloud, previousRoots: [local])
+    }
+
+    static func localRoot() throws -> URL {
         let fileManager = FileManager.default
         let support = try fileManager.url(
             for: .applicationSupportDirectory,
@@ -35,13 +63,61 @@ public struct MediaFileStore: Sendable {
         )
         let root = support.appendingPathComponent("Media", isDirectory: true)
         try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
-        return MediaFileStore(root: root)
+        return root
+    }
+
+    /// The iCloud location, or nil when iCloud is not usable on this device right now.
+    ///
+    /// Deliberately **not** under `Documents`. Everything a ubiquity container keeps there
+    /// shows up in the Files app, where somebody tidying up can delete their own journal's
+    /// photographs without ever opening this app. Outside `Documents` it syncs just the same
+    /// and is not presented as loose files to be managed.
+    static func cloudRoot() -> URL? {
+        guard let container = FileManager.default.url(forUbiquityContainerIdentifier: nil)
+        else { return nil }
+        let root = container.appendingPathComponent("Media", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        } catch {
+            return nil
+        }
+        return root
     }
 
     // MARK: - Resolving
 
+    /// Where this path lives.
+    ///
+    /// Resolves against the current root first, then anywhere the app used to write. Falls
+    /// back to the current root when the file exists nowhere, so this stays the right answer
+    /// for a caller about to *write* rather than read.
     public func url(for relativePath: String) -> URL {
-        root.appendingPathComponent(relativePath, isDirectory: false)
+        let primary = root.appendingPathComponent(relativePath, isDirectory: false)
+        guard !previousRoots.isEmpty, !fileManager.fileExists(atPath: primary.path) else {
+            return primary
+        }
+        for previous in previousRoots {
+            let candidate = previous.appendingPathComponent(relativePath, isDirectory: false)
+            if fileManager.fileExists(atPath: candidate.path) { return candidate }
+        }
+        return primary
+    }
+
+    /// Makes sure the bytes are actually on this device.
+    ///
+    /// iCloud keeps a placeholder rather than the file when space is short, so a photo that
+    /// exists as far as the database is concerned can be absent from the disk. Asking for it
+    /// starts the download; this returns whether the file is readable *now*, so a caller can
+    /// show "fetching from iCloud" instead of a broken thumbnail.
+    ///
+    /// Harmless for a file that was never in iCloud: `isUbiquitousItem` is false and this
+    /// answers from the file system.
+    @discardableResult
+    public func ensureDownloaded(_ relativePath: String) -> Bool {
+        let fileURL = url(for: relativePath)
+        if fileManager.fileExists(atPath: fileURL.path) { return true }
+        try? fileManager.startDownloadingUbiquitousItem(at: fileURL)
+        return false
     }
 
     public func exists(_ relativePath: String) -> Bool {

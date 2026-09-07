@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Named after the person rather than the product, so a rename never orphans it.
+	     Permanent once data has been written. See CloudContainer in Core. -->
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.com.osaagbontaen.journal</string>
+	</array>
+	<key>com.apple.developer.icloud-services</key>
+	<array>
+		<string>CloudKit</string>
+	</array>
+	<!-- The same container holds the media files. They live outside Documents, so they
+	     sync without appearing in the Files app as photographs somebody can tidy away. -->
+	<key>com.apple.developer.ubiquity-container-identifiers</key>
+	<array>
+		<string>iCloud.com.osaagbontaen.journal</string>
+	</array>
+</dict>
+</plist>

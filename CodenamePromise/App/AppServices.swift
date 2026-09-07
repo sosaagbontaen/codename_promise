@@ -35,11 +35,41 @@ final class AppServices {
     /// rather than silent. See ADR-004 / ADR-019a.
     private(set) var recoveryNotice: String?
 
+    /// Where the journal is backed up, as chosen in Settings.
+    ///
+    /// Read once at launch and not observed afterwards: both the store and the media root
+    /// are decided when they are opened, so changing this takes effect on the next launch.
+    /// Settings says so rather than pretending the switch is instant.
+    static var backupMode: BackupMode {
+        get {
+            UserDefaults.standard.string(forKey: backupModeKey)
+                .flatMap(BackupMode.init(rawValue:)) ?? .thisPhoneOnly
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: backupModeKey) }
+    }
+
+    static let backupModeKey = "backupMode"
+
+    /// True only when the store actually opened against iCloud, and the reason when it did
+    /// not. Settings reads these rather than the stored preference.
+    private(set) var isBackedUp = false
+    private(set) var backupUnavailable: String?
+
     init() {
         do {
-            let container = try ModelContainerFactory.makeAppContainer()
-            let store = DraftStore(container: container)
-            let files = try MediaFileStore.makeDefault()
+            let requested = Self.backupMode
+            // Backup may never stop the journal opening: asking for iCloud and not getting
+            // it falls back to local and says why. See BackupMode.
+            let opening = try ModelContainerFactory.openAppContainer(backup: requested)
+            isBackedUp = opening.isBackedUp
+            backupUnavailable = opening.unavailable
+
+            let store = DraftStore(container: opening.container)
+            // Media follows the store: if iCloud was asked for and refused, media stays
+            // local too, rather than splitting the journal across two stories.
+            let files = try MediaFileStore.makeDefault(
+                backup: opening.isBackedUp ? .iCloud : .thisPhoneOnly
+            )
 
             // Before any UI reads state: demote operations abandoned by a dead process, so
             // nothing is stuck claiming to be in flight. See ADR-004.
