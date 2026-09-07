@@ -25,6 +25,7 @@ struct CaptureView: View {
     @State private var confirmingReformat = false
     @State private var showingDatePicker = false
     @State private var showingEntryPicker = false
+    @State private var showingSendSheet = false
     @State private var mode: Mode = .raw
     @State private var selectedMedia = Set<UUID>()
     @State private var selectingMedia = false
@@ -135,6 +136,7 @@ struct CaptureView: View {
             .presentationBackgroundInteraction(.enabled(upThrough: .medium))
             .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $showingSendSheet) { sendSheet }
         .sheet(isPresented: $showingEntryPicker) {
             if let service = services.connectionService {
                 ExistingEntryPicker(service: service) { page in
@@ -442,7 +444,6 @@ struct CaptureView: View {
             HStack(spacing: 10) {
                 saveStateLabel
                 Spacer(minLength: 8)
-                destinationButton
             }
 
             HStack(spacing: 10) {
@@ -486,7 +487,13 @@ struct CaptureView: View {
                 .buttonStyle(.pressable)
                 .disabled(!canOrganise)
 
-                sendButton
+                Button {
+                    showingSendSheet = true
+                } label: {
+                    CompactAction(symbol: "square.and.arrow.up", tint: Brand.muted)
+                }
+                .buttonStyle(.pressable)
+                .disabled(controller.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .overlay { if recorder.isRecording { recordingCapsule } }
             .animation(.easeOut(duration: 0.18), value: recorder.isRecording)
@@ -516,58 +523,6 @@ struct CaptureView: View {
         .buttonStyle(.plain)
     }
 
-    /// Where this entry goes, on the same line as its save state so both are read at once.
-    private var destinationButton: some View {
-        Button {
-            showingEntryPicker = true
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: controller.appendsToExistingPage ? "text.append" : "doc.badge.plus")
-                    .font(.system(size: 11, weight: .semibold))
-                Text(destinationTitle).lineLimit(1)
-                Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
-            }
-            .font(Type.caption(12, .semibold))
-            .foregroundStyle(Brand.violet)
-        }
-        .buttonStyle(.pressable)
-        .disabled(services.connectionService == nil)
-    }
-
-    private var destinationTitle: String {
-        if services.connectionService == nil { return "Not connected" }
-        if controller.appendsToExistingPage { return controller.syncActionLabel }
-        return controller.isLinkedToPage ? "Its Notion page" : "New Notion page"
-    }
-
-    /// One obvious primary action, where a small arrow in the toolbar used to open a menu.
-    private var sendButton: some View {
-        Button {
-            Task { await pushToNotion() }
-        } label: {
-            Group {
-                if services.sync?.isSyncing(controller.draftId) == true {
-                    ProgressView().tint(.white)
-                } else {
-                    Label(sendTitle, systemImage: sendSymbol)
-                        .font(Type.label(14.5, .semibold))
-                        .lineLimit(1)
-                }
-            }
-            .foregroundStyle(canSend ? .white : Brand.muted)
-            .frame(maxWidth: .infinity).frame(height: 46)
-            .background(
-                canSend ? AnyShapeStyle(Brand.gradient)
-                        : AnyShapeStyle(Brand.muted.opacity(0.16)),
-                in: RoundedRectangle(cornerRadius: 13)
-            )
-            .shadow(color: Brand.violet.opacity(canSend ? 0.3 : 0), radius: 12, y: 5)
-        }
-        .buttonStyle(.pressablePrimary)
-        .disabled(!canSend)
-        .animation(.easeOut(duration: 0.18), value: canSend)
-    }
-
     /// Whether there is anywhere to send to at all. Nil when no backend is configured, which
     /// is how the app ships and therefore what every new user sees.
     private var hasDestination: Bool { services.connectionService != nil }
@@ -584,17 +539,35 @@ struct CaptureView: View {
             && services.sync?.isSyncing(controller.draftId) != true
     }
 
+    private var sendSheet: some View {
+        SendSheet(
+            markdown: EntryMarkdown.render(
+                title: controller.title,
+                day: controller.entryDate,
+                organised: controller.organised,
+                text: controller.text
+            ),
+            subject: EntryMarkdown.heading(
+                title: controller.title, day: controller.entryDate
+            ),
+            // Absent rather than disabled when nothing is connected. A row that exists only
+            // to say a service is unavailable is an advertisement for the service.
+            notion: services.connectionService == nil ? nil : SendSheet.Notion(
+                actionTitle: sendTitle,
+                canSend: canSend,
+                isSending: services.sync?.isSyncing(controller.draftId) == true,
+                send: { Task { await pushToNotion() } },
+                chooseExistingPage: { showingEntryPicker = true }
+            )
+        )
+    }
+
+    /// Labels a row inside the send sheet now, not the whole screen's primary action.
     private var sendTitle: String {
         if !hasDestination { return "Notion isn\u{2019}t connected" }
         if !controller.needsSync && controller.isLinkedToPage { return "Up to date" }
         if controller.appendsToExistingPage { return "Add to page" }
         return controller.isLinkedToPage ? "Update page" : "Send to Notion"
-    }
-
-    /// A tick means "done"; without a destination nothing is done, it is simply not offered.
-    private var sendSymbol: String {
-        if canSend { return "arrow.up" }
-        return hasDestination ? "checkmark" : "icloud.slash"
     }
 
     // MARK: - Footer

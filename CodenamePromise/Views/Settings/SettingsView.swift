@@ -7,7 +7,7 @@ import SwiftUI
 /// separate steps, and stopping halfway is a normal place to be rather than a broken one.
 /// Nothing here is required — an entry that never syncs is complete (tenet 4), so this screen
 /// never nags.
-struct NotionSettingsView: View {
+struct SettingsView: View {
     @Environment(AppServices.self) private var services
 
     @State private var coordinator: ConnectionCoordinator?
