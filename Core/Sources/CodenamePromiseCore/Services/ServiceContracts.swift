@@ -199,3 +199,40 @@ public protocol NotionAPI: Sendable {
 public protocol NetworkReachability: Sendable {
     var isReachable: Bool { get }
 }
+
+// MARK: - Organising
+
+public struct OrganiseRequest: Sendable, Hashable {
+    public let draftId: UUID
+    public let transcript: String
+    /// Echoed back on the result so a slow organise cannot clobber newer words. Same reason
+    /// formatting carries one: the user keeps talking while the request is in flight.
+    public let contentHash: String
+
+    public init(draftId: UUID, transcript: String, contentHash: String) {
+        self.draftId = draftId
+        self.transcript = transcript
+        self.contentHash = contentHash
+    }
+}
+
+public struct OrganiseResult: Sendable, Hashable {
+    public let draftId: UUID
+    public let organised: OrganisedEntry
+    public let sourceContentHash: String
+
+    public init(draftId: UUID, organised: OrganisedEntry, sourceContentHash: String) {
+        self.draftId = draftId
+        self.organised = organised
+        self.sourceContentHash = sourceContentHash
+    }
+}
+
+/// Turning a spoken ramble into an arranged entry.
+///
+/// Deliberately separate from `FormattingService` rather than a mode of it. They are bound by
+/// different promises: formatting may not change a word, organising may not lose a thought.
+/// Collapsing them into one call would mean one guard for two incompatible guarantees.
+public protocol OrganisingService: Sendable {
+    func organise(_ request: OrganiseRequest) async throws -> OrganiseResult
+}

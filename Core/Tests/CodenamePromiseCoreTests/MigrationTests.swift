@@ -17,7 +17,12 @@ import Testing
 /// These tests write a store using the real `SchemaV1` models and open that same file through
 /// the real `ModelContainerFactory` and migration plan — the actual thing that happens on the
 /// first launch after an update.
-@Suite("Migration from an older store")
+/// `.serialized` because these build `ModelContainer`s for *different schema versions* in one
+/// process, and every version names its entities the same thing: there is a v1 `EntryDraft`, a
+/// v2 `EntryDraft` and a live one. Registering two of those concurrently segfaults inside
+/// SwiftData rather than failing an assertion, which is a confusing thing to hit later. Each
+/// suite passes alone; only the overlap is fatal.
+@Suite("Migration from an older store", .serialized)
 @MainActor
 struct MigrationTests {
 
@@ -229,5 +234,137 @@ struct MigrationTests {
         #expect(numbers.count == count, "two schema versions share a version number")
         #expect(shapes.count == count,
                 "two schema versions point at the same model types — freeze the older one")
+    }
+
+    /// Opening a store written by the build immediately before the organiser existed.
+    ///
+    /// The v1 suite above covers the oldest store. This covers the newest one that is not
+    /// current, which is the store on every phone that has the app today. It is the migration a
+    /// real user will actually perform when they update, and the one that broke twice.
+    @Suite("from a v2 store")
+    @MainActor
+    struct FromV2 {
+
+        /// Writes a store at v2's exact shape and returns its URL.
+        private func makeV2Store(entries: Int = 2) throws -> URL {
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("v2-\(UUID().uuidString).store")
+
+            let schema = Schema(versionedSchema: SchemaV2.self)
+            let container = try ModelContainer(
+                for: schema,
+                configurations: [ModelConfiguration(schema: schema, url: url)]
+            )
+            let context = ModelContext(container)
+
+            for index in 0..<entries {
+                let draft = SchemaV2.EntryDraft(entryDateKey: "2026-09-0\(index + 1)")
+                var content = EntryContent()
+                content.title = "Entry \(index)"
+                content.rawText = "Something that happened on day \(index)."
+                content.formattedText = index == 0 ? "- Something that happened" : nil
+                draft.content = content
+                draft.formattedTextEditedByUser = index == 0
+                context.insert(draft)
+
+                let audio = SchemaV2.AudioCapture(relativePath: "audio/\(index)/take.m4a")
+                audio.transcript = "spoken words \(index)"
+                context.insert(audio)
+                draft.audioCaptures.append(audio)
+
+                let sync = SchemaV2.SyncState()
+                sync.externalId = index == 0 ? "page-0" : nil
+                sync.externalTitle = index == 0 ? "A page" : nil
+                context.insert(sync)
+                draft.syncStates.append(sync)
+            }
+            try context.save()
+            return url
+        }
+
+        private func openThroughApp(_ url: URL) throws -> DraftStore {
+            DraftStore(container: try ModelContainerFactory.makeAppContainer(url: url))
+        }
+
+        @Test("a store from the build before the organiser still opens")
+        func v2StoreOpens() throws {
+            let url = try makeV2Store()
+            defer { try? FileManager.default.removeItem(at: url) }
+
+            #expect(try openThroughApp(url).allDrafts().count == 2)
+        }
+
+        @Test("nothing the user wrote is lost")
+        func contentSurvives() throws {
+            let url = try makeV2Store()
+            defer { try? FileManager.default.removeItem(at: url) }
+
+            let drafts = try openThroughApp(url).allDrafts()
+            #expect(Set(drafts.compactMap(\.content.title)) == ["Entry 0", "Entry 1"])
+            #expect(drafts.contains { $0.content.formattedText == "- Something that happened" })
+            #expect(drafts.contains { $0.formattedTextEditedByUser })
+        }
+
+        /// The words that exist nowhere else. See ADR-002.
+        @Test("un-merged recordings come through")
+        func audioSurvives() throws {
+            let url = try makeV2Store()
+            defer { try? FileManager.default.removeItem(at: url) }
+
+            let captures = try openThroughApp(url).allDrafts().flatMap(\.orderedAudioCaptures)
+            #expect(captures.count == 2)
+            #expect(captures.allSatisfy { $0.transcript?.hasPrefix("spoken words") == true })
+            #expect(captures.allSatisfy { $0.isSafeToDelete == false })
+        }
+
+        @Test("a page id recorded before the update is still there")
+        func syncStateSurvives() throws {
+            let url = try makeV2Store()
+            defer { try? FileManager.default.removeItem(at: url) }
+
+            let states = try openThroughApp(url).allDrafts().flatMap(\.syncStates)
+            #expect(states.compactMap(\.externalId) == ["page-0"])
+            #expect(states.compactMap(\.externalTitle) == ["A page"])
+        }
+
+        /// The new attributes must arrive at their declared defaults rather than as nulls that
+        /// trap on read. This is the exact failure mode of adding a non-optional to a composite.
+        @Test("the organiser attributes arrive empty rather than broken")
+        func newAttributesTakeDefaults() throws {
+            let url = try makeV2Store()
+            defer { try? FileManager.default.removeItem(at: url) }
+
+            for draft in try openThroughApp(url).allDrafts() {
+                #expect(draft.organisedJSON == "")
+                #expect(draft.organiserVersion == nil)
+                #expect(draft.organised == nil, "no organisation yet is nil, not a crash")
+            }
+        }
+
+        @Test("an entry organised after the migration saves and reloads")
+        func canOrganiseAfterMigrating() throws {
+            let url = try makeV2Store()
+            defer { try? FileManager.default.removeItem(at: url) }
+
+            let store = try openThroughApp(url)
+            let draft = try #require(try store.allDrafts().first)
+            draft.setOrganised(
+                OrganisedEntry(
+                    sentences: ["One thing.", "Um.", "Two things."],
+                    sections: [.init(heading: "Work", body: "One thing. Two things.",
+                                     sources: [1, 3])],
+                    dropped: [2],
+                    version: "organise-test"
+                )
+            )
+            try store.flush()
+
+            let reopened = try #require(try openThroughApp(url).allDrafts()
+                .first { $0.id == draft.id })
+            let organised = try #require(reopened.organised)
+            #expect(organised.sections.first?.sources == [1, 3])
+            #expect(organised.spokenLines(for: organised.sections[0]) == ["One thing.", "Two things."])
+            #expect(reopened.organiserVersion == "organise-test")
+        }
     }
 }

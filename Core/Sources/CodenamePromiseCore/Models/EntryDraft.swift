@@ -41,6 +41,26 @@ public final class EntryDraft {
     /// lightweight migration fill it in. See ADR-008a.
     public var formattedTextEditedByUser: Bool = false
 
+    /// The organised entry, as JSON.
+    ///
+    /// A scalar on the `@Model` rather than a field on `EntryContent`, and that placement is
+    /// the whole point: `EntryContent` is a `Codable` composite that SwiftData flattens into
+    /// one column per property, so a field added there is a schema change that fails
+    /// validation and leaves the store unopenable. See ADR-008a and `SchemaV3`.
+    ///
+    /// JSON rather than a related entity because nothing ever queries inside it. Sections are
+    /// read whole, with their entry, and a `@Model` graph would buy predicates nobody needs in
+    /// exchange for four more entities and a cascade rule to get wrong.
+    ///
+    /// Empty string, never nil, so the default is expressible in the entity description.
+    public var organisedJSON: String = ""
+
+    /// Which organiser produced `organisedJSON`. Nil until one has.
+    ///
+    /// Kept beside the JSON rather than only inside it so "is this stale?" is answerable
+    /// without decoding, which is what a list of two hundred entries needs.
+    public var organiserVersion: String?
+
     @Relationship(deleteRule: .cascade, inverse: \MediaItem.draft)
     public var media: [MediaItem] = []
 
@@ -98,6 +118,33 @@ public final class EntryDraft {
     /// Media in a stable, user-meaningful order. SwiftData to-many relationships are
     /// set-backed, so array order is incidental and can change between launches — always
     /// read through this. See ADR-011.
+    /// The organised entry, decoded, or nil if there is none.
+    ///
+    /// Decoding failure returns nil rather than throwing. A stored entry outlives the build
+    /// that wrote it, and an entry whose organisation cannot be read should show the words
+    /// the person actually said, not refuse to open. `rawText` is untouched either way, which
+    /// is the point of keeping this derived.
+    public var organised: OrganisedEntry? {
+        guard !organisedJSON.isEmpty,
+              let data = organisedJSON.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(OrganisedEntry.self, from: data)
+    }
+
+    /// Stores an organised entry. Does **not** touch `updatedAt`.
+    ///
+    /// Same rule as sync bookkeeping: `updatedAt` means "the user changed something", and
+    /// bumping it here would make every organise re-dirty the draft and re-trigger the work
+    /// that just finished. See ADR-016 and `syncBookkeepingDoesNotLoop`.
+    public func setOrganised(_ entry: OrganisedEntry?) {
+        guard let entry, let data = try? JSONEncoder().encode(entry) else {
+            organisedJSON = ""
+            organiserVersion = nil
+            return
+        }
+        organisedJSON = String(decoding: data, as: UTF8.self)
+        organiserVersion = entry.version
+    }
+
     public var orderedMedia: [MediaItem] {
         media.sorted { ($0.sortIndex, $0.id.uuidString) < ($1.sortIndex, $1.id.uuidString) }
     }

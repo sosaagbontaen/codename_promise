@@ -201,3 +201,57 @@ public struct NotionHTTPClient: NotionAPI {
         }
     }
 }
+
+public struct HTTPOrganisingService: OrganisingService {
+    private let client: APIClient
+
+    public init(client: APIClient) {
+        self.client = client
+    }
+
+    private struct Payload: Encodable {
+        let transcript: String
+        let draft_id: String
+    }
+
+    private struct SectionResponse: Decodable {
+        let heading: String
+        let body: String
+        let sources: [Int]
+    }
+
+    private struct Response: Decodable {
+        let sections: [SectionResponse]
+        let sentences: [String]
+        let dropped: [Int]
+        let organiser_version: String
+    }
+
+    public func organise(_ request: OrganiseRequest) async throws -> OrganiseResult {
+        let response = try await client.postJSON(
+            path: "organise",
+            body: Payload(
+                transcript: request.transcript,
+                draft_id: request.draftId.uuidString
+            ),
+            // Keyed on the content, so a retry after a lost response replays the same
+            // organisation rather than paying for a second, differently-worded one.
+            idempotencyKey: IdempotencyKey(attemptId: request.contentHash, step: "organise"),
+            expecting: Response.self
+        )
+        return OrganiseResult(
+            draftId: request.draftId,
+            organised: OrganisedEntry(
+                sentences: response.sentences,
+                sections: response.sections.map {
+                    OrganisedEntry.Section(
+                        heading: $0.heading, body: $0.body, sources: $0.sources
+                    )
+                },
+                dropped: response.dropped,
+                version: response.organiser_version
+            ),
+            sourceContentHash: request.contentHash
+        )
+    }
+}

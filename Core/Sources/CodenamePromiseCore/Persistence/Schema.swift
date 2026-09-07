@@ -38,10 +38,31 @@ public enum SchemaV1: VersionedSchema {
 /// isn't bureaucracy: the version number is the only signal SwiftData gets that a migration is
 /// expected rather than a mismatch.
 ///
-/// This one points at the live model types, which is the privilege of being newest. The
-/// moment a v3 exists, these get frozen into a `SchemaV2Models.swift` first — see rule 4.
+/// Its models are now frozen in `SchemaV2Models.swift`, because v3 exists. It used to point
+/// at the live types, which is the privilege of being newest and only that.
 public enum SchemaV2: VersionedSchema {
     public static var versionIdentifier: Schema.Version { Schema.Version(2, 0, 0) }
+
+    public static var models: [any PersistentModel.Type] {
+        [SchemaV2.EntryDraft.self, SchemaV2.MediaItem.self,
+         SchemaV2.AudioCapture.self, SchemaV2.SyncState.self]
+    }
+}
+
+/// Adds the organised entry: `EntryDraft.organisedJSON` and `EntryDraft.organiserVersion`.
+///
+/// Both are plain scalars with defaults, which is what keeps this lightweight. They are
+/// deliberately **not** inside `EntryContent`, even though that is where `formattedText`
+/// lives and where they would read most naturally. `EntryContent` is a `Codable` composite
+/// and SwiftData flattens it into one column per property, so adding a non-optional field
+/// there fails the migration outright with *"missing attribute values on mandatory
+/// destination attribute"* and the store will not open. That is ADR-008a, and it is the bug
+/// that produced "Couldn't open your journal" on a phone holding real entries.
+///
+/// This one points at the live model types, which is the privilege of being newest. The
+/// moment a v4 exists, these get frozen into a `SchemaV3Models.swift` first — see rule 4.
+public enum SchemaV3: VersionedSchema {
+    public static var versionIdentifier: Schema.Version { Schema.Version(3, 0, 0) }
 
     public static var models: [any PersistentModel.Type] {
         [EntryDraft.self, MediaItem.self, AudioCapture.self, SyncState.self]
@@ -49,18 +70,23 @@ public enum SchemaV2: VersionedSchema {
 }
 
 public enum CodenamePromiseMigrationPlan: SchemaMigrationPlan {
-    public static var schemas: [any VersionedSchema.Type] { [SchemaV1.self, SchemaV2.self] }
+    public static var schemas: [any VersionedSchema.Type] {
+        [SchemaV1.self, SchemaV2.self, SchemaV3.self]
+    }
 
     public static var stages: [MigrationStage] {
         // Lightweight: every added attribute carries a default, so SwiftData can infer the
         // mapping. Declared explicitly anyway, per rule 3 — an inferred migration that
         // silently stops being inferrable is a bad thing to discover in the field.
-        [.lightweight(fromVersion: SchemaV1.self, toVersion: SchemaV2.self)]
+        [
+            .lightweight(fromVersion: SchemaV1.self, toVersion: SchemaV2.self),
+            .lightweight(fromVersion: SchemaV2.self, toVersion: SchemaV3.self),
+        ]
     }
 }
 
 public enum CodenamePromiseSchema {
     /// Always build containers from this, never from an ad-hoc `Schema([...])` — an
     /// unversioned container is how you end up unable to migrate.
-    public static var current: Schema { Schema(versionedSchema: SchemaV2.self) }
+    public static var current: Schema { Schema(versionedSchema: SchemaV3.self) }
 }
