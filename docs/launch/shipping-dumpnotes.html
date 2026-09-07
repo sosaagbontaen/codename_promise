@@ -233,14 +233,19 @@
         </div>
       </div>
       <div class="task" data-kind="stop" data-title="Set the display name and settle the bundle id" data-done="the icon on the home screen says DumpNotes.">
-        <input type="checkbox" checked data-task="display-name" id="i-display-name">
+        <input type="checkbox" data-task="display-name" id="i-display-name">
         <div class="task-body">
           <label class="task-title" for="i-display-name">Set the display name and settle the bundle id<span class="badge stop">Blocker</span><span class="badge size">~1 hour</span></label>
           <p class="task-why"><strong>Done.</strong> <code>CFBundleDisplayName</code> is DumpNotes and every screen reads it through <code>Bundle.main.appDisplayName</code>. The bundle id is still <code>com.codenamepromise.journal</code> and is permanent once shipped &mdash; change it before the first upload.</p><span class="done-when">the icon on the home screen says DumpNotes.</span>
+        <p class="task-why"><strong>Reopened 2026-09-07.</strong> The display name is set, but
+          the bundle id is still <code>com.codenamepromise.journal</code> and the product name
+          is open again. This is permanent after the first submission, so it has to be right
+          before anything is submitted. It is also the item that puts real data at risk: see
+          the export task directly below.</p>
         </div>
       </div>
       <div class="task" data-kind="stop" data-title="Write the privacy policy and put it at a public URL" data-done="the URL loads for a logged-out stranger.">
-        <input type="checkbox" data-task="privacy-policy" id="i-privacy-policy">
+        <input type="checkbox" data-task="privacy-policy" id="i-privacy-policy" checked>
         <div class="task-body">
           <label class="task-title" for="i-privacy-policy">Write the privacy policy and put it at a public URL<span class="badge stop">Blocker</span><span class="badge size">~2 hours</span></label>
           <p class="task-why">Apple will not accept a submission without one, and Notion
@@ -286,6 +291,57 @@
             &ldquo;then sent to Notion&rdquo; to someone with no Notion, and the send button was
             lit and pressable with no destination behind it. Both now say what is actually
             true. Settings has &ldquo;Show the welcome again&rdquo; for demos and screenshots.</p>
+        <p class="task-why"><strong>Revised 2026-09-07.</strong> The middle point used to
+          explain that Notion was optional. That was necessary while Notion was on every screen;
+          now it would reintroduce the confusion it existed to prevent. It explains rambling
+          instead, which is the one thing nobody can guess from a record button.</p>
+        </div>
+      </div>
+      <div class="task" data-kind="stop" data-title="Export your journal before the bundle id changes" data-done="you have a zip of your entries stored somewhere that is not the phone.">
+        <input type="checkbox" data-task="export-before-rename" id="i-export-before-rename">
+        <div class="task-body">
+          <label class="task-title" for="i-export-before-rename">Export your journal before the bundle id changes<span class="badge stop">Blocker</span><span class="badge size">~10 minutes</span></label>
+          <p class="task-why">A new bundle id means a new app container, so the entries already on your phone do
+            not come with it. They are not corrupted, they are simply somewhere the renamed app
+            will never look. Do this the day the rename lands, not after. Settings &rarr; Export
+            your journal, then keep the zip somewhere off the phone.</p><span class="done-when">you have a zip of your entries stored somewhere that is not the phone.</span>
+        </div>
+      </div>
+      <div class="task" data-kind="stop" data-title="Ship a backend URL, or the headline feature does nothing" data-done="a clean install records, transcribes and organises with nothing configured by hand.">
+        <input type="checkbox" data-task="ship-a-backend" id="i-ship-a-backend">
+        <div class="task-body">
+          <label class="task-title" for="i-ship-a-backend">Ship a backend URL, or the headline feature does nothing<span class="badge stop">Blocker</span><span class="badge size">~1 day</span></label>
+          <p class="task-why"><code>BACKEND_BASE_URL</code> is unset in a default build, and <code>APIClient</code>
+            correctly throws <code>.notConfigured</code> when it is. That means a fresh install
+            transcribes nothing and organises nothing: it is a local notes app with a record
+            button. Meanwhile the first-run screen now promises that rambling gets grouped. Ship
+            a reachable backend, or the app contradicts its own introduction on first use.</p><span class="done-when">a clean install records, transcribes and organises with nothing configured by hand.</span>
+        </div>
+      </div>
+      <div class="task" data-kind="stop" data-title="Reconcile the privacy claims with hosted processing" data-done="the policy, the first-run screen and the App Store answers all describe the same app.">
+        <input type="checkbox" data-task="privacy-vs-processing" id="i-privacy-vs-processing">
+        <div class="task-body">
+          <label class="task-title" for="i-privacy-vs-processing">Reconcile the privacy claims with hosted processing<span class="badge stop">Blocker</span><span class="badge size">~half a day</span></label>
+          <p class="task-why">Today &ldquo;nothing uploaded&rdquo; is literally true, because there is no backend
+            configured to upload to. The moment one ships it stops being true: audio goes out
+            for transcription and text goes out to be organised. The onboarding screen, the
+            privacy policy and the App Store privacy questionnaire all have to change in the
+            same commit as that backend, and they have to say what is sent, to whom, and what
+            is kept. Getting this wrong is a rejection at review and a breach of trust after
+            it.</p><span class="done-when">the policy, the first-run screen and the App Store answers all describe the same app.</span>
+        </div>
+      </div>
+      <div class="task" data-kind="stop" data-title="Scope backend state per user" data-done="two devices on the same backend cannot see or touch each other's data.">
+        <input type="checkbox" data-task="per-user-backend" id="i-per-user-backend">
+        <div class="task-body">
+          <label class="task-title" for="i-per-user-backend">Scope backend state per user<span class="badge stop">Blocker</span><span class="badge size">~2 days</span></label>
+          <p class="task-why"><code>app/connections.py</code> writes one <code>.state/notion.json</code> and
+            <code>app/vocabulary.py</code> writes one <code>.state/vocabulary.json</code>, with
+            no user in either path. Two people on one backend share a Notion connection, so one
+            person&rsquo;s entries sync into another person&rsquo;s workspace, and they see each
+            other&rsquo;s saved names. The idempotency store is in-memory besides, so it cannot
+            run behind more than one worker. None of this matters at one user and all of it
+            matters at two.</p><span class="done-when">two devices on the same backend cannot see or touch each other's data.</span>
         </div>
       </div>
       </div>
@@ -508,6 +564,31 @@
             is the difference between a researcher emailing you and a researcher tweeting.</p><span class="done-when">it is on the landing page.</span>
         </div>
       </div>
+      <div class="task" data-kind="need" data-title="Confirm iCloud backup on a real phone" data-done="an entry made on one device, photo included, reappears on another.">
+        <input type="checkbox" data-task="icloud-on-device" id="i-icloud-on-device">
+        <div class="task-body">
+          <label class="task-title" for="i-icloud-on-device">Confirm iCloud backup on a real phone<span class="badge need">Needed</span><span class="badge size">~1 hour</span></label>
+          <p class="task-why">The sync itself cannot be verified from a development machine: it needs a signed-in
+            iCloud account and a provisioned entitlement. Everything else in this project has
+            been proved rather than assumed, and this is the one piece where the proof has to
+            come from your phone. Record an entry with a photo, install on a second device or
+            wipe and reinstall, and confirm both the words and the picture come back.</p><span class="done-when">an entry made on one device, photo included, reappears on another.</span>
+        </div>
+      </div>
+      <div class="task" data-kind="shipped" data-title="Make long recordings survive a crash" data-done="a 95 second recording produced two durable chunks before stop was pressed.">
+        <input type="checkbox" data-task="chunked-recording" id="i-chunked-recording" checked>
+        <div class="task-body">
+          <label class="task-title" for="i-chunked-recording">Make long recordings survive a crash<span class="badge shipped">Shipped</span><span class="badge size">done</span></label>
+          <p class="task-why">The recorder streamed into a temporary directory and only handed the audio over when
+            you pressed stop, so a ten minute reflection existed nowhere durable for ten
+            minutes. A crash took all of it. Now the audio is written in finished chunks
+            straight into the app container, rotating at a pause after 45 seconds so the cut
+            lands between thoughts rather than inside a word. A crash costs the chunk in
+            progress. Checked first whether one file could be made to survive the kill: it
+            cannot, a killed AAC recording leaves samples on disk with a header claiming zero
+            frames.</p><span class="done-when">a 95 second recording produced two durable chunks before stop was pressed.</span>
+        </div>
+      </div>
       </div>
     </details>
 
@@ -558,6 +639,12 @@
         <div class="quote">DumpNotes is an app that lets you quickly capture thoughts, moments, and experiences through text, voice, images, or video, and automatically adds them to your Notion journals.</div>
         <p><strong>Still needed:</strong> a subtitle. The App Store caps it at 30 characters, so the sentence above is the description's opening line, not the subtitle. "Dump anything. Save everything." is 31 &mdash; one over.</p>
         <p>Tagline: <em>Dump anything. Save everything.</em></p>
+        <p><strong>Flagged 2026-09-07, deliberately not rewritten.</strong> The sentence above
+          ends &ldquo;and automatically adds them to your Notion journals&rdquo;, which is no
+          longer what the product leads with: Notion is one optional destination among several,
+          and the app now owns the journal. The sentence needs revisiting. It is left alone here
+          because <em>Commit to one sentence and stop rewriting it</em> exists precisely to stop
+          it being quietly reworded, and reopening it is your call rather than a tidy-up.</p>
         <p>One practical note: the App Store <strong>subtitle is capped at 30 characters</strong>, so that sentence is the opening line of the description, not the subtitle. The subtitle needs its own short phrase.</p>
 
         <h4>Why the category was hard to name</h4>
@@ -573,7 +660,16 @@
     <details class="ref">
       <summary>Decisions already made</summary>
       <div class="ref-body">
-        <p><strong>Shape: no backend.</strong> On-device transcription and formatting; Notion OAuth through a thin stateless proxy. Zero per-user cost, no server to run or breach. The open question is only whether Apple's on-device speech is good enough to replace Groq &mdash; testable in an afternoon.</p>
+        <p><strong>Shape: reversed, 2026-09-07.</strong> This used to read &ldquo;no backend&rdquo;:
+          on-device transcription and formatting, Notion OAuth through a thin stateless proxy,
+          zero per-user cost. That is no longer true and pretending otherwise would hide a
+          ship-blocker. Turning a ramble into an organised entry is the product now, it runs on
+          a hosted model, and on-device was set aside because it could not be dogfooded and
+          would have excluded too many devices. The consequences are tracked above as
+          <em>Ship a backend URL</em>, <em>Reconcile the privacy claims with hosted
+          processing</em> and <em>Scope backend state per user</em>. The privacy position is
+          still strong &mdash; the journal lives on the phone and no copy is kept on a server
+          &mdash; but it is no longer the absolute one this paragraph claimed.</p>
         <p><strong>Analytics: no.</strong> "Data not collected" stays truthful on the privacy questionnaire, which is one of the strongest things a journaling app can say. Feedback route shipped in its place.</p>
         <p><strong>Company: later.</strong> One LLC can publish any number of apps, so a studio entity holding several is the normal shape and waiting for revenue is reasonable. Verify before shipping under your own name: converting an Apple individual account to an organization later involves Apple, a D-U-N-S number, and re-signing agreements.</p>
         <p><strong>Data model: unchanged.</strong> A dump is an <code>EntryDraft</code>, and several per day with their own Notion page has been supported since ADR-006 was revised. The capture-first rebuild needed no migration.</p>
@@ -597,7 +693,17 @@
       <summary>The one thing that could still bite</summary>
       <div class="ref-body">
         <p><strong>Everything lives on one device.</strong> Export shipped, so the journal can now leave the phone &mdash; but it is a manual action. There is still no account and no cloud copy, so a lost phone with no recent export loses everything.</p>
-        <p>The schema was deliberately kept CloudKit-compatible (ADR-008b), so that door is open whenever you want it.</p>
+        <p>The schema was deliberately kept CloudKit-compatible (ADR-008b) &mdash; no unique
+          constraints, optional inverse relationships, defaults on every to-many &mdash; and that
+          door is now being walked through: invisible iCloud backup is the chosen answer. Two
+          things are worth holding on to while it is built. A user with iCloud Backup switched
+          on already gets the whole journal back on a new phone today, because the store and the
+          media both sit in Application Support and nothing is excluded from backup; what
+          CloudKit adds is cover for people who never turned that on, continuous rather than
+          nightly, and restore on install rather than a full device restore. And the media are
+          files on disk rather than rows, so any plan that syncs only the store would bring the
+          entries back without the photos, which is worse than no backup because it looks like
+          it worked.</p>
       </div>
     </details>
   </div>
