@@ -83,6 +83,10 @@ struct OpenDaysView: View {
     @State private var check: DestinationCheck = .checking
     @State private var hasEverWritten = true
     @State private var loadError: String?
+    /// Photo counts per day, empty until the library is readable. Empty is a supported
+    /// state, not a degraded one — the list works exactly as it did before this existed.
+    @State private var activity: [CalendarDay: DayActivity] = [:]
+    @State private var photoAccess: PhotoLibraryActivity.Access = PhotoLibraryActivity.access
 
     /// The two ways a journal has holes in it.
     ///
@@ -304,6 +308,8 @@ struct OpenDaysView: View {
                 }
             }
 
+            photoAccessSection
+
             Section {
                 // Says what it is without saying what you failed to do. What was *checked*
                 // lives in the banner, where it is visible before you scroll.
@@ -452,6 +458,54 @@ struct OpenDaysView: View {
         Task { await reload() }
     }
 
+    /// The offer to let the camera roll rank these days, and the honest note when it can
+    /// only half-answer.
+    ///
+    /// Deliberately a row inside the list rather than a prompt on the way in. Someone who
+    /// opened this screen came to find a day, not to be asked for a permission, and a modal
+    /// standing between them and the list would be the app charging admission for its own
+    /// feature. Declining is a complete outcome: the days are all still there.
+    ///
+    /// Nothing at all is shown once the answer is no. A person who declined does not need to
+    /// be asked again every time they open the screen; that is how a request becomes nagging.
+    @ViewBuilder
+    private var photoAccessSection: some View {
+        switch photoAccess {
+        case .notAsked:
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Which days did you have something going on?")
+                        .font(.subheadline.weight(.semibold))
+                    // Says exactly what it reads, because the difference between counting
+                    // your photos and looking at them is the whole reason this is fair to
+                    // ask for, and the system sheet has no room to explain it.
+                    Text("The app can count how many photos and videos are on each day, so the busy days stand out from the quiet ones. It reads how many, never what is in them.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Button("Count my photos") {
+                        Task {
+                            photoAccess = await PhotoLibraryActivity.request()
+                            if photoAccess.canCount { await reload() }
+                        }
+                    }
+                    .font(.subheadline.weight(.medium))
+                }
+                .padding(.vertical, 2)
+            }
+        case .limited:
+            Section {
+                Label(
+                    "Only the photos you picked are counted, so some days will look quieter than they were.",
+                    systemImage: "info.circle"
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+        case .granted, .denied, .restricted:
+            EmptyView()
+        }
+    }
+
     private func dayRow(_ day: CalendarDay) -> some View {
         Button {
             start(day)
@@ -464,6 +518,18 @@ struct OpenDaysView: View {
                     Text(relativeLabel(for: day))
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    // Only for days with enough on them to mean something. A day with one
+                    // photo gets no line at all rather than a line saying "1 photo", so the
+                    // presence of the line is itself the signal.
+                    if let found = activity[day], found.isInteresting() {
+                        HStack(spacing: 4) {
+                            Image(systemName: found.videos > 0 ? "photo.on.rectangle.angled" : "photo")
+                                .font(.system(size: 10, weight: .semibold))
+                            Text(found.phrase)
+                        }
+                        .font(.caption)
+                        .foregroundStyle(Brand.Mode.photo)
+                    }
                 }
                 Spacer()
                 Image(systemName: "square.and.pencil")
@@ -540,6 +606,13 @@ struct OpenDaysView: View {
             case .unfinished: apply(entries: nil)
             }
             loadError = nil
+
+            // After the list is on screen, never before it. The counts rank days that are
+            // already shown, so waiting on the photo library to draw anything would trade a
+            // working list for a spinner.
+            if mode == .missingDays, photoAccess.canCount {
+                activity = await PhotoLibraryActivity.counts(from: from, through: through)
+            }
 
             guard let connection else {
                 check = .notConnected("Notion isn't connected. Showing this device only.")

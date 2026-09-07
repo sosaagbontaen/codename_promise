@@ -80,7 +80,9 @@
 		<string>Poppins-Bold.ttf</string>
 	</array>
 
-	<key>ITSAppUsesNonExemptEncryption</key>
+		<key>NSPhotoLibraryUsageDescription</key>
+	<string>DumpNotes counts how many photos and videos you took on each day, so it can point out days you have not written about yet. It reads how many, never what is in them. Photos are only opened when you choose to add one to an entry.</string>
+<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 
 	<key>NSAppTransportSecurity</key>
