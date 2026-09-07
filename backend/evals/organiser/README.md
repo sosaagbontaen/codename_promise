@@ -171,3 +171,87 @@ the same bucket and earns a 429. The eval reads `x-ratelimit-remaining-tokens` a
 
 Worth carrying into the product: on a free tier, concurrent users organising at the same
 moment will queue behind each other.
+
+---
+
+# Proving it before building on it
+
+Four properties have to hold, and only the first was ever measured:
+
+1. **Accounting** — nothing vanishes silently.
+2. **Grouping** — scattered threads come back together.
+3. **Fidelity** — the output is their words rearranged, not paraphrased.
+4. **Restraint** — a small day stays small; one subject does not get carved up.
+
+3 and 4 decide whether this is a journal or a summary of one, and neither is visible from
+reading a single nice-looking output.
+
+## Fidelity holds, and it is measurable
+
+At 55 sentences, over three runs: **100% of content words in the output appeared in the lines
+that section cited**, and **zero words appeared that were nowhere in the transcript**.
+
+That is tenet 3 as a number. The model is arranging, not writing. It is the same property
+`wordguard` enforces for the copy-editor, expressed in a way an organiser can actually satisfy.
+
+## Length is where it broke, and the cause was not the prompt
+
+At 111 sentences (~8 minutes, the real use case) single-pass lost about a third of the day.
+The first diagnosis, that the model loses track at length, was wrong.
+
+**`gpt-oss-120b` is a reasoning model, and reasoning tokens count against
+`max_completion_tokens`.** Measured on the assignment call:
+
+```
+  reasoning_effort=low     completion 1680  of which reasoning 1414   (84%)
+  reasoning_effort=medium  completion 3111  of which reasoning 2848   (92%)
+```
+
+With a modest ceiling the model spent the whole allowance thinking and returned an empty
+string, which the API reports as `400 json_validate_failed` with an empty `failed_generation`.
+That reads exactly like a broken prompt, and it is not. Raising the ceiling instead collided
+with the token budget and produced `413`, which reads like an oversized payload, and is not
+that either.
+
+Two error codes, neither meaning what it says, both traceable to one cause.
+
+`medium` also groups better than `low`: at `low` the model split Deepa into her own thread,
+at `medium` it correctly folded her into work.
+
+## Two passes instead of one
+
+Single-shot asks the model to hold the whole transcript *and* write every section in one
+response. Splitting it plays to what each pass needs:
+
+- **Pass 1** sees every line and assigns each to a thread. Needs global attention, produces
+  almost no text, and its coverage is trivially checkable.
+- **Pass 2** writes one section from one thread's lines. Needs no global view, and **cannot
+  quote a line it was never shown**, which is what keeps fidelity high by construction rather
+  than by instruction.
+
+Grouping still happens globally, in pass 1. Only the writing is local.
+
+Result at 111 sentences: **zero silent drops**, which single-pass could not manage.
+
+The guard also stopped being only a detector. A line the model forgets to assign is attached
+to its neighbour's thread deterministically, so an imperfect plan costs a slightly worse
+grouping rather than a lost sentence.
+
+First attempt over-fragmented badly: 15 sections, work and Deepa split apart, a one-line
+section for paying council tax. A day has a few real subjects, not fifteen, and the assignment
+prompt now says so.
+
+## What the free tier actually allows
+
+```
+  x-ratelimit-limit-tokens:    8000   per minute
+  x-ratelimit-limit-requests:  1000   per day
+```
+
+One eight-minute entry costs roughly **12,000 tokens across seven calls**, which is more than
+a minute's budget. So on the free tier a long entry takes over a minute to organise and the
+section writes have to be paced. That is a pacing constraint, not a design one: on a paid tier
+the sleep goes away and the pipeline is unchanged.
+
+Worth carrying into the product either way, because it sets what "organising…" has to feel
+like in the UI for a long recording.
