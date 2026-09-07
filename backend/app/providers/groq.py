@@ -10,6 +10,8 @@ never written to disk. See ADR-022.
 
 from __future__ import annotations
 
+import json
+
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Set
 
 import httpx
@@ -318,3 +320,132 @@ async def list_models(api_key: str, base_url: str = GROQ_BASE_URL) -> Set[str]:
     if response.status_code >= 400:
         raise GroqError(f"Groq returned {response.status_code} listing models.")
     return {m.get("id", "") for m in response.json().get("data", [])}
+
+
+ASSIGN_PROMPT = """You are reading a transcript of someone talking freely about their day, \
+numbered one sentence per line. People do not talk in order: they start a subject, wander off, \
+and come back to it many lines later.
+
+Assign every line to a thread. A thread is one subject, however scattered. If they discuss work \
+at line 3 and return to work at line 60, both lines get the thread "work". Never create two \
+threads for the same subject.
+
+Lines that are pure filler ("um", "where was I", false starts carrying no content) get the \
+thread "filler". Be sparing: a line with a real subject and a verb is not filler, however \
+small it seems. Reflections about themselves are the point of the entry, not padding.
+
+HOW MANY THREADS
+A day has a few real subjects, not fifteen. Aim for four to eight, plus "filler". If you find \
+yourself naming a thread for a single passing mention, put that line with the nearest larger \
+thread instead. Threads are subjects, not moments: work is one thread even if it covers a \
+deploy, a colleague and a worry about next quarter, and a person is not a separate thread from \
+the subject they came up in.
+
+Reply with JSON only. Every line number from 1 to the last must appear exactly once:
+{"threads": {"work": [3,4,60], "brother": [22,23], "filler": [10,16]}}"""
+
+WRITE_PROMPT = """You are writing one section of someone's journal from their own spoken words.
+
+You are given the lines they said about this one subject, in the order they said them. Write \
+them as a few sentences of flowing prose.
+
+- Use their words and phrasing. Keep their slang and their humour. You are arranging what they \
+said, not rewriting it.
+- Never add a fact, a feeling or a conclusion they did not say.
+- Never soften an uncomfortable thought. If they said something bleak about themselves, it stays.
+- Do not add a heading inside the body, a preamble, or a closing summary.
+
+Reply with JSON only: {"heading": "a short heading in their voice", "body": "the prose"}"""
+
+
+class GroqRateLimited(GroqError):
+    """The provider is rate limiting, which is a wait rather than a failure.
+
+    Worth its own type because the free tier caps tokens per minute, and one long entry is
+    most of a minute's budget: a user with an eight-minute recording will meet this in normal
+    use, not only under load.
+    """
+
+    def __init__(self, message: str, retry_after: Optional[str] = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+class GroqOrganiser:
+    """Both passes of the organiser against a Groq chat model.
+
+    `reasoning_effort` is set explicitly and deliberately. These are reasoning models and
+    reasoning counts against `max_completion_tokens`: left at the default, the assignment pass
+    spent 84% of its allowance thinking and returned an empty string, which the API reports as
+    `400 json_validate_failed` and which reads exactly like a broken prompt. "medium" also
+    groups better than "low", which split a colleague out of the work thread.
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str = DEFAULT_FORMATTING_MODEL,
+        base_url: str = GROQ_BASE_URL,
+        timeout: float = 120.0,
+    ) -> None:
+        self._api_key = api_key
+        self._model = model
+        self._base_url = base_url.rstrip("/")
+        self._timeout = timeout
+
+    async def _json_call(self, system: str, user: str, max_tokens: int) -> Dict[str, Any]:
+        body = {
+            "model": self._model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "temperature": 0.3,
+            "max_completion_tokens": max_tokens,
+            "reasoning_effort": "medium",
+            "response_format": {"type": "json_object"},
+        }
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                response = await client.post(
+                    f"{self._base_url}/chat/completions", headers=headers, json=body
+                )
+        except httpx.HTTPError as exc:
+            raise GroqError(f"Could not reach Groq: {exc}") from exc
+
+        if response.status_code == 429:
+            # Not a fault, a queue. Raised distinctly so the route can answer 429 with the
+            # provider's own Retry-After instead of a 502, which would tell the client the
+            # server is broken and invite it to hammer a bucket that needs a minute.
+            raise GroqRateLimited(
+                "Too many requests just now.",
+                retry_after=response.headers.get("retry-after"),
+            )
+        if response.status_code >= 400:
+            raise GroqError(f"Groq organising failed ({response.status_code}).")
+        try:
+            return json.loads(response.json()["choices"][0]["message"]["content"])
+        except (KeyError, ValueError) as exc:
+            raise GroqError("Groq returned something that was not the expected JSON.") from exc
+
+    async def assign(self, sentences: Sequence[str]) -> Dict[str, List[int]]:
+        numbered = "\n".join(f"{i}. {s}" for i, s in enumerate(sentences, 1))
+        tail = f"\n\n(That is {len(sentences)} lines. Assign every one.)"
+        payload = await self._json_call(ASSIGN_PROMPT, numbered + tail, 6000)
+        threads = payload.get("threads", {})
+        return {
+            str(name): [int(i) for i in lines if isinstance(i, (int, float))]
+            for name, lines in threads.items()
+            if isinstance(lines, list)
+        }
+
+    async def write(self, thread: str, lines: Sequence[str]) -> Dict[str, str]:
+        payload = await self._json_call(WRITE_PROMPT, "\n".join(lines), 2500)
+        return {
+            "heading": str(payload.get("heading", thread)),
+            "body": str(payload.get("body", "")),
+        }

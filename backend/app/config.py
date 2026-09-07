@@ -11,6 +11,11 @@ import os
 from dataclasses import dataclass
 from typing import Optional
 
+# Imported rather than repeated. These names were duplicated here, so a fix applied
+# to the provider's constants left the value the app actually uses untouched: /health
+# reported the good model while every request still called the retired one.
+from .providers.groq import DEFAULT_FORMATTING_MODEL, DEFAULT_TRANSCRIPTION_MODEL
+
 
 def _env(name: str) -> Optional[str]:
     """Environment value, treating blank as absent.
@@ -38,8 +43,8 @@ class Settings:
     # Groq Cloud. OpenAI-compatible, so switching providers is a base-URL change.
     groq_api_key: Optional[str] = None
     groq_base_url: str = "https://api.groq.com/openai/v1"
-    transcription_model: str = "whisper-large-v3-turbo"
-    formatting_model: str = "llama-3.3-70b-versatile"
+    transcription_model: str = DEFAULT_TRANSCRIPTION_MODEL
+    formatting_model: str = DEFAULT_FORMATTING_MODEL
 
     # Notion OAuth — from a public integration in Notion's developer settings.
     notion_client_id: Optional[str] = None
@@ -64,8 +69,8 @@ class Settings:
             api_key=_env("CP_API_KEY"),
             groq_api_key=_env("GROQ_API_KEY"),
             groq_base_url=_env("GROQ_BASE_URL") or "https://api.groq.com/openai/v1",
-            transcription_model=_env("CP_TRANSCRIPTION_MODEL") or "whisper-large-v3-turbo",
-            formatting_model=_env("CP_FORMATTING_MODEL") or "llama-3.3-70b-versatile",
+            transcription_model=_env("CP_TRANSCRIPTION_MODEL") or DEFAULT_TRANSCRIPTION_MODEL,
+            formatting_model=_env("CP_FORMATTING_MODEL") or DEFAULT_FORMATTING_MODEL,
             notion_client_id=_env("NOTION_CLIENT_ID"),
             notion_client_secret=_env("NOTION_CLIENT_SECRET"),
             notion_redirect_uri=_env("NOTION_REDIRECT_URI"),

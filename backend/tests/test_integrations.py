@@ -321,8 +321,12 @@ class TestEnvironmentNormalisation:
         ).is_configured is False
 
     def test_a_blank_model_override_falls_back_to_the_default(self, monkeypatch):
+        # Against the constant, never a literal. This assertion used to name the model
+        # directly, so when Groq retired it the test kept passing while the app 404'd.
+        from app.providers.groq import DEFAULT_FORMATTING_MODEL
+
         monkeypatch.setenv("CP_FORMATTING_MODEL", "")
-        assert Settings.from_env().formatting_model == "llama-3.3-70b-versatile"
+        assert Settings.from_env().formatting_model == DEFAULT_FORMATTING_MODEL
 
     def test_values_are_trimmed(self, monkeypatch):
         monkeypatch.setenv("CP_API_KEY", "  padded-key  ")

@@ -19,11 +19,14 @@ from .config import Settings
 from .connections import ConnectionStore
 from .idempotency import IdempotencyStore
 from .oauth import NotionOAuth
+from .organiser import ORGANISER_VERSION, organise
 from .providers.groq import (
     DEFAULT_FORMATTING_MODEL,
     DEFAULT_TRANSCRIPTION_MODEL,
     GroqError,
     GroqFormatter,
+    GroqOrganiser,
+    GroqRateLimited,
     GroqTranscriber,
     list_models,
 )
@@ -40,6 +43,9 @@ from .schemas import (
     EnsurePageResponse,
     FormatRequest,
     FormatResponse,
+    OrganiseRequest,
+    OrganiseResponse,
+    OrganisedSection,
     InsertContentRequest,
     InsertContentResponse,
     TranscriptionResponse,
@@ -47,7 +53,13 @@ from .schemas import (
     UploadFileResponse,
     VocabularyTerm,
 )
-from .services import EchoTranscriber, InMemoryNotion, PassthroughFormatter, insert_entry
+from .services import (
+    EchoTranscriber,
+    InMemoryNotion,
+    ParagraphOrganiser,
+    PassthroughFormatter,
+    insert_entry,
+)
 from .vocabulary import VocabularyStore
 from .wordguard import FormattingAlteredWordsError
 
@@ -56,6 +68,7 @@ def create_app(
     settings: Optional[Settings] = None,
     transcriber: Any = None,
     formatter: Any = None,
+    organiser: Any = None,
     notion: Any = None,
     connections: Optional[ConnectionStore] = None,
     vocabulary: Optional[VocabularyStore] = None,
@@ -88,6 +101,17 @@ def create_app(
             )
             if settings.has_groq
             else PassthroughFormatter()
+        )
+
+    if organiser is None:
+        organiser = (
+            GroqOrganiser(
+                api_key=settings.groq_api_key,
+                model=settings.formatting_model,
+                base_url=settings.groq_base_url,
+            )
+            if settings.has_groq
+            else ParagraphOrganiser()
         )
 
     fallback_notion = notion or InMemoryNotion()
@@ -181,9 +205,13 @@ def create_app(
             "notion_oauth_configured": oauth.is_configured,
             # Always visible, no network needed: you can see what is configured without
             # having to read the source to find out.
+            # From settings, not from the provider constants. Reporting the constant while
+            # the app calls something else is how a tripwire ends up pointing at the wrong
+            # wire, which is exactly what happened here: the constant was fixed, config still
+            # named the retired model, and /health would have said "available" either way.
             "models": {
-                "transcription": DEFAULT_TRANSCRIPTION_MODEL,
-                "formatting": DEFAULT_FORMATTING_MODEL,
+                "transcription": settings.transcription_model,
+                "formatting": settings.formatting_model,
             },
         }
 
@@ -232,6 +260,51 @@ def create_app(
         return await idempotency.run(idempotency_key, {"bytes": len(data)}, run)
 
     # --- Formatting ---------------------------------------------------------------
+
+    @app.post("/organise", response_model=OrganiseResponse)
+    async def organise_entry(
+        request: OrganiseRequest,
+        idempotency_key: Optional[str] = Header(default=None, alias="Idempotency-Key"),
+        _: None = Depends(require_auth),
+    ) -> OrganiseResponse:
+        """A rambling transcript in, a journal entry out, with its sources attached.
+
+        Distinct from `/format`, which is a copy-editor bound by `wordguard` to preserve every
+        word. This one is allowed to drop filler and move a thought from minute eight next to
+        one from minute one, because that is the product. What it is not allowed to do is lose
+        anything quietly, which `dropguard` enforces: every line is accounted for, and what
+        was discarded is checked to be filler in fact rather than filler by assertion.
+
+        `sources` on each section is the trust mechanism, not a debugging aid. It is what lets
+        the app show a line of the finished entry beside the words it came from.
+        """
+        async def run() -> OrganiseResponse:
+            try:
+                result = await organise(request.transcript, organiser, organiser)
+            except GroqRateLimited as exc:
+                # 429 rather than 502: the client already knows to back off and retry a 429,
+                # and telling it the server failed would be both wrong and counterproductive.
+                headers = {"Retry-After": exc.retry_after} if exc.retry_after else None
+                raise HTTPException(status_code=429, detail=str(exc), headers=headers)
+            except GroqError as exc:
+                raise HTTPException(status_code=502, detail=str(exc))
+
+            return OrganiseResponse(
+                sections=[
+                    OrganisedSection(
+                        heading=s["heading"], body=s["body"], sources=s["sources"]
+                    )
+                    for s in result.sections
+                ],
+                sentences=result.sentences,
+                dropped=result.dropped,
+                organiser_version=result.version,
+                repaired=len(result.repaired.wrongly_dropped) + len(result.repaired.unaccounted),
+            )
+
+        # The payload is part of the key's identity: the same key with a different
+        # transcript is a different operation, not a replay.
+        return await idempotency.run(idempotency_key, request.model_dump(), run)
 
     @app.post("/format", response_model=FormatResponse)
     async def format_entry(

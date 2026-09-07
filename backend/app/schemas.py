@@ -62,6 +62,33 @@ class FormatResponse(BaseModel):
     corrections: List[Correction] = Field(default_factory=list)
 
 
+class OrganiseRequest(BaseModel):
+    transcript: str
+    draft_id: str
+
+
+class OrganisedSection(BaseModel):
+    heading: str
+    body: str
+    #: 1-based indices into `sentences`. This is the whole trust mechanism: the client can
+    #: show any line of the finished entry alongside the words it was built from.
+    sources: List[int] = Field(default_factory=list)
+
+
+class OrganiseResponse(BaseModel):
+    sections: List[OrganisedSection] = Field(default_factory=list)
+    #: The transcript split the way the server split it. Returned rather than left to the
+    #: client to recompute, because two different splits would make `sources` point at the
+    #: wrong words, which is worse than not having them.
+    sentences: List[str] = Field(default_factory=list)
+    #: Lines dropped as filler, verified as filler rather than taken on trust. See dropguard.
+    dropped: List[int] = Field(default_factory=list)
+    organiser_version: str
+    #: How many lines the guard had to put back. Zero is the normal case; a non-zero number
+    #: means the model tried to discard or lose something that carried content.
+    repaired: int = 0
+
+
 class VocabularyTerm(BaseModel):
     term: str
 

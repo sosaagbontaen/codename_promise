@@ -25,6 +25,14 @@ class Formatter(Protocol):
     async def format(self, raw_text: str, protected: Sequence[str] = ()) -> str: ...
 
 
+class Organiser(Protocol):
+    """The two passes of turning a ramble into an entry. See `app/organiser.py`."""
+
+    async def assign(self, sentences: Sequence[str]) -> Dict[str, List[int]]: ...
+
+    async def write(self, thread: str, lines: Sequence[str]) -> Dict[str, str]: ...
+
+
 class NotionGateway(Protocol):
     async def ensure_page(
         self, entry_date: str, title: Optional[str], existing_page_id: Optional[str]
@@ -77,6 +85,31 @@ class PassthroughFormatter:
                 sentences = [s.strip() for s in line.replace("! ", "!|").replace("? ", "?|").replace(". ", ".|").split("|") if s.strip()]
                 out.extend(f"- {sentence}" for sentence in sentences)
         return "\n".join(out)
+
+
+class ParagraphOrganiser:
+    """Deterministic organising with no model behind it, for keyless development.
+
+    Groups by paragraph-ish runs rather than by meaning, which is honestly useless as a
+    journal and exactly right as a stub: the client can be built, the wire contract exercised
+    and the guards tested without credentials, and nobody can mistake the output for the real
+    feature. Same reasoning as `EchoTranscriber` never pretending to have heard anything.
+    """
+
+    async def assign(self, sentences: Sequence[str]) -> Dict[str, List[int]]:
+        from .dropguard import droppable
+
+        threads: Dict[str, List[int]] = {}
+        for index, sentence in enumerate(sentences, 1):
+            if droppable(sentence):
+                threads.setdefault("filler", []).append(index)
+            else:
+                # Runs of five, so there is more than one section to look at.
+                threads.setdefault(f"part {1 + (index - 1) // 5}", []).append(index)
+        return threads
+
+    async def write(self, thread: str, lines: Sequence[str]) -> Dict[str, str]:
+        return {"heading": thread.title(), "body": " ".join(lines)}
 
 
 class InMemoryNotion:
