@@ -344,6 +344,23 @@
             matters at two.</p><span class="done-when">two devices on the same backend cannot see or touch each other's data.</span>
         </div>
       </div>
+      <div class="task" data-kind="stop" data-title="Turn on Zero Data Retention in the Groq console" data-done="ZDR is on in Data Controls, and the policy sentence about deletion is true.">
+        <input type="checkbox" data-task="groq-zdr" id="i-groq-zdr">
+        <div class="task-body">
+          <label class="task-title" for="i-groq-zdr">Turn on Zero Data Retention in the Groq console<span class="badge stop">Blocker</span><span class="badge size">~5 minutes</span></label>
+          <p class="task-why">The privacy sentence you can ship depends on this switch. By
+            default Groq keeps nothing from an inference request, but reserves the right to log
+            inputs and outputs for up to 30 days when troubleshooting reliability or
+            investigating suspected abuse. Zero Data Retention removes that window, and it is
+            self-serve in Data Controls for every customer rather than an enterprise
+            negotiation. Audio sent to the transcription endpoints is covered on the same
+            terms as text. Groq is separately barred by its own services agreement from
+            training on inputs or outputs, and you keep the rights to both.</p>
+          <p class="task-why">Five minutes of clicking that decides whether the policy reads
+            &ldquo;sent to be transcribed and then deleted&rdquo; or has to allow for a
+            thirty-day abuse log. Do it before the policy is rewritten, not after.</p><span class="done-when">ZDR is on in Data Controls, and the policy sentence about deletion is true.</span>
+        </div>
+      </div>
       </div>
     </details>
 
