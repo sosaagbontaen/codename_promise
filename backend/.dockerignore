@@ -1,0 +1,16 @@
+# Secrets and state must never reach an image layer.
+.env
+.env.*
+.state/
+
+# Not needed at runtime.
+.venv/
+tests/
+evals/
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+README.md
+pytest.ini

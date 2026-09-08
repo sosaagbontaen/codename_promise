@@ -5,13 +5,18 @@ description = "Backend for Codename Promise — transcription, formatting, and N
 requires-python = ">=3.9"
 dependencies = [
     "fastapi>=0.110",
+    # Runtime, not dev. app/oauth.py, app/providers/groq.py and app/providers/notion_api.py
+    # all import it, so every real request goes through it. It sat under dev extras and
+    # nobody noticed, because a dev virtualenv installs those and the tests pass either way.
+    # A clean `pip install .` produced an app that could not import.
+    "httpx>=0.27",
     "pydantic>=2",
     "python-multipart>=0.0.9",
     "uvicorn[standard]>=0.27",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "httpx>=0.27"]
+dev = ["pytest>=8"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
