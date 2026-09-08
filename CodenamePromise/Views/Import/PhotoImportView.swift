@@ -25,8 +25,18 @@ struct PhotoImportView: View {
     /// A second picker, used from the review screen. Separate from `selections` so that
     /// adding more photos appends to what is already staged instead of replacing it.
     @State private var moreSelections: [PhotosPickerItem] = []
-    /// Which group is choosing an entry from another day, by group id.
-    @State private var choosingEntryFor: String?
+    /// Overrides for individual items, by staged id.
+    ///
+    /// Grouping by date is the default and it is usually right, but "usually" is not "always":
+    /// one photo in a day's batch often belongs to a different entry than the rest of them.
+    /// A per-day choice alone forced the whole batch to move together, so the only way to
+    /// split one out was to import twice.
+    ///
+    /// Absent means "whatever the day is doing", so changing a day's destination still moves
+    /// everything that has not been individually pinned.
+    @State private var itemDestinations: [UUID: ImportDestination] = [:]
+    /// Whichever group or item is currently choosing an entry from the whole journal.
+    @State private var choosing: ChooserTarget?
     /// Progress while adding a second batch. Deliberately not the `phase` enum: switching
     /// phase swaps `reviewView` out of the hierarchy, and it owns the picker that is at that
     /// moment still dismissing itself. Destroying it took the whole sheet down with it.
@@ -62,7 +72,7 @@ struct PhotoImportView: View {
                         // "Import", not "Add": there is an "Add more photos" row further
                         // down, and two buttons both saying add is a coin toss.
                         Button("Import") { Task { await apply() } }
-                            .disabled(groups.allSatisfy { destinations[$0.id] == .skip })
+                            .disabled(nothingToImport)
                     }
                 }
             }
@@ -79,12 +89,12 @@ struct PhotoImportView: View {
                 moreSelections = []
             }
         }
-        .sheet(item: Binding(
-            get: { choosingEntryFor.map(GroupID.init) },
-            set: { choosingEntryFor = $0?.rawValue }
-        )) { target in
+        .sheet(item: $choosing) { target in
             EntryChooser(store: store) { chosen in
-                destinations[target.rawValue] = .existingDraft(chosen)
+                switch target {
+                case .group(let id): destinations[id] = .existingDraft(chosen)
+                case .item(let id): itemDestinations[id] = .existingDraft(chosen)
+                }
             }
         }
     }
@@ -129,8 +139,10 @@ struct PhotoImportView: View {
                     destinationPicker(for: group)
 
                     // Only when a new entry is actually being made — otherwise this is a
-                    // field that does nothing, which is worse than no field.
-                    if binding(for: group).wrappedValue == .newDraft {
+                    // field that does nothing, which is worse than no field. Checked across
+                    // the items too, since one pinned photo can be the only thing creating
+                    // the entry this title would name.
+                    if makesNewEntry(group) {
                         TextField(
                             "Title for this entry (optional)",
                             text: titleBinding(for: group)
@@ -140,8 +152,13 @@ struct PhotoImportView: View {
                 } header: {
                     Text(header(for: group))
                 } footer: {
-                    if group.isUndated {
-                        Text("These files carry no date, like a screenshot or an image another app re-saved. Choose where they go.")
+                    VStack(alignment: .leading, spacing: 6) {
+                        if group.isUndated {
+                            Text("These files carry no date, like a screenshot or an image another app re-saved. Choose where they go.")
+                        }
+                        // A menu on a thumbnail is invisible until somebody happens to press
+                        // one, and nobody presses a thumbnail expecting a menu.
+                        Text("Tap a photo to send just that one somewhere else.")
                     }
                 }
             }
@@ -175,27 +192,104 @@ struct PhotoImportView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 ForEach(items(in: group)) { media in
-                    Group {
-                        if let thumbnail = media.thumbnail {
-                            Image(uiImage: thumbnail).resizable().scaledToFill()
-                        } else {
-                            Color.secondary.opacity(0.15)
-                        }
-                    }
-                    .frame(width: 56, height: 56)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(alignment: .bottomTrailing) {
-                        if media.kind == .video {
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 8))
-                                .foregroundStyle(.white)
-                                .padding(3)
-                        }
+                    Menu {
+                        itemMenu(for: media, in: group)
+                    } label: {
+                        thumbnail(media, pinned: itemDestinations[media.id] != nil)
                     }
                 }
             }
             .padding(.vertical, 2)
         }
+    }
+
+    private func thumbnail(_ media: StagedMedia, pinned: Bool) -> some View {
+        Group {
+            if let thumbnail = media.thumbnail {
+                Image(uiImage: thumbnail).resizable().scaledToFill()
+            } else {
+                Color.secondary.opacity(0.15)
+            }
+        }
+        .frame(width: 56, height: 56)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        // Says which photos have been pulled out of the day's choice. Without it the list
+        // looks identical whether one item is going somewhere else or not, and the only way
+        // to find out is to open every thumbnail in turn.
+        .overlay {
+            if pinned {
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Brand.violet, lineWidth: 2)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if pinned {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(3)
+                    .background(Brand.violet, in: Circle())
+                    .offset(x: 4, y: -4)
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if media.kind == .video {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(.white)
+                    .padding(3)
+            }
+        }
+    }
+
+    /// Where this one photo goes, independently of the rest of its day.
+    @ViewBuilder
+    private func itemMenu(for media: StagedMedia, in group: MediaDayGrouping.Group) -> some View {
+        if itemDestinations[media.id] != nil {
+            Button {
+                itemDestinations.removeValue(forKey: media.id)
+            } label: {
+                Label("Follow this day\u{2019}s choice", systemImage: "arrow.uturn.backward")
+            }
+            Divider()
+        }
+
+        ForEach(existingDrafts(for: group.day), id: \.id) { draft in
+            Button(label(for: draft, in: group)) {
+                itemDestinations[media.id] = .existingDraft(draft.id)
+            }
+        }
+
+        Button {
+            choosing = .item(media.id)
+        } label: {
+            Label("Another entry\u{2026}", systemImage: "tray.and.arrow.down")
+        }
+
+        Button {
+            itemDestinations[media.id] = .newDraft
+        } label: {
+            Label(group.isUndated ? "New entry (today)" : "New entry", systemImage: "plus")
+        }
+
+        Button(role: .destructive) {
+            itemDestinations[media.id] = .skip
+        } label: {
+            Label("Skip this one", systemImage: "xmark")
+        }
+    }
+
+    /// Whether this day will create a new entry, whether because the day says so or because
+    /// a single photo in it was pinned to one.
+    private func makesNewEntry(_ group: MediaDayGrouping.Group) -> Bool {
+        items(in: group).contains { destination(for: $0, in: group) == .newDraft }
+    }
+
+    /// Where an item actually ends up: its own choice if it has one, otherwise its day's.
+    private func destination(
+        for media: StagedMedia, in group: MediaDayGrouping.Group
+    ) -> ImportDestination {
+        itemDestinations[media.id] ?? binding(for: group).wrappedValue
     }
 
     @ViewBuilder
@@ -215,7 +309,7 @@ struct PhotoImportView: View {
         // could only ever become a new entry for today. That is the common case, not an edge
         // case, and it made the feature useless for filling in an entry you already started.
         Button {
-            choosingEntryFor = group.id
+            choosing = .group(group.id)
         } label: {
             Label("Add to a different entry\u{2026}", systemImage: "tray.and.arrow.down")
                 .font(.subheadline)
@@ -236,6 +330,16 @@ struct PhotoImportView: View {
             options.append(chosen)
         }
         return options
+    }
+
+    /// True when every single item, day choice and pin included, resolves to skip.
+    ///
+    /// Checked per item rather than per day: one photo pinned to an entry is a reason to
+    /// enable the button even if every day around it is being skipped.
+    private var nothingToImport: Bool {
+        groups.allSatisfy { group in
+            items(in: group).allSatisfy { destination(for: $0, in: group) == .skip }
+        }
     }
 
     // MARK: - Grouping
@@ -364,33 +468,43 @@ struct PhotoImportView: View {
         var added = 0
         var entries = 0
 
+        // One new entry per day, not per photo. Several items in a day can all resolve to
+        // "new entry" — because the day says so, or because they were each pinned to it —
+        // and they belong together in one entry rather than in four entries for one Tuesday.
+        var madeForGroup: [String: EntryDraft] = [:]
+
         for group in groups {
-            let destination = destinations[group.id] ?? defaultDestination(for: group)
-            guard destination != .skip else { continue }
-
-            let draft: EntryDraft?
-            switch destination {
-            case .existingDraft(let id):
-                draft = try? store.draft(id: id)
-            case .newDraft:
-                // An undated group has no day to file under, so it becomes today's entry —
-                // the user can move it with the date picker.
-                let created = try? store.createDraft(entryDate: group.day)
-                if let created {
-                    let title = (newEntryTitles[group.id] ?? "")
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !title.isEmpty {
-                        try? store.updateTitle(title, for: created)
-                    }
-                    entries += 1
-                }
-                draft = created
-            case .skip:
-                draft = nil
-            }
-            guard let draft else { continue }
-
             for media in items(in: group) {
+                let target = destination(for: media, in: group)
+                guard target != .skip else { continue }
+
+                let draft: EntryDraft?
+                switch target {
+                case .existingDraft(let id):
+                    draft = try? store.draft(id: id)
+                case .newDraft:
+                    if let already = madeForGroup[group.id] {
+                        draft = already
+                    } else {
+                        // An undated group has no day to file under, so it becomes today's
+                        // entry — the user can move it with the date picker.
+                        let created = try? store.createDraft(entryDate: group.day)
+                        if let created {
+                            let title = (newEntryTitles[group.id] ?? "")
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !title.isEmpty {
+                                try? store.updateTitle(title, for: created)
+                            }
+                            madeForGroup[group.id] = created
+                            entries += 1
+                        }
+                        draft = created
+                    }
+                case .skip:
+                    draft = nil
+                }
+                guard let draft else { continue }
+
                 if (try? store.attachMedia(
                     from: media.url, kind: media.kind, to: draft, fileStore: fileStore
                 )) != nil {
@@ -426,11 +540,17 @@ struct StagedMedia: Identifiable {
     var thumbnail: UIImage?
 }
 
-/// `sheet(item:)` needs something Identifiable, and a group id is a bare String.
-private struct GroupID: Identifiable {
-    let rawValue: String
-    var id: String { rawValue }
-    init(_ rawValue: String) { self.rawValue = rawValue }
+/// What is currently picking an entry: a whole day, or one photo out of it.
+private enum ChooserTarget: Identifiable {
+    case group(String)
+    case item(UUID)
+
+    var id: String {
+        switch self {
+        case .group(let value): "group:\(value)"
+        case .item(let value): "item:\(value.uuidString)"
+        }
+    }
 }
 
 /// Pick any entry in the journal, for photos that belong to a day other than their own.
