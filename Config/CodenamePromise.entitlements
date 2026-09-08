@@ -1,6 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
+<!--
+  NOT WIRED INTO THE BUILD.
+
+  CODE_SIGN_ENTITLEMENTS is deliberately absent from project.pbxproj. Adding it makes
+  simulator builds pass (ad-hoc signing ignores entitlements) and device builds fail with
+  "Provisioning profile ... doesn't include the iCloud capability", because the App ID has
+  no iCloud capability and this container does not exist yet.
+
+  To turn iCloud backup on, in this order:
+    1. Xcode, target CodenamePromise, Signing & Capabilities, + Capability, iCloud.
+       Tick CloudKit and iCloud Documents, and add the container below.
+    2. Add back to both build configurations:
+         CODE_SIGN_ENTITLEMENTS = Config/CodenamePromise.entitlements;
+    3. Build to a device and check Settings: the switch should stop saying
+       "This build isn't set up for iCloud yet".
+
+  Nothing breaks in the meantime. BackupMode defaults to thisPhoneOnly, and asking for
+  iCloud without the entitlement falls back to local and says so.
+-->
 <dict>
 	<!-- Named after the person rather than the product, so a rename never orphans it.
 	     Permanent once data has been written. See CloudContainer in Core. -->

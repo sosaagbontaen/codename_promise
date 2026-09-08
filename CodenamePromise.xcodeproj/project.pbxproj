@@ -215,7 +215,6 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				CODE_SIGN_ENTITLEMENTS = Config/CodenamePromise.entitlements;
 				PRODUCT_BUNDLE_IDENTIFIER = com.codenamepromise.journal;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -256,7 +255,6 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				CODE_SIGN_ENTITLEMENTS = Config/CodenamePromise.entitlements;
 				PRODUCT_BUNDLE_IDENTIFIER = com.codenamepromise.journal;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
