@@ -27,6 +27,10 @@ struct PhotoImportView: View {
     @State private var moreSelections: [PhotosPickerItem] = []
     /// Which group is choosing an entry from another day, by group id.
     @State private var choosingEntryFor: String?
+    /// Progress while adding a second batch. Deliberately not the `phase` enum: switching
+    /// phase swaps `reviewView` out of the hierarchy, and it owns the picker that is at that
+    /// moment still dismissing itself. Destroying it took the whole sheet down with it.
+    @State private var addingMore: (done: Int, total: Int)?
     @State private var phase: Phase = .picking
     @State private var summary: String?
 
@@ -55,7 +59,9 @@ struct PhotoImportView: View {
                 }
                 if phase == .review {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Add") { Task { await apply() } }
+                        // "Import", not "Add": there is an "Add more photos" row further
+                        // down, and two buttons both saying add is a coin toss.
+                        Button("Import") { Task { await apply() } }
                             .disabled(groups.allSatisfy { destinations[$0.id] == .skip })
                     }
                 }
@@ -149,6 +155,17 @@ struct PhotoImportView: View {
                     matching: .any(of: [.images, .videos])
                 ) {
                     Label("Add more photos", systemImage: "plus.circle")
+                }
+                .disabled(addingMore != nil)
+
+                if let addingMore {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Reading dates: \(addingMore.done) of \(addingMore.total)")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }
@@ -292,11 +309,13 @@ struct PhotoImportView: View {
     ///   already staged is kept. Replacing it was why forgetting one photo meant starting
     ///   the whole import again.
     private func load(_ items: [PhotosPickerItem], appending: Bool = false) async {
-        phase = .loading(done: 0, total: items.count)
+        // Appending reports progress in place. See `addingMore` for why this must not touch
+        // `phase`.
+        if appending { addingMore = (0, items.count) } else { phase = .loading(done: 0, total: items.count) }
         var loaded: [StagedMedia] = []
 
         for (index, item) in items.enumerated() {
-            phase = .loading(done: index, total: items.count)
+            if appending { addingMore = (index, items.count) } else { phase = .loading(done: index, total: items.count) }
             if let media = await stage(item) { loaded.append(media) }
         }
 
@@ -307,7 +326,8 @@ struct PhotoImportView: View {
         summary = staged.isEmpty
             ? "Nothing could be read from those items."
             : "\(staged.count) items across \(days) days."
-        phase = .review
+        addingMore = nil
+        if !appending { phase = .review }
     }
 
     /// Copies the item somewhere stable and reads its capture date.
