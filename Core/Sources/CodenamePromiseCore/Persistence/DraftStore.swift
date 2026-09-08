@@ -247,10 +247,44 @@ public final class DraftStore {
             originalSizeBytes: adopted.sizeBytes,
             createdAt: clock()
         )
+        // Assigned here rather than left at the default, for the same reason chunkIndex is.
+        // Every item sat at 0, so `orderedMedia` fell through to sorting by UUID string:
+        // photos came back in an order nobody chose and which changed nothing to fix.
+        item.sortIndex = nextSortIndex(in: draft)
         context.insert(item)
         draft.attach(item, now: clock())
         try flush()
         return item
+    }
+
+    /// One past the last photo on the draft, so an attachment lands at the end.
+    public func nextSortIndex(in draft: EntryDraft) -> Int {
+        (draft.media.map(\.sortIndex).max() ?? -1) + 1
+    }
+
+    /// Puts the draft's media in the given order.
+    ///
+    /// The first one is the entry's cover: the list and the collage both read
+    /// `orderedMedia.first`, so this is how somebody chooses which photo represents a day.
+    ///
+    /// Ids not on the draft are ignored, and any of the draft's media the caller left out
+    /// keeps its place at the end rather than being dropped. Losing a photo because a caller
+    /// passed a stale list is not a trade worth making for a tidier signature.
+    public func reorderMedia(_ orderedIds: [UUID], in draft: EntryDraft) throws {
+        var index = 0
+        var placed = Set<UUID>()
+        for id in orderedIds {
+            guard let item = draft.media.first(where: { $0.id == id }), !placed.contains(id)
+            else { continue }
+            item.sortIndex = index
+            placed.insert(id)
+            index += 1
+        }
+        for item in draft.media where !placed.contains(item.id) {
+            item.sortIndex = index
+            index += 1
+        }
+        try flush()
     }
 
     /// Copies an entry into a new one.

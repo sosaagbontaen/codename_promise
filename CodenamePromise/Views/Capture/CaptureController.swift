@@ -286,6 +286,19 @@ final class CaptureController {
 
     // MARK: - Media
 
+    /// Puts the photos in the order the user dragged them into. The first is the cover the
+    /// entry list shows.
+    func reorderMedia(_ ids: [UUID]) {
+        do {
+            try store.reorderMedia(ids, in: draft)
+            saveState = .saved
+        } catch {
+            saveState = .failed(error.localizedDescription)
+            Haptics.failed()
+        }
+    }
+
+
     /// PhotosUI hands over `Data`, not a stable URL. It goes to a temp file purely so
     /// `MediaFileStore.adopt` can copy it into the container — the temp file is never
     /// referenced by a model. See ADR-007.

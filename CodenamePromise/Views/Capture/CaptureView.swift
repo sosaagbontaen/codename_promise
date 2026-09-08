@@ -30,6 +30,7 @@ struct CaptureView: View {
     @State private var selectedMedia = Set<UUID>()
     @State private var selectingMedia = false
     @State private var showingMoveSheet = false
+    @State private var showingReorder = false
     @State private var moveNotice: String?
 
     /// Which version of the entry is on screen. `rawText` is always editable; the AI's
@@ -137,6 +138,11 @@ struct CaptureView: View {
             .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showingSendSheet) { sendSheet }
+        .sheet(isPresented: $showingReorder) {
+            MediaOrderSheet(items: controller.orderedMedia, fileStore: fileStore) { ids in
+                controller.reorderMedia(ids)
+            }
+        }
         .sheet(isPresented: $showingEntryPicker) {
             if let service = services.connectionService {
                 ExistingEntryPicker(service: service) { page in
@@ -366,6 +372,15 @@ struct CaptureView: View {
                     selectingMedia = true
                 } label: {
                     Label("Select", systemImage: "checkmark.circle")
+                }
+
+                // Only worth offering once there is an order to have.
+                if controller.orderedMedia.count > 1 {
+                    Button {
+                        showingReorder = true
+                    } label: {
+                        Label("Reorder", systemImage: "arrow.up.arrow.down")
+                    }
                 }
                 if let moveNotice {
                     Text(moveNotice)
