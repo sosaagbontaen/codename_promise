@@ -29,6 +29,41 @@ tired. Three quarters of somebody's day, and the output looked completely fine.
 Without the accounting there is no way to see that from the result. That failure is the entire
 argument for the design.
 
+## The second argument for the design
+
+The guard was built to stop the model *summarising*. It turns out to be the same mechanism
+that stops it *censoring*, which nobody designed for and which matters more.
+
+`ramble_hard.txt` is an ordinary bad day: a four-am anxiety spiral, drinking alone after three
+weeks of not, grief about a dead father, and anger that frightened the writer because it was
+his. Nothing gratuitous. The kind of entry a journal exists to hold.
+
+| | `ramble.txt` (neutral) | `ramble_hard.txt` |
+|---|---|---|
+| Sentences | 55 | 39 |
+| Dropped | 6 (11%) | 4 (10%) |
+| **Rescued** | **0** | **6** |
+| Silent losses | 0 | 0 |
+
+Same model, same prompt, same guard, near-identical drop rates. The model does not discard
+*more* on the hard entry; it discards *differently*. On neutral content every drop was provably
+filler, so nothing needed rescuing. On the hard entry six of ten drop attempts were not filler,
+including:
+
+    "I don't want it to be."                                    (about the drinking)
+    "Then I got angry, properly fucking angry, at nothing, at the cupboard."
+
+Those are the emotional centre of the entry and its most vivid sentence. It never refused the
+request; it just quietly tried to tidy the hard parts away, and only the hard parts.
+
+**One run per condition.** A strong signal, not a measured rate, and it should be repeated
+before anybody quotes the numbers. The direction is not ambiguous.
+
+The consequence for the product: someone must be able to put whatever they want in a journal,
+and the reason they can is mechanical rather than a promise. `dropguard` does not trust the
+model's judgement about what matters. **Do not relax it to reduce the rescue count** — a high
+rescue count on a hard entry is the guard working, not the guard misfiring.
+
 ## Where it stands
 
 After raising the completion ceiling and telling the model how many lines it must account for:
