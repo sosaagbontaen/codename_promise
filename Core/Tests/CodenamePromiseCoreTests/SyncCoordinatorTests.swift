@@ -255,6 +255,10 @@ struct SyncCoordinatorTests {
         #expect(item.uploadStatus == .failed)
     }
 
+    /// Fails at the last step rather than at the insert, because the insert now happens
+    /// before any upload: the words go first, so failing there means nothing was uploaded at
+    /// all. Breaking at the properties leaves the interesting state — files sent, sync
+    /// incomplete — which is what a resume has to not repeat.
     @Test("a resumed sync does not re-upload files it already sent")
     func uploadsAreNotRepeatedOnResume() async throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
@@ -262,7 +266,7 @@ struct SyncCoordinatorTests {
         try attachPhoto(h, name: "a.png")
         try attachPhoto(h, name: "b.png")
         let api = StubNotionAPI()
-        await api.setFailure(.insertContent)
+        await api.setFailure(.updateProperties)
         let sut = SyncCoordinator(store: h.store, fileStore: h.files, notion: api, clock: { now })
 
         _ = await sut.sync(draftId: h.draft.id)
@@ -271,6 +275,25 @@ struct SyncCoordinatorTests {
         await api.setFailure(nil)
         #expect(await sut.sync(draftId: h.draft.id) == .synced)
         #expect(await api.callCount(.uploadFile) == 2, "already-uploaded files must not be re-sent")
+    }
+
+    /// The reason the order changed. Uploading is the slow part and the part most likely to
+    /// fail, so it must not stand in front of the words: an entry whose photos have not
+    /// arrived is a page worth having, and an empty page is not.
+    @Test("the words reach the destination even when every upload fails")
+    func wordsSurviveFailedUploads() async throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let h = try makeHarness(now: now)
+        try attachPhoto(h, name: "a.png")
+        let api = StubNotionAPI()
+        await api.setFailure(.uploadFile)
+        let sut = SyncCoordinator(store: h.store, fileStore: h.files, notion: api, clock: { now })
+
+        _ = await sut.sync(draftId: h.draft.id)
+
+        #expect(await api.callCount(.insertContent) >= 1, "the text must already have been sent")
+        let state = h.draft.syncState(for: .notion)
+        #expect(!state.insertedBlockIds.isEmpty, "and its blocks recorded")
     }
 
     // MARK: - Interruption and concurrency
@@ -559,12 +582,14 @@ struct AppendModeTests {
 @Suite("Sync progress")
 struct SyncProgressTests {
 
-    @Test("progress only ever moves forward through the phases")
+    @Test("progress only ever moves forward through the stages")
     func progressIsMonotonic() {
         let steps: [SyncProgress] = [
-            .preparing, .creatingPage, .uploading(done: 0, total: 4),
-            .uploading(done: 2, total: 4), .uploading(done: 4, total: 4),
-            .writingContent, .updatingProperties, .finishing,
+            .preparing, .creatingPage, .writingText,
+            .uploadingPhotos(done: 0, total: 4), .uploadingPhotos(done: 2, total: 4),
+            .uploadingPhotos(done: 4, total: 4), .attachingPhotos,
+            .uploadingVideos(done: 0, total: 2), .uploadingVideos(done: 2, total: 2),
+            .attachingVideos, .updatingProperties, .finishing,
         ]
         let fractions = steps.map(\.fraction)
         #expect(fractions == fractions.sorted())
@@ -572,24 +597,72 @@ struct SyncProgressTests {
         #expect(fractions.last! == 1.0)
     }
 
-    @Test("an entry with no photos skips straight past the upload band")
-    func noMediaSkipsUploadBand() {
-        #expect(SyncProgress.uploading(done: 0, total: 0).fraction == SyncProgress.writingContent.fraction)
+    @Test("an entry with no media skips straight past the upload bands")
+    func noMediaSkipsUploadBands() {
+        #expect(SyncProgress.uploadingPhotos(done: 0, total: 0).fraction
+                == SyncProgress.attachingPhotos.fraction)
+        #expect(SyncProgress.uploadingVideos(done: 0, total: 0).fraction
+                == SyncProgress.attachingVideos.fraction)
     }
 
-    @Test("photo progress is counted, not guessed")
+    @Test("upload progress is counted, not guessed")
     func uploadProgressIsProportional() {
-        let half = SyncProgress.uploading(done: 2, total: 4).fraction
-        let all = SyncProgress.uploading(done: 4, total: 4).fraction
+        let half = SyncProgress.uploadingPhotos(done: 2, total: 4).fraction
+        let all = SyncProgress.uploadingPhotos(done: 4, total: 4).fraction
         #expect(half < all)
-        #expect(half > SyncProgress.creatingPage.fraction)
+        #expect(half > SyncProgress.writingText.fraction)
+    }
+
+    /// The words are the first thing sent, so the bar must show them early rather than
+    /// leaving somebody watching an upload with no idea whether their writing arrived.
+    @Test("the words are sent before any media")
+    func wordsComeFirst() {
+        #expect(SyncProgress.writingText.fraction < SyncProgress.uploadingPhotos(done: 0, total: 3).fraction)
+        #expect(SyncProgress.uploadingPhotos(done: 3, total: 3).fraction
+                <= SyncProgress.uploadingVideos(done: 0, total: 1).fraction)
     }
 
     @Test("messages describe the entry, not the API call")
     func messagesAreHumane() {
-        #expect(SyncProgress.uploading(done: 1, total: 3).message == "Uploading photo 2 of 3…")
-        #expect(SyncProgress.uploading(done: 0, total: 1).message == "Uploading photo…")
+        #expect(SyncProgress.writingText.message == "Sending your words…")
+        #expect(SyncProgress.uploadingPhotos(done: 1, total: 3).message == "Sending photo 2 of 3…")
+        #expect(SyncProgress.uploadingPhotos(done: 0, total: 1).message == "Sending your photo…")
+        #expect(SyncProgress.uploadingVideos(done: 0, total: 1).message == "Sending your video…")
         #expect(SyncProgress.findingPage.message == "Opening the entry…")
+    }
+
+    // The checklist the UI draws. Each stage is either waiting, working, or done, and the
+    // three together are the whole story — which is what "never in the dark" means.
+
+    @Test("the stage being worked on is named")
+    func stageIsNamed() {
+        #expect(SyncProgress.writingText.stage == .words)
+        #expect(SyncProgress.uploadingPhotos(done: 0, total: 1).stage == .photos)
+        #expect(SyncProgress.attachingVideos.stage == .videos)
+        #expect(SyncProgress.creatingPage.stage == nil)
+    }
+
+    @Test("earlier stages are ticked once the work has moved on")
+    func earlierStagesAreDone() {
+        let sendingVideos = SyncProgress.uploadingVideos(done: 0, total: 1)
+        #expect(sendingVideos.hasFinished(.words))
+        #expect(sendingVideos.hasFinished(.photos))
+        #expect(sendingVideos.hasFinished(.videos) == false, "it is in progress, not done")
+    }
+
+    @Test("nothing is ticked before any of it has been sent")
+    func nothingDoneAtTheStart() {
+        for stage in SyncProgress.Stage.allCases {
+            #expect(SyncProgress.creatingPage.hasFinished(stage) == false)
+        }
+    }
+
+    @Test("everything is ticked at the end")
+    func allDoneAtTheEnd() {
+        for stage in SyncProgress.Stage.allCases {
+            #expect(SyncProgress.finishing.hasFinished(stage))
+            #expect(SyncProgress.updatingProperties.hasFinished(stage))
+        }
     }
 }
 

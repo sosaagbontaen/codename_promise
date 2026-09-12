@@ -40,7 +40,22 @@ public final class SyncState {
 
     /// Block IDs written by `insert-content`, so a resume can verify or patch instead of
     /// blindly re-inserting.
+    ///
+    /// Since the text is written before the media, this holds the text blocks only. The two
+    /// below hold the rest.
     public var insertedBlockIds: [String] = []
+
+    /// Blocks holding the photos, and the ones holding the videos.
+    ///
+    /// Tracked apart from the text because they are written in separate calls, and the server
+    /// deletes exactly the ids it is given. One shared list would mean a resume either
+    /// replaced blocks another stage owns or re-appended the ones it already wrote — the
+    /// entry losing its words or gaining a second copy of every photo.
+    ///
+    /// Empty is the honest starting value for an entry that has neither, which is what makes
+    /// this a lightweight migration. See ADR-008a.
+    public var photoBlockIds: [String] = []
+    public var videoBlockIds: [String] = []
 
     /// Which destination the cached IDs above belong to. See `adoptDestination`.
     public var destinationFingerprint: String?
@@ -97,7 +112,7 @@ public final class SyncState {
             attemptContentHash = contentHash
             attemptId = UUID().uuidString
             phase = .notStarted
-            // `insertedBlockIds` and `uploadedFileIds` are deliberately NOT cleared. They
+            // The block id lists and `uploadedFileIds` are deliberately NOT cleared. They
             // describe what already exists *in the destination*, not what this attempt has
             // done, so they outlive the attempt that created them. Clearing them would make
             // the next insert append a second copy of the entry beside the first — the same
@@ -138,11 +153,16 @@ public final class SyncState {
             return false
         }
 
-        let hadState = externalId != nil || !uploadedFileIds.isEmpty || !insertedBlockIds.isEmpty
+        let hadState = externalId != nil || !uploadedFileIds.isEmpty
+            || !insertedBlockIds.isEmpty || !photoBlockIds.isEmpty || !videoBlockIds.isEmpty
         destinationFingerprint = fingerprint
         externalId = nil
         uploadedFileIds = [:]
         insertedBlockIds = []
+        // Same reasoning as the text blocks: ids issued by another workspace are not stale
+        // here, they are fabrications.
+        photoBlockIds = []
+        videoBlockIds = []
         syncedContentHash = nil
         attemptId = nil
         attemptContentHash = nil

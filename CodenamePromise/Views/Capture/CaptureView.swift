@@ -667,13 +667,17 @@ struct CaptureView: View {
     @ViewBuilder
     private var syncProgressBar: some View {
         if let step = services.sync?.progress(for: controller.draftId) {
-            VStack(alignment: .leading, spacing: 4) {
-                ProgressView(value: step.fraction)
-                Text(step.message).font(.caption).foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            SyncStagesView(progress: step, absent: absentStages)
         }
+    }
+
+    /// Stages this entry has nothing to send for, so they can be shown as skipped rather
+    /// than as work that never starts.
+    private var absentStages: Set<SyncProgress.Stage> {
+        var absent: Set<SyncProgress.Stage> = []
+        if !controller.orderedMedia.contains(where: { $0.kind == .photo }) { absent.insert(.photos) }
+        if !controller.orderedMedia.contains(where: { $0.kind == .video }) { absent.insert(.videos) }
+        return absent
     }
 
 

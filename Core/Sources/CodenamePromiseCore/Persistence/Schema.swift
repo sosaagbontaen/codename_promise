@@ -60,9 +60,32 @@ public enum SchemaV2: VersionedSchema {
 /// that produced "Couldn't open your journal" on a phone holding real entries.
 ///
 /// This one points at the live model types, which is the privilege of being newest. The
-/// moment a v4 exists, these get frozen into a `SchemaV3Models.swift` first — see rule 4.
+/// Its models are frozen in `SchemaV3Models.swift`, because v4 exists.
 public enum SchemaV3: VersionedSchema {
     public static var versionIdentifier: Schema.Version { Schema.Version(3, 0, 0) }
+
+    public static var models: [any PersistentModel.Type] {
+        [SchemaV3.EntryDraft.self, SchemaV3.MediaItem.self,
+         SchemaV3.AudioCapture.self, SchemaV3.SyncState.self]
+    }
+}
+
+/// Adds per-stage block tracking: `SyncState.photoBlockIds` and `SyncState.videoBlockIds`.
+///
+/// The words are now written to a destination before the media, in three calls rather than
+/// one, and the server deletes exactly the block ids it is handed. One shared list would mean
+/// a resumed sync either replaced blocks a different stage owns — the entry losing its
+/// words — or re-appended the ones it had already written, giving the page a second copy of
+/// every photo.
+///
+/// Both are arrays with an empty default, which is what keeps this lightweight. They live on
+/// `SyncState`, which is a `@Model`, not inside a `Codable` composite: that distinction is
+/// ADR-008a and the reason this migration opens the store instead of failing on a mandatory
+/// attribute.
+///
+/// Its models are the live types, which is the privilege of being newest.
+public enum SchemaV4: VersionedSchema {
+    public static var versionIdentifier: Schema.Version { Schema.Version(4, 0, 0) }
 
     public static var models: [any PersistentModel.Type] {
         [EntryDraft.self, MediaItem.self, AudioCapture.self, SyncState.self]
@@ -71,7 +94,7 @@ public enum SchemaV3: VersionedSchema {
 
 public enum CodenamePromiseMigrationPlan: SchemaMigrationPlan {
     public static var schemas: [any VersionedSchema.Type] {
-        [SchemaV1.self, SchemaV2.self, SchemaV3.self]
+        [SchemaV1.self, SchemaV2.self, SchemaV3.self, SchemaV4.self]
     }
 
     public static var stages: [MigrationStage] {
@@ -81,6 +104,7 @@ public enum CodenamePromiseMigrationPlan: SchemaMigrationPlan {
         [
             .lightweight(fromVersion: SchemaV1.self, toVersion: SchemaV2.self),
             .lightweight(fromVersion: SchemaV2.self, toVersion: SchemaV3.self),
+            .lightweight(fromVersion: SchemaV3.self, toVersion: SchemaV4.self),
         ]
     }
 }
@@ -88,5 +112,5 @@ public enum CodenamePromiseMigrationPlan: SchemaMigrationPlan {
 public enum CodenamePromiseSchema {
     /// Always build containers from this, never from an ad-hoc `Schema([...])` — an
     /// unversioned container is how you end up unable to migrate.
-    public static var current: Schema { Schema(versionedSchema: SchemaV3.self) }
+    public static var current: Schema { Schema(versionedSchema: SchemaV4.self) }
 }

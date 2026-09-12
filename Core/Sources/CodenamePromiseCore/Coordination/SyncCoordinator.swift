@@ -108,12 +108,48 @@ public final class SyncCoordinator {
             report(draftId, state.appendsToExistingPage ? .findingPage : .creatingPage)
             let pageId = try await ensurePage(draft: draft, state: state, snapshot: snapshot)
 
-            let fileIds = await uploadPendingMedia(draft: draft, state: state) { done, total in
-                self.report(draftId, .uploading(done: done, total: total))
+            // Words first, on their own.
+            //
+            // Media used to go first and travel with the text in one call, which meant a
+            // failure anywhere in a five-photo upload left a page that had been created and
+            // left empty, with the entry still only on the phone. Uploading is the slow part
+            // and the part most likely to fail, so it is the part that must not be standing
+            // in front of the words.
+            report(draftId, .writingText)
+            try await insertText(state: state, snapshot: snapshot, pageId: pageId)
+
+            let photos = draft.orderedMedia.filter { $0.kind == .photo }
+            let videos = draft.orderedMedia.filter { $0.kind == .video }
+
+            if !photos.isEmpty || !state.photoBlockIds.isEmpty {
+                let uploaded = await uploadPendingMedia(photos, state: state) { done, total in
+                    self.report(draftId, .uploadingPhotos(done: done, total: total))
+                }
+                report(draftId, .attachingPhotos)
+                try await attach(
+                    uploaded, state: state, pageId: pageId,
+                    replacing: state.photoBlockIds, step: "insert-photos",
+                    reached: .photosAttached
+                ) { state.photoBlockIds = $0 }
+            } else {
+                state.advance(to: .photosAttached)
             }
 
-            report(draftId, .writingContent)
-            try await insertContent(state: state, snapshot: snapshot, pageId: pageId, fileIds: fileIds)
+            // Videos last because they are the biggest and slowest. By the time one is still
+            // climbing, the entry and every photo are already on the page.
+            if !videos.isEmpty || !state.videoBlockIds.isEmpty {
+                let uploaded = await uploadPendingMedia(videos, state: state) { done, total in
+                    self.report(draftId, .uploadingVideos(done: done, total: total))
+                }
+                report(draftId, .attachingVideos)
+                try await attach(
+                    uploaded, state: state, pageId: pageId,
+                    replacing: state.videoBlockIds, step: "insert-videos",
+                    reached: .videosAttached
+                ) { state.videoBlockIds = $0 }
+            } else {
+                state.advance(to: .videosAttached)
+            }
 
             // Never rewrite the title or date of a page the user already had. On their entry
             // that is not housekeeping, it is overwriting something they wrote.
@@ -215,16 +251,16 @@ public final class SyncCoordinator {
     /// still syncs with whatever media did make it. Losing a photo is annoying; losing the
     /// reflection because of a photo is the bug this project exists to fix.
     private func uploadPendingMedia(
-        draft: EntryDraft,
+        _ items: [MediaItem],
         state: SyncState,
         onProgress: (Int, Int) -> Void = { _, _ in }
     ) async -> [AttachedFile] {
         var fileIds: [AttachedFile] = []
-        let total = draft.orderedMedia.count
+        let total = items.count
         var done = 0
         if total > 0 { onProgress(0, total) }
 
-        for item in draft.orderedMedia {
+        for item in items {
             defer { done += 1; if total > 0 { onProgress(done, total) } }
             if let existing = state.uploadedFileId(for: item.id) {
                 fileIds.append(AttachedFile(id: existing, kind: item.kind))
@@ -265,11 +301,11 @@ public final class SyncCoordinator {
         return fileIds
     }
 
-    private func insertContent(
+    /// The entry's words, with no media attached to them.
+    private func insertText(
         state: SyncState,
         snapshot: ContentSnapshot,
-        pageId: String,
-        fileIds: [AttachedFile]
+        pageId: String
     ) async throws {
         guard state.phase.rank < SyncPhase.contentInserted.rank else { return }
 
@@ -277,7 +313,7 @@ public final class SyncCoordinator {
             InsertContentRequest(
                 pageId: pageId,
                 formattedText: snapshot.body,
-                attachedFiles: fileIds,
+                attachedFiles: [],
                 // Blocks from an earlier interrupted attempt, so the server replaces them
                 // instead of appending a second copy. (ADR-005)
                 previouslyInsertedBlockIds: state.insertedBlockIds,
@@ -286,6 +322,47 @@ public final class SyncCoordinator {
         )
         state.insertedBlockIds = blockIds
         state.advance(to: .contentInserted)
+        try? store.flush()
+    }
+
+    /// One batch of media, appended as its own blocks.
+    ///
+    /// `replacing` is the batch's *own* previous block ids and nothing else. The server
+    /// deletes exactly what it is handed, so passing another stage's ids here would delete
+    /// the entry's words to make room for its photographs.
+    ///
+    /// The empty text is deliberate: `build_entry_blocks` emits nothing for it, so this
+    /// appends files and leaves the paragraphs above untouched.
+    private func attach(
+        _ files: [AttachedFile],
+        state: SyncState,
+        pageId: String,
+        replacing previous: [String],
+        step: String,
+        reached phase: SyncPhase,
+        record: ([String]) -> Void
+    ) async throws {
+        guard state.phase.rank < phase.rank else { return }
+
+        // Nothing to send and nothing left behind: skip the round trip rather than ask the
+        // server to delete nothing and append nothing.
+        if files.isEmpty, previous.isEmpty {
+            state.advance(to: phase)
+            try? store.flush()
+            return
+        }
+
+        let blockIds = try await notion.insertContent(
+            InsertContentRequest(
+                pageId: pageId,
+                formattedText: "",
+                attachedFiles: files,
+                previouslyInsertedBlockIds: previous,
+                idempotencyKey: key(state, step: step)
+            )
+        )
+        record(blockIds)
+        state.advance(to: phase)
         try? store.flush()
     }
 

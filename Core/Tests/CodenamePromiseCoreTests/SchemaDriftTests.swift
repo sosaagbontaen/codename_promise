@@ -53,6 +53,9 @@ struct SchemaDriftTests {
             "attemptId", "attemptContentHash", "uploadedFileIds", "insertedBlockIds",
             "destinationFingerprint", "appendsToExistingPage", "externalTitle",
             "startedAt", "lastSyncedAt", "lastSyncError", "attemptCount", "draft",
+            // v4: the words are written before the media, in three calls, and the server
+            // deletes exactly the block ids it is handed — so each stage tracks its own.
+            "photoBlockIds", "videoBlockIds",
         ],
     ]
 
@@ -64,7 +67,7 @@ struct SchemaDriftTests {
         return out
     }
 
-    @Test("the live models still match the shape SchemaV3 describes")
+    @Test("the live models still match the shape SchemaV4 describes")
     func noUndeclaredDrift() {
         let actual = shape(of: CodenamePromiseSchema.current)
 
@@ -79,7 +82,7 @@ struct SchemaDriftTests {
             if !added.isEmpty {
                 Issue.record("""
                     \(entity) gained \(added.sorted()) without a schema version bump.
-                    Freeze the current models into SchemaV3Models.swift, add SchemaV4 \
+                    Freeze the current models into SchemaV4Models.swift, add SchemaV5 \
                     pointing at the live types plus a migration stage, and only then update \
                     the expectation in this file. See ADR-008a.
                     """)

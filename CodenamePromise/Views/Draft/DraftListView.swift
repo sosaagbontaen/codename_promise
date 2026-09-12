@@ -472,6 +472,11 @@ struct OpeningDraft: Identifiable, Hashable {
 }
 
 struct DraftRow: View {
+    /// Live, unlike `summary`. Progress is coordinator state rather than anything stored on
+    /// the entry, and it has to be read now rather than snapshotted or the bar would freeze
+    /// at whatever it said when the list was last built.
+    @Environment(AppServices.self) private var services
+
     /// A snapshot, never a model — see `DraftSummary` for the crash that bought this rule.
     let summary: DraftSummary
     let fileStore: MediaFileStore
@@ -516,7 +521,37 @@ struct DraftRow: View {
                 showsTopEdge: !summary.preview.isEmpty || !summary.thumbnails.isEmpty,
                 hasDestination: hasDestination
             )
+
+            // A sync you started from inside an entry carries on after you leave it, and
+            // until now the list said only "syncing" — a badge that looks the same at the
+            // first second and the ninetieth. The bar is on the card because that is where
+            // somebody is while they wait, having gone back to look at everything else.
+            if let step = services.sync?.progress(for: summary.id) {
+                syncStrip(step)
+            }
         }
+    }
+
+    private func syncStrip(_ step: SyncProgress) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Brand.muted.opacity(0.18))
+                    Capsule()
+                        .fill(Brand.gradient)
+                        .frame(width: max(3, geometry.size.width * step.fraction))
+                }
+            }
+            .frame(height: 3)
+
+            Text(step.message)
+                .font(Type.caption(10.5))
+                .foregroundStyle(Brand.muted)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 13)
+        .padding(.bottom, 10)
+        .animation(.easeOut(duration: 0.25), value: step)
     }
 }
 
