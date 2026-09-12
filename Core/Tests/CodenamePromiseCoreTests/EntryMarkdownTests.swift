@@ -92,3 +92,70 @@ struct EntryMarkdownTests {
         #expect(out.contains("August"))
     }
 }
+
+/// What leaves the app, whichever button sent it.
+///
+/// Sharing preferred the arranged version and syncing to Notion never looked at it, so the
+/// same entry left as two different documents depending on which button you pressed — and
+/// the Notion one was the raw ramble, complete with "where was I", while the app on screen
+/// showed the organised version.
+@Suite("What gets sent")
+struct EntryBodyTests {
+
+    private func organised(_ sections: [(String, String)]) -> OrganisedEntry {
+        OrganisedEntry(
+            sentences: ["a"],
+            sections: sections.map {
+                OrganisedEntry.Section(heading: $0.0, body: $0.1, sources: [0])
+            },
+            dropped: [],
+            version: "test"
+        )
+    }
+
+    @Test("the arranged version wins over everything else")
+    func arrangedWins() {
+        let body = EntryMarkdown.body(
+            organised: organised([("Work", "The deploy went out."), ("Home", "Mum called.")]),
+            formatted: "some older structured text",
+            raw: "okay so today, um, where was I"
+        )
+        #expect(body.contains("## Work"))
+        #expect(body.contains("## Home"))
+        #expect(!body.contains("where was I"))
+        #expect(!body.contains("older structured"))
+    }
+
+    /// Entries written before arranging existed still have something better than the ramble.
+    @Test("older entries fall back to their structured text")
+    func fallsBackToFormatted() {
+        let body = EntryMarkdown.body(
+            organised: nil, formatted: "# A tidy day", raw: "um so anyway"
+        )
+        #expect(body == "# A tidy day")
+    }
+
+    @Test("an entry that has neither sends the person's own words")
+    func fallsBackToRaw() {
+        #expect(EntryMarkdown.body(organised: nil, formatted: nil, raw: "Just this.") == "Just this.")
+        #expect(EntryMarkdown.body(organised: nil, formatted: "   ", raw: "Just this.") == "Just this.")
+    }
+
+    /// An arranged entry with no sections is not an arrangement.
+    @Test("an empty arrangement does not beat real words")
+    func emptyArrangementIsIgnored() {
+        let empty = OrganisedEntry(sentences: [], sections: [], dropped: [], version: "test")
+        #expect(EntryMarkdown.body(organised: empty, formatted: nil, raw: "Real words.") == "Real words.")
+    }
+
+    /// Headings have to survive as markdown, because that is what the destinations read:
+    /// Notion turns them into blocks and a notes app renders them.
+    @Test("headings are markdown, not decoration")
+    func headingsAreMarkdown() {
+        let body = EntryMarkdown.body(
+            organised: organised([("Just tired, really", "Bed at one, up at six.")]),
+            formatted: nil, raw: "x"
+        )
+        #expect(body.hasPrefix("## Just tired, really"))
+    }
+}

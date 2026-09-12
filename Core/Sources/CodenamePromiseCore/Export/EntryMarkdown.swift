@@ -31,16 +31,33 @@ public enum EntryMarkdown {
         // into another app loses every bit of context this one had around it.
         out += "\n*\(day.representativeDate().formatted(.dateTime.weekday(.wide).month(.wide).day().year()))*\n"
 
-        if let organised, !organised.isEmpty {
-            for section in organised.sections {
-                out += "\n## \(section.heading)\n\n\(section.body.trimmed())\n"
-            }
-        } else {
-            let body = text.trimmed()
-            if !body.isEmpty { out += "\n\(body)\n" }
-        }
+        let body = Self.body(organised: organised, formatted: nil, raw: text).trimmed()
+        if !body.isEmpty { out += "\n\(body)\n" }
 
         return out
+    }
+
+    /// The body of an entry, in the order of what it actually is.
+    ///
+    /// One function because two callers were choosing separately and drifting: sharing
+    /// preferred the arranged version while syncing to Notion never looked at it, so the
+    /// same entry left the app as two different documents depending on which button you
+    /// pressed.
+    ///
+    /// Headings become markdown, which every destination here understands: Notion turns them
+    /// into blocks, and a notes app renders them.
+    public static func body(
+        organised: OrganisedEntry?,
+        formatted: String?,
+        raw: String
+    ) -> String {
+        if let organised, !organised.isEmpty {
+            return organised.sections
+                .map { "## \($0.heading)\n\n\($0.body.trimmed())" }
+                .joined(separator: "\n\n")
+        }
+        if let formatted, !formatted.trimmed().isEmpty { return formatted }
+        return raw
     }
 
     /// The entry's own name, or the day it is about.

@@ -30,11 +30,7 @@ struct OrganisedEntryView: View {
                         .font(Type.label(15, .semibold))
                         .foregroundStyle(Brand.violet)
 
-                    Text(section.body)
-                        .font(Type.journal(16))
-                        .foregroundStyle(Brand.ink)
-                        .lineSpacing(5)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    SectionBody(text: section.body)
 
                     Button {
                         withAnimation(.easeInOut(duration: 0.2)) {
@@ -118,5 +114,80 @@ struct OrganisedEntryView: View {
         )
         .font(Type.caption(11.5, .medium))
         .foregroundStyle(Brand.waiting)
+    }
+}
+
+/// A section's body, rendered the way it will leave the app.
+///
+/// `Text` does not parse markdown from a `String`, so a bullet arrived on screen as a literal
+/// "- " while the exported version became a real list in Notion. The view and the export
+/// disagreed about the same entry, and the view was the one you could not check.
+///
+/// Lines are handled rather than the whole block, because `AttributedString(markdown:)`
+/// flattens lists into one paragraph — it does inline emphasis well and block structure not
+/// at all, which is the opposite of what is needed here. Indentation comes from the leading
+/// whitespace the writer used, so a nested point looks nested.
+private struct SectionBody: View {
+    let text: String
+
+    private struct Line: Identifiable {
+        let id = UUID()
+        let content: String
+        let bulletDepth: Int?
+    }
+
+    private var lines: [Line] {
+        text.split(separator: "\n", omittingEmptySubsequences: false).map { raw in
+            let line = String(raw)
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            for marker in ["- ", "* ", "• "] where trimmed.hasPrefix(marker) {
+                let indent = line.prefix { $0 == " " || $0 == "\t" }.count
+                return Line(
+                    content: String(trimmed.dropFirst(marker.count)),
+                    // Two spaces per level is the markdown convention, and anything deeper
+                    // than three levels in a journal entry is a mistake rather than a nest.
+                    bulletDepth: min(indent / 2, 3)
+                )
+            }
+            return Line(content: trimmed, bulletDepth: nil)
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(lines.filter { !$0.content.isEmpty }) { line in
+                if let depth = line.bulletDepth {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("\u{2022}")
+                            .font(Type.journal(16))
+                            .foregroundStyle(Brand.violet)
+                        inline(line.content)
+                    }
+                    .padding(.leading, CGFloat(depth) * 16)
+                } else {
+                    inline(line.content)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Inline markdown only — bold and italic, which a writer's own emphasis may produce.
+    /// Falls back to the plain string rather than showing asterisks if it cannot be parsed.
+    private func inline(_ content: String) -> some View {
+        Group {
+            if let attributed = try? AttributedString(
+                markdown: content,
+                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+            ) {
+                Text(attributed)
+            } else {
+                Text(content)
+            }
+        }
+        .font(Type.journal(16))
+        .foregroundStyle(Brand.ink)
+        .lineSpacing(5)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

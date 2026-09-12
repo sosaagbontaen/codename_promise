@@ -84,9 +84,19 @@ public final class SyncCoordinator {
             contentHash: draft.contentHash,
             title: draft.content.title,
             entryDate: draft.entryDate,
-            // Formatted text if the user has run formatting, otherwise their own words.
-            // An unformatted entry is still a complete entry.
-            body: draft.content.formattedText ?? draft.content.rawText
+            // The arranged entry when there is one, because that is the thing this app
+            // makes. Sending the raw transcript instead meant a destination received the
+            // ramble — "okay so today, um, where was I" — while the app itself showed the
+            // organised version, which is the opposite of the promise.
+            //
+            // Falls back to structured text for entries written before arranging existed,
+            // then to the person's own words. An entry that has never been arranged is still
+            // a complete entry.
+            body: EntryMarkdown.body(
+                organised: draft.organised,
+                formatted: draft.content.formattedText,
+                raw: draft.content.rawText
+            )
         )
 
         state.beginAttempt(contentHash: snapshot.contentHash, now: clock())
