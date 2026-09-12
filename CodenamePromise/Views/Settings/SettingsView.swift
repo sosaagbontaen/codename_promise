@@ -90,9 +90,19 @@ struct SettingsView: View {
                 }
             }
 
+            // Always, and above everything else.
+            //
+            // This used to live inside the `else` below, so the address and API key fields —
+            // the only controls that can repair a connection — were hidden exactly when the
+            // connection was broken. An unreachable server produced a red banner and no way
+            // to change the address it was failing to reach, and rebuilding could not help,
+            // because a stored override outranks whatever the build was given. A dead end
+            // that looked like the app being broken.
+            serverSection
+
             if coordinator.isUnavailable {
                 Section {
-                    // The user can't fix this, so don't offer them a button that will fail.
+                    // Notion specifically. Nothing here is the user's to fix.
                     Label(
                         "This server doesn't have Notion set up. Nothing to do here yet.",
                         systemImage: "info.circle"
@@ -100,7 +110,6 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                 }
             } else {
-                serverSection
                 statusSection(coordinator)
                 if coordinator.status.connected {
                     databaseSection(coordinator)
