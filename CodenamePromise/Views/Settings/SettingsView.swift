@@ -42,7 +42,7 @@ struct SettingsView: View {
                     List {
                         serverSection
                         Section {
-                            Text("Point this app at a running backend to enable dictation, formatting and Notion. Your entries are saved on this device either way.")
+                            Text("Point this app at a running backend to enable dictation and arranging. Your entries are saved on this device either way.")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }

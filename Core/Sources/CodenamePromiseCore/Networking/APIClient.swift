@@ -271,9 +271,31 @@ public struct APIClient: Sendable {
         case 401, 403:
             throw APIError.unauthorized
         default:
-            let message = String(data: data, encoding: .utf8).flatMap { $0.isEmpty ? nil : $0 }
-            throw APIError.server(status: http.statusCode, message: message)
+            throw APIError.server(status: http.statusCode, message: Self.readableMessage(from: data))
         }
+    }
+
+    /// The sentence inside an error body, rather than the body.
+    ///
+    /// FastAPI answers with `{"detail": "Pick a Notion database first."}`, and this used to
+    /// hand the whole thing to the UI, which duly printed
+    /// `{"detail":"Pick a Notion database first."}` at somebody trying to use their journal.
+    /// The server is already writing a sentence for a person to read; the braces are ours to
+    /// remove.
+    ///
+    /// Anything that is not shaped like that is passed through unchanged, since an
+    /// unrecognised body is still better than no message at all.
+    static func readableMessage(from data: Data) -> String? {
+        guard !data.isEmpty else { return nil }
+
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            for key in ["detail", "message", "error"] {
+                if let text = object[key] as? String, !text.isEmpty { return text }
+            }
+        }
+        let raw = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (raw?.isEmpty ?? true) ? nil : raw
     }
 
     private func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {

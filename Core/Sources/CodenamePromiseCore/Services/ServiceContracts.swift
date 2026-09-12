@@ -37,46 +37,6 @@ public protocol TranscriptionService: Sendable {
 
 // MARK: - Formatting
 
-public struct FormatRequest: Sendable, Hashable {
-    public let draftId: UUID
-    /// A snapshot, taken on the main actor before the call. The user may keep typing while
-    /// this is in flight; the result is applied only if it still matches. See ADR-016.
-    public let rawText: String
-    public let contentHash: String
-
-    public init(draftId: UUID, rawText: String, contentHash: String) {
-        self.draftId = draftId
-        self.rawText = rawText
-        self.contentHash = contentHash
-    }
-}
-
-public struct FormatResult: Sendable, Hashable {
-    public let draftId: UUID
-    public let formattedText: String
-    /// Which prompt produced this, so output stays reproducible when the prompt changes.
-    public let formatterVersion: String
-    /// Echo of the request's hash, so a stale result can be discarded rather than clobber
-    /// newer input.
-    public let sourceContentHash: String
-
-    public init(
-        draftId: UUID,
-        formattedText: String,
-        formatterVersion: String,
-        sourceContentHash: String
-    ) {
-        self.draftId = draftId
-        self.formattedText = formattedText
-        self.formatterVersion = formatterVersion
-        self.sourceContentHash = sourceContentHash
-    }
-}
-
-public protocol FormattingService: Sendable {
-    func format(_ request: FormatRequest) async throws -> FormatResult
-}
-
 // MARK: - Notion
 
 /// The idempotency key every mutating destination call must carry.
@@ -230,7 +190,7 @@ public struct OrganiseResult: Sendable, Hashable {
 
 /// Turning a spoken ramble into an arranged entry.
 ///
-/// Deliberately separate from `FormattingService` rather than a mode of it. They are bound by
+/// Deliberately separate from the retired formatting path rather than a mode of it. They were bound by
 /// different promises: formatting may not change a word, organising may not lose a thought.
 /// Collapsing them into one call would mean one guard for two incompatible guarantees.
 public protocol OrganisingService: Sendable {

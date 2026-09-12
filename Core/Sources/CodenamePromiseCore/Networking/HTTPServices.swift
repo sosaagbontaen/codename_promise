@@ -37,47 +37,6 @@ public struct HTTPTranscriptionService: TranscriptionService {
     }
 }
 
-// MARK: - Formatting
-
-/// `POST /format` — groups and structures the user's own words.
-///
-/// The prompt lives server-side. The client's job is to send `rawText` unaltered and to
-/// refuse to apply a result that no longer matches what the user has written.
-public struct HTTPFormattingService: FormattingService {
-    private let client: APIClient
-
-    public init(client: APIClient) {
-        self.client = client
-    }
-
-    private struct Payload: Encodable {
-        let raw_text: String
-        let draft_id: String
-    }
-
-    private struct Response: Decodable {
-        let formatted_text: String
-        let formatter_version: String
-    }
-
-    public func format(_ request: FormatRequest) async throws -> FormatResult {
-        let response = try await client.postJSON(
-            path: "format",
-            body: Payload(raw_text: request.rawText, draft_id: request.draftId.uuidString),
-            idempotencyKey: IdempotencyKey(attemptId: request.contentHash, step: "format"),
-            expecting: Response.self
-        )
-        return FormatResult(
-            draftId: request.draftId,
-            formattedText: response.formatted_text,
-            formatterVersion: response.formatter_version,
-            // Echoed back so the caller can discard a stale result rather than let it
-            // clobber newer typing. See ADR-016.
-            sourceContentHash: request.contentHash
-        )
-    }
-}
-
 // MARK: - Notion
 
 /// `POST /notion/*`. Every mutating call carries an idempotency key derived from the

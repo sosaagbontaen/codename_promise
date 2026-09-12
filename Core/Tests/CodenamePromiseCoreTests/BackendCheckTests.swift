@@ -96,3 +96,47 @@ struct BackendCheckTests {
         #expect(result == .ready(transcription: "groq", formatting: "groq"))
     }
 }
+
+/// What the user is shown when the server says no.
+///
+/// The whole body used to be handed to the UI, so somebody trying to use their journal was
+/// shown `{"detail":"Pick a Notion database first."}` — braces, quotes and all.
+@Suite("Server error messages")
+struct ServerMessageTests {
+
+    private func message(_ body: String) -> String? {
+        APIClient.readableMessage(from: Data(body.utf8))
+    }
+
+    @Test("a FastAPI detail is unwrapped")
+    func unwrapsDetail() {
+        #expect(message(#"{"detail":"Pick a Notion database first."}"#)
+                == "Pick a Notion database first.")
+    }
+
+    @Test("other common shapes are unwrapped too")
+    func unwrapsOthers() {
+        #expect(message(#"{"message":"Too many requests."}"#) == "Too many requests.")
+        #expect(message(#"{"error":"Bad model."}"#) == "Bad model.")
+    }
+
+    /// An unrecognised body is still better than no message, so it is passed through.
+    @Test("an unfamiliar body is passed through rather than swallowed")
+    func passesThroughUnknown() {
+        #expect(message("Service Unavailable") == "Service Unavailable")
+    }
+
+    @Test("an empty body produces no message rather than an empty one")
+    func emptyIsNil() {
+        #expect(message("") == nil)
+        #expect(message("   ") == nil)
+    }
+
+    /// A detail that is not a string, which FastAPI does for validation errors, must not be
+    /// rendered as a Swift array description.
+    @Test("a non-string detail falls back to the raw body")
+    func nonStringDetail() {
+        let body = #"{"detail":[{"loc":["body","x"],"msg":"field required"}]}"#
+        #expect(message(body) == body)
+    }
+}

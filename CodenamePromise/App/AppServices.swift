@@ -18,7 +18,6 @@ final class AppServices {
         let store: DraftStore
         let files: MediaFileStore
         let transcriptions: TranscriptionCoordinator
-        let formatting: FormattingCoordinator
         let organising: OrganisingCoordinator
         let sync: SyncCoordinator
         let connection: any NotionConnectionService
@@ -102,10 +101,6 @@ final class AppServices {
                         fileStore: files,
                         service: HTTPTranscriptionService(client: client)
                     ),
-                    formatting: FormattingCoordinator(
-                        store: store,
-                        service: HTTPFormattingService(client: client)
-                    ),
                     organising: OrganisingCoordinator(
                         store: store,
                         service: HTTPOrganisingService(client: client)
@@ -133,7 +128,6 @@ final class AppServices {
     var store: DraftStore? { ready?.store }
     var files: MediaFileStore? { ready?.files }
     var transcriptions: TranscriptionCoordinator? { ready?.transcriptions }
-    var formatting: FormattingCoordinator? { ready?.formatting }
     var organising: OrganisingCoordinator? { ready?.organising }
     var sync: SyncCoordinator? { ready?.sync }
     var apiClient: APIClient? { ready?.client }

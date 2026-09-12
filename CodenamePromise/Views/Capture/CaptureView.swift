@@ -22,7 +22,6 @@ struct CaptureView: View {
     @State private var attachProgress: (done: Int, total: Int)?
     @State private var viewingMedia: ViewingMedia?
     @State private var viewerDetent: PresentationDetent = .medium
-    @State private var confirmingReformat = false
     @State private var showingDatePicker = false
     @State private var showingEntryPicker = false
     @State private var showingSendSheet = false
@@ -36,6 +35,14 @@ struct CaptureView: View {
     /// Which version of the entry is on screen. `rawText` is always editable; the AI's
     /// structured pass is read-only, because it is a view of the user's words rather than a
     /// second place to write them.
+    /// `formatted` has no way to be produced any more: the action that made it was retired
+    /// once arranging did the same job better, and having two AI buttons whose difference
+    /// nobody could name was the confusion rather than the feature.
+    ///
+    /// The case stays because the text does. Entries written before the change still carry
+    /// `formattedText`, and `availableModes` only offers this when one of them does, so old
+    /// work stays readable and nothing new is ever filed under it. Deleting the field would
+    /// be a schema change that destroyed somebody's existing entries to tidy an enum.
     enum Mode: String, CaseIterable {
         case raw = "Yours", organised = "Arranged", formatted = "Structured"
     }
@@ -102,17 +109,6 @@ struct CaptureView: View {
                 }
             }
 
-        }
-        .confirmationDialog(
-            "Replace your edits?",
-            isPresented: $confirmingReformat,
-            titleVisibility: .visible
-        ) {
-            Button("Format again", role: .destructive) {
-                Task { await runFormatting() }
-            }
-        } message: {
-            Text("You've edited the structured text by hand. Formatting again will replace it. Your own words in \"Yours\" are untouched either way.")
         }
         .sheet(isPresented: $showingMoveSheet) {
             MoveMediaSheet(
@@ -499,17 +495,6 @@ struct CaptureView: View {
                 .buttonStyle(.pressable)
                 .disabled(recorder.isRecording)
 
-                Button {
-                    formatOrConfirm()
-                } label: {
-                    CompactAction(symbol: "sparkles", title: "Structure", tint: Brand.ai, busy: isFormatting)
-                }
-                .buttonStyle(.pressable)
-                .disabled(
-                    controller.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        || isFormatting
-                )
-
                 // Organising sits beside formatting rather than replacing it. Formatting may
                 // not change a word; organising may not lose a thought. Two jobs, two
                 // guarantees, two buttons.
@@ -519,7 +504,7 @@ struct CaptureView: View {
                     CompactAction(
                         symbol: "list.bullet.rectangle",
                         title: "Arrange",
-                        tint: Brand.violet,
+                        tint: Brand.ai,
                         busy: isOrganising
                     )
                 }
@@ -666,9 +651,7 @@ struct CaptureView: View {
             // that has to wake up, and a spinner on a 46-point button is not enough to
             // explain a wait that long.
             isOrganising ? "Grouping what goes together\u{2026}" : nil,
-            isFormatting ? "Tidying the structure\u{2026}" : nil,
             controller.pendingTranscriptionCount > 0 ? services.transcriptions?.blockedReason : nil,
-            services.formatting?.blockedReason,
             services.organising?.blockedReason,
             controller.syncSummary,
         ]
@@ -709,10 +692,6 @@ struct CaptureView: View {
 
     private var isOrganising: Bool {
         services.organising?.isOrganising(controller.draftId) == true
-    }
-
-    private var isFormatting: Bool {
-        services.formatting?.isFormatting(controller.draftId) == true
     }
 
     /// False while a recording is still waiting to be transcribed: arranging a transcript
@@ -772,29 +751,6 @@ struct CaptureView: View {
             // The queue writes straight to the model, so the editor has to be told. Without
             // this the transcript is invisible and the next keystroke overwrites it.
             controller.absorbExternalChanges()
-        }
-    }
-
-    /// Asks first when there are hand-edits to lose. Formatting replaces the structured
-    /// text wholesale, and silently discarding someone's edits is the failure this whole
-    /// project is organised against.
-    private func formatOrConfirm() {
-        if controller.formattedTextWasEdited {
-            confirmingReformat = true
-        } else {
-            Task { await runFormatting() }
-        }
-    }
-
-    private func runFormatting() async {
-        // Commit first: formatting must be derived from what the user has actually written,
-        // not from whatever the last debounce happened to catch.
-        controller.commitNow()
-        if await services.formatting?.format(draftId: controller.draftId) == .formatted {
-            // The coordinator wrote straight to the model, so the editor buffer has to catch
-            // up — the same lesson as the transcript that got overwritten by a stale buffer.
-            controller.refreshFormattedFromStore()
-            mode = .formatted
         }
     }
 
