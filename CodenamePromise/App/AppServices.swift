@@ -22,6 +22,8 @@ final class AppServices {
         let organising: OrganisingCoordinator
         let sync: SyncCoordinator
         let connection: any NotionConnectionService
+        /// Kept so Settings can test the connection without rebuilding one.
+        let client: APIClient
     }
 
     enum State {
@@ -114,7 +116,8 @@ final class AppServices {
                         notion: NotionHTTPClient(client: client),
                         connection: HTTPNotionConnectionService(client: client)
                     ),
-                    connection: HTTPNotionConnectionService(client: client)
+                    connection: HTTPNotionConnectionService(client: client),
+                    client: client
                 )
             )
         } catch {
@@ -133,6 +136,7 @@ final class AppServices {
     var formatting: FormattingCoordinator? { ready?.formatting }
     var organising: OrganisingCoordinator? { ready?.organising }
     var sync: SyncCoordinator? { ready?.sync }
+    var apiClient: APIClient? { ready?.client }
 
     /// `nil` when there is no backend at all, which the settings screen presents as
     /// "nothing to configure" rather than as an error.

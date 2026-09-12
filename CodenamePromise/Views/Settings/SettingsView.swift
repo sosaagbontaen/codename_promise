@@ -20,6 +20,8 @@ struct SettingsView: View {
     @State private var apiKey = ""
     @State private var apiKeySaved = false
     @State private var revealingAPIKey = false
+    @State private var checking = false
+    @State private var checkResult: BackendCheck?
     @AppStorage(Appearance.storageKey) private var appearance: Appearance = .dark
     @AppStorage(JournalFont.storageKey) private var journalFont: JournalFont = .sans
     // Stored as its raw string rather than as the enum. @AppStorage does support a
@@ -377,6 +379,25 @@ struct SettingsView: View {
                     .font(.footnote)
                     .foregroundStyle(Brand.reached)
             }
+
+            // "Saved" only ever meant "written down", which is not the question anybody is
+            // asking. This answers the actual one, and distinguishes a wrong address from a
+            // wrong key — the two failures that used to look identical.
+            Button {
+                Task { await runCheck() }
+            } label: {
+                HStack(spacing: 8) {
+                    Label("Check connection", systemImage: "antenna.radiowaves.left.and.right")
+                    if checking { ProgressView().controlSize(.small) }
+                }
+            }
+            .disabled(checking)
+
+            if let checkResult {
+                Label(checkResult.message, systemImage: Self.symbol(for: checkResult))
+                    .font(.footnote)
+                    .foregroundStyle(Self.tint(for: checkResult))
+            }
         } header: {
             Text("Server")
         } footer: {
@@ -465,6 +486,37 @@ struct SettingsView: View {
 
     // MARK: - Actions
 
+    /// Asks the server two questions rather than one, because the answers fail differently.
+    private func runCheck() async {
+        checking = true
+        checkResult = nil
+        defer { checking = false }
+
+        guard let client = services.apiClient else {
+            checkResult = .noAddress
+            return
+        }
+        checkResult = await BackendChecker(
+            client: client, hasStoredKey: { APIKeyStore().read() != nil }
+        ).check()
+
+        if checkResult?.isWorking == true { Haptics.landed() } else { Haptics.failed() }
+    }
+
+    /// Green only when it genuinely works. A stub server answers everything happily and
+    /// transcribes nothing, so it gets the warning colour rather than the reassuring one.
+    private static func tint(for result: BackendCheck) -> Color {
+        if result.hasRealProviders { return Brand.reached }
+        if case .noAddress = result { return .secondary }
+        return result.isWorking ? Brand.waiting : Brand.failed
+    }
+
+    private static func symbol(for result: BackendCheck) -> String {
+        if result.hasRealProviders { return "checkmark.circle.fill" }
+        if case .noAddress = result { return "info.circle" }
+        return result.isWorking ? "exclamationmark.circle.fill" : "xmark.circle.fill"
+    }
+
     private func saveAPIKey() {
         let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
@@ -475,12 +527,14 @@ struct SettingsView: View {
         apiKey = ""
         revealingAPIKey = false
         apiKeySaved = true
+        checkResult = nil
         Haptics.picked()
     }
 
     private func saveServerURL() {
         AppServices.backendSettings.setOverride(serverURL)
         serverSaved = true
+        checkResult = nil
     }
 
     private func connect(_ coordinator: ConnectionCoordinator) async {
