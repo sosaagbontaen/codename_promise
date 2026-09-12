@@ -550,3 +550,57 @@ class TestNesting:
 
         blocks = markdown_to_blocks("- one\n- two")
         assert len(blocks) == 2
+
+
+class TestInlineBold:
+    """Bold has to survive the trip, because the app marks section headings with it.
+
+    Without parsing, `**Work first**` reached Notion as those characters. A destination that
+    renders everything else correctly and shows literal asterisks around every heading looks
+    broken in a way the plain text did not.
+    """
+
+    def test_bold_becomes_an_annotation(self):
+        objects = split_rich_text("**Work first**")
+        assert objects == [
+            {
+                "type": "text",
+                "text": {"content": "Work first"},
+                "annotations": {"bold": True},
+            }
+        ]
+
+    def test_surrounding_text_stays_plain(self):
+        objects = split_rich_text("before **middle** after")
+        assert [o["text"]["content"] for o in objects] == ["before ", "middle", " after"]
+        assert "annotations" not in objects[0]
+        assert objects[1]["annotations"] == {"bold": True}
+        assert "annotations" not in objects[2]
+
+    def test_two_emphasised_phrases_stay_separate(self):
+        """Non-greedy: a greedy match would bold everything between the first and last pair."""
+        objects = split_rich_text("**one** and **two**")
+        bolded = [o["text"]["content"] for o in objects if o.get("annotations")]
+        assert bolded == ["one", "two"]
+
+    def test_plain_text_is_unchanged(self):
+        assert split_rich_text("nothing special") == [
+            {"type": "text", "text": {"content": "nothing special"}}
+        ]
+
+    def test_an_empty_pair_is_left_alone(self):
+        """Better a visible oddity than silently eating characters."""
+        assert split_rich_text("****")[0]["text"]["content"] == "****"
+
+    def test_long_bold_text_is_still_chunked(self):
+        """The 2000-character limit applies per object, bold or not."""
+        objects = split_rich_text("**" + ("word " * 900).strip() + "**")
+        assert len(objects) > 1
+        assert all(len(o["text"]["content"]) <= RICH_TEXT_LIMIT for o in objects)
+        assert all(o["annotations"] == {"bold": True} for o in objects)
+
+    def test_a_bold_heading_line_becomes_a_paragraph_with_bold(self):
+        """End to end: the shape the app actually sends."""
+        blocks = markdown_to_blocks("**Just tired, really**\n\nBed at one, up at six.")
+        assert blocks[0]["type"] == "paragraph"
+        assert blocks[0]["paragraph"]["rich_text"][0]["annotations"] == {"bold": True}

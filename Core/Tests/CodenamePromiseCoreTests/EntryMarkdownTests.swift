@@ -31,8 +31,8 @@ struct EntryMarkdownTests {
             text: "ignored"
         )
         #expect(out.contains("# A day"))
-        #expect(out.contains("## Work\n\nThe deploy went out."))
-        #expect(out.contains("## Home\n\nMum called."))
+        #expect(out.contains("**Work**\n\nThe deploy went out."))
+        #expect(out.contains("**Home**\n\nMum called."))
     }
 
     /// The organised entry is the thing the app made. Sending the raw ramble instead would
@@ -120,8 +120,8 @@ struct EntryBodyTests {
             formatted: "some older structured text",
             raw: "okay so today, um, where was I"
         )
-        #expect(body.contains("## Work"))
-        #expect(body.contains("## Home"))
+        #expect(body.contains("**Work**"))
+        #expect(body.contains("**Home**"))
         #expect(!body.contains("where was I"))
         #expect(!body.contains("older structured"))
     }
@@ -150,12 +150,16 @@ struct EntryBodyTests {
 
     /// Headings have to survive as markdown, because that is what the destinations read:
     /// Notion turns them into blocks and a notes app renders them.
-    @Test("headings are markdown, not decoration")
+    /// Bold rather than `##`: a heading block overstates a paragraph about somebody's
+    /// afternoon, and the backend turns `**` into a bold annotation so it arrives as
+    /// emphasis rather than as characters.
+    @Test("headings are bold markdown, not decoration")
     func headingsAreMarkdown() {
         let body = EntryMarkdown.body(
             organised: organised([("Just tired, really", "Bed at one, up at six.")]),
             formatted: nil, raw: "x"
         )
-        #expect(body.hasPrefix("## Just tired, really"))
+        #expect(body.hasPrefix("**Just tired, really**"))
+        #expect(!body.contains("##"))
     }
 }

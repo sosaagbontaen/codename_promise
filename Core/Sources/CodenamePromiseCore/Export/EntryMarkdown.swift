@@ -44,8 +44,16 @@ public enum EntryMarkdown {
     /// same entry left the app as two different documents depending on which button you
     /// pressed.
     ///
-    /// Headings become markdown, which every destination here understands: Notion turns them
-    /// into blocks, and a notes app renders them.
+    /// Headings are bold rather than `##`.
+    ///
+    /// A heading block is heavier than a journal section wants: in Notion an `##` becomes a
+    /// structural heading with its own weight and collapse behaviour, which suits a document
+    /// and overstates a paragraph about somebody's afternoon. Bold marks the same boundary
+    /// without turning three thoughts into three chapters.
+    ///
+    /// The backend parses `**` into a bold annotation, so this arrives as emphasis rather
+    /// than as characters. Anywhere that does not read markdown shows the asterisks, which
+    /// is true of `##` as well and is the cost of one format for every destination.
     public static func body(
         organised: OrganisedEntry?,
         formatted: String?,
@@ -53,7 +61,7 @@ public enum EntryMarkdown {
     ) -> String {
         if let organised, !organised.isEmpty {
             return organised.sections
-                .map { "## \($0.heading)\n\n\($0.body.trimmed())" }
+                .map { "**\($0.heading)**\n\n\($0.body.trimmed())" }
                 .joined(separator: "\n\n")
         }
         if let formatted, !formatted.trimmed().isEmpty { return formatted }

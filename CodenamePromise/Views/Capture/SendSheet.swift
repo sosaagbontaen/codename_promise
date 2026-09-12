@@ -51,7 +51,7 @@ struct SendSheet: View {
                 } footer: {
                     // Names the apps, because "share" alone does not tell someone that the
                     // notes app they already use is on the other side of it.
-                    Text("Opens the share sheet with this entry as markdown. Works with Notes, Bear, Obsidian, Drafts, Files and anything else that takes text.")
+                    Text("Opens the share sheet with this entry as markdown, with each section\u{2019}s heading in bold. Works with Notes, Bear, Obsidian, Drafts, Files and anything else that takes text.")
                 }
 
                 if let notion {

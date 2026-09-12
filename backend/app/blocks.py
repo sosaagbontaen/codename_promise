@@ -28,15 +28,17 @@ _QUOTE = re.compile(r"^\s*>\s?(.*)$")
 _TODO = re.compile(r"^\s*[-*+]\s+\[([ xX])\]\s+(.*)$")
 
 
-def split_rich_text(text: str, limit: int = RICH_TEXT_LIMIT) -> List[Dict[str, Any]]:
-    """Split text into rich-text objects no longer than ``limit``.
+#: Inline bold. Non-greedy so two emphasised phrases on one line stay two phrases, and it
+#: refuses an empty pair so a literal "****" is left alone rather than vanishing.
+_BOLD = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)
 
-    Splits on whitespace where possible so words aren't cut in half — the user's own words
-    should survive transport looking like their words.
+
+def _chunk(text: str, limit: int) -> List[str]:
+    """Pieces no longer than ``limit``, split on whitespace where possible.
+
+    Words are not cut in half: the user's own words should survive transport looking like
+    their words.
     """
-    if not text:
-        return []
-
     parts: List[str] = []
     remaining = text
     while len(remaining) > limit:
@@ -49,8 +51,43 @@ def split_rich_text(text: str, limit: int = RICH_TEXT_LIMIT) -> List[Dict[str, A
         remaining = remaining[cut:].lstrip()
     if remaining:
         parts.append(remaining)
+    return parts
 
-    return [{"type": "text", "text": {"content": part}} for part in parts]
+
+def split_rich_text(text: str, limit: int = RICH_TEXT_LIMIT) -> List[Dict[str, Any]]:
+    """Split text into rich-text objects no longer than ``limit``, honouring inline bold.
+
+    Bold is parsed rather than passed through because the alternative is visible: the app
+    marks a section heading with ``**like this**``, and without this the asterisks arrived in
+    Notion as characters. A destination that renders everything else correctly and shows
+    literal asterisks around every heading looks broken in a way the raw text did not.
+
+    Deliberately only bold. Every other inline form the organiser might emit is rare enough
+    that passing it through unchanged is better than a half-built markdown parser.
+    """
+    if not text:
+        return []
+
+    objects: List[Dict[str, Any]] = []
+    position = 0
+
+    def emit(segment: str, bold: bool) -> None:
+        for part in _chunk(segment, limit):
+            entry: Dict[str, Any] = {"type": "text", "text": {"content": part}}
+            if bold:
+                entry["annotations"] = {"bold": True}
+            objects.append(entry)
+
+    for match in _BOLD.finditer(text):
+        if match.start() > position:
+            emit(text[position:match.start()], bold=False)
+        emit(match.group(1), bold=True)
+        position = match.end()
+
+    if position < len(text):
+        emit(text[position:], bold=False)
+
+    return objects
 
 
 def _block(block_type: str, text: str, **extra: Any) -> Dict[str, Any]:
