@@ -18,6 +18,8 @@ help:
 	@echo "make test-api    Python only"
 	@echo "make server      Run the backend on port $(PORT), reloading on change"
 	@echo "make app         Build, install and launch in the $(SIMULATOR) simulator"
+	@echo "make device      Build and install on a plugged-in iPhone, pointed at your Mac"
+	@echo "                 HOSTED_URL=https://… make device  points it at a hosted backend"
 	@echo "make boot        Boot the simulator (only needed if it's shut down)"
 	@echo "make device      Build and install on a connected iPhone (uses your Mac's LAN IP)"
 	@echo "make stop-server Kill whatever is listening on port $(PORT)"
@@ -97,15 +99,24 @@ app:
 # backend URL must be this Mac's address on the network — `localhost` on a phone is the
 # phone, which is why a simulator build reports "no backend configured" once it's on device.
 .PHONY: device
+# The address is baked into the build, so a phone built with this points at whatever was
+# passed here until Settings overrides it.
+#
+#   make device                         -> your Mac on the local network, for development
+#   HOSTED_URL=https://… make device    -> a hosted backend, which works off your wifi
+#
+# The default is the Mac because that is what you want while changing the backend. Pass
+# HOSTED_URL for a build you intend to carry around.
 device:
 	@DEVICE_ID=$$(xcrun devicectl list devices --json-output /tmp/cp-devices.json >/dev/null 2>&1; \
 		python3 -c "import json;d=json.load(open('/tmp/cp-devices.json'))['result']['devices'];print(next((x['identifier'] for x in d if x.get('connectionProperties',{}).get('tunnelState')!='unavailable'),''))" 2>/dev/null); \
 	LAN_IP=$$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1); \
+	BASE=$${HOSTED_URL:-http://$$LAN_IP:$(PORT)}; \
 	if [ -z "$$DEVICE_ID" ]; then echo "No connected device found. Plug it in and unlock it."; exit 1; fi; \
-	echo "device $$DEVICE_ID  ->  backend http://$$LAN_IP:$(PORT)"; \
+	echo "device $$DEVICE_ID  ->  backend $$BASE"; \
 	xcodebuild -scheme CodenamePromise -destination "platform=iOS,id=$$DEVICE_ID" \
 		-derivedDataPath ./DerivedDataDevice \
-		BACKEND_BASE_URL=http://$$LAN_IP:$(PORT) build | grep -E "error:|BUILD" || true; \
+		BACKEND_BASE_URL=$$BASE build | grep -E "error:|BUILD" || true; \
 	xcrun devicectl device install app --device $$DEVICE_ID \
 		./DerivedDataDevice/Build/Products/Debug-iphoneos/CodenamePromise.app | tail -3
 
