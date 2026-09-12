@@ -65,11 +65,6 @@ final class CaptureController {
         self.formatted = draft.content.formattedText ?? ""
     }
 
-    /// Re-reads the structured text after the AI has rewritten it.
-    func refreshFormattedFromStore() {
-        formatted = draft.content.formattedText ?? ""
-    }
-
     /// Folds in text that arrived from somewhere other than the keyboard — a transcript
     /// merged by the queue, typically — without discarding what the user has typed since.
     ///
@@ -126,12 +121,12 @@ final class CaptureController {
 
     var hasFormatting: Bool { !(draft.content.formattedText ?? "").isEmpty }
 
-    /// Whether the structured text has been hand-edited, so re-running formatting can ask
-    /// before replacing it.
-    var formattedTextWasEdited: Bool { draft.formattedTextEditedByUser }
-
-    /// The structured text, editable. Same debounce-and-commit discipline as `text` — it's
-    /// the user's writing once they've touched it, so it gets the same durability (ADR-001).
+    /// The structured text a retired feature produced.
+    ///
+    /// No longer editable or shown: the buffer is loaded from the entry and written back
+    /// unchanged, so an entry that has one keeps exactly what it had. Kept rather than
+    /// dropped because the commit path below would otherwise have to special-case an entry
+    /// written before the change, and because the text is still exported.
     var formatted: String {
         didSet {
             guard formatted != oldValue else { return }

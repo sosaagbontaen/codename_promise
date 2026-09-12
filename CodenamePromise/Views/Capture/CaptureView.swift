@@ -40,11 +40,15 @@ struct CaptureView: View {
     /// nobody could name was the confusion rather than the feature.
     ///
     /// The case stays because the text does. Entries written before the change still carry
-    /// `formattedText`, and `availableModes` only offers this when one of them does, so old
-    /// work stays readable and nothing new is ever filed under it. Deleting the field would
-    /// be a schema change that destroyed somebody's existing entries to tidy an enum.
+    /// `formattedText`, and it is still exported, so nothing anybody wrote has been thrown
+    /// away. It is simply not offered: a tab you cannot produce and have no reason to read
+    /// is the confusion this removal was for, and keeping it visible for old entries meant
+    /// the app still shipped two AI views with a difference nobody could name.
+    ///
+    /// Deleting the field itself would be a schema change that destroyed existing entries to
+    /// tidy an enum, which is not a trade worth making.
     enum Mode: String, CaseIterable {
-        case raw = "Yours", organised = "Arranged", formatted = "Structured"
+        case raw = "Yours", organised = "Arranged"
     }
 
     private let fileStore: MediaFileStore
@@ -197,7 +201,7 @@ struct CaptureView: View {
                     .font(Type.title(25))
                     .textInputAutocapitalization(.sentences)
 
-                if controller.hasFormatting || controller.organised != nil {
+                if controller.organised != nil {
                     Picker("View", selection: $mode) {
                         ForEach(availableModes, id: \.self) { Text($0.rawValue).tag($0) }
                     }
@@ -210,9 +214,6 @@ struct CaptureView: View {
                     if mode == .organised, let organised = controller.organised {
                         OrganisedEntryView(organised: organised, isStale: controller.organisedIsStale)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                    } else if mode == .formatted, controller.hasFormatting {
-                        TextEditor(text: $controller.formatted)
-                            .writingSurface()
                     } else {
                         TextEditor(text: $controller.text)
                             .writingSurface()
@@ -686,7 +687,6 @@ struct CaptureView: View {
     private var availableModes: [Mode] {
         var modes: [Mode] = [.raw]
         if controller.organised != nil { modes.append(.organised) }
-        if controller.hasFormatting { modes.append(.formatted) }
         return modes
     }
 
