@@ -286,6 +286,40 @@ failed and the walk continues, and the entry syncs with whatever media did make 
 photo is annoying; losing the reflection because of a photo is the bug the project exists to
 fix. Covered by `mediaFailureDoesNotFailTheEntry`.
 
+### ADR-015b · A video too big for the destination is split, not dropped
+**Status:** Accepted · `VideoPlanner`, `MediaCompressor`, `SyncCoordinator.uploadPendingMedia`
+
+Notion's free plan caps individual files at 5 MiB. The first implementation read that as a
+budget for the whole video: re-encode to fit one file, and when the arithmetic said that was
+impossible, give up. Past about three and a half minutes every clip was silently abandoned —
+and worse, the fallback then uploaded the untouched original anyway, so a 200 MB file went up
+a phone connection for the sole purpose of being rejected.
+
+The cap is per *file*, and an entry can hold several. So a long clip is cut into parts that
+each fit, and splitting buys quality back rather than only making things fit: bits available
+is `parts x budget`.
+
+**Decided:** `VideoPlanner` (Core, no AVFoundation, unit-tested) chooses **the fewest parts
+that keeps the picture at or above a 350 kbps floor**, then spends the entire budget of those
+parts. Fewest parts first, because a page with three video blocks is watchable and a page with
+eleven is something you scroll past; quality is what gets spent to stay whole. Roughly: a
+30-second clip stays one file, two minutes becomes two parts, ten minutes becomes seven.
+
+Past twelve parts — about eighteen minutes — even the floor is unreachable, and the video is
+marked `tooLargeToSend`: kept in the entry and on the phone, never uploaded, and **said out
+loud in the UI** rather than failing quietly. `MediaItem.isTooLargeToSend` stops the upload
+path wasting bandwidth on a file that will be refused, which is what ADR-015 was about in the
+first place.
+
+Parts upload individually with per-part idempotency keys, and resume per part — but attach
+all-or-nothing, because half a video on a page with nothing saying the rest is missing is
+worse than one that is visibly still coming. `SyncState.uploadedFileIds` keys part 0 by the
+bare media UUID exactly as before, so ids recorded by an earlier build are still found and a
+resumed sync does not upload a second copy of everything.
+
+ADR-015a is unchanged: none of this may fail the entry. What changed is how hard the app tries
+before it reports that something did not travel.
+
 ### ADR-016 · Sync dirtiness is a content hash, never a timestamp
 **Status:** Accepted · `EntryContent.contentHash`, `SyncState.syncedContentHash`
 

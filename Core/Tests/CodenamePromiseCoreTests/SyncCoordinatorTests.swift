@@ -24,6 +24,18 @@ actor StubNotionAPI: NotionAPI {
         failAt = step.map { ($0, error) }
     }
 
+    /// Lets the first `count` uploads through and fails every one after that.
+    ///
+    /// A split video needs a failure *partway* through one item, which `setFailure` cannot
+    /// express — it fails the step from the first call onwards.
+    func failAfterUploads(_ count: Int?, error: APIError = .server(status: 503, message: nil)) {
+        uploadsBeforeFailure = count
+        uploadFailure = error
+    }
+
+    private var uploadsBeforeFailure: Int?
+    private var uploadFailure: APIError = .server(status: 503, message: nil)
+
     func callCount(_ step: Step) -> Int { callCounts[step.rawValue] ?? 0 }
     func keys(_ step: Step) -> [String] { seenKeys[step.rawValue] ?? [] }
     var pageBodyCount: Int { pageContents.count }
@@ -53,8 +65,16 @@ actor StubNotionAPI: NotionAPI {
 
     func uploadFile(_ request: UploadFileRequest) async throws -> String {
         try record(.uploadFile, key: request.idempotencyKey.rawValue)
-        return "file-\(request.mediaId.uuidString.prefix(8))"
+        // A distinct id per upload, as a real destination issues. One id per *media item*
+        // would have hidden the bug where several parts of a split video all attach as the
+        // same file.
+        if let limit = uploadsBeforeFailure, uploadedFiles.count >= limit { throw uploadFailure }
+        uploadedFiles.append(request.fileURL.lastPathComponent)
+        return "file-\(request.mediaId.uuidString.prefix(8))-\(uploadedFiles.count)"
     }
+
+    /// Filenames in the order they arrived, so a split video's ordering can be asserted.
+    private(set) var uploadedFiles: [String] = []
 
     func insertContent(_ request: InsertContentRequest) async throws -> [String] {
         try record(.insertContent, key: request.idempotencyKey.rawValue)
@@ -757,5 +777,154 @@ struct ChosenPageTests {
 
         #expect(await sut.sync(draftId: draft.id) == .synced)
         #expect(draft.syncState(for: .notion).externalId == "their-page-id")
+    }
+}
+
+/// A long video is cut into parts, and the parts have to reach the destination intact.
+///
+/// The behaviour being protected is the one the user asked for: a video too big for the
+/// destination's per-file cap is kept, not dropped. That means several uploads for one
+/// attachment, which is a new way for a sync to be half-done — so these are mostly about what
+/// happens when it fails partway.
+@Suite("Syncing a video that had to be split")
+@MainActor
+struct SplitVideoSyncTests {
+
+    private struct Harness {
+        let store: DraftStore
+        let files: MediaFileStore
+        let draft: EntryDraft
+        let root: URL
+    }
+
+    private func makeHarness(now: Date) throws -> Harness {
+        let container = try ModelContainerFactory.makeInMemoryContainer()
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cp-split-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let files = MediaFileStore(root: root)
+        let store = DraftStore(container: container, clock: { now })
+        let draft = try store.createDraft()
+        try store.updateRawText("The long one.", for: draft)
+        return Harness(store: store, files: files, draft: draft, root: root)
+    }
+
+    /// Attaches a video and splits it into `parts` files on disk, as the compressor would.
+    @discardableResult
+    private func attachSplitVideo(_ h: Harness, parts: Int) throws -> MediaItem {
+        let source = h.root.appendingPathComponent("long.mov")
+        try Data(repeating: 9, count: 256).write(to: source)
+        let item = try h.store.attachMedia(
+            from: source, kind: .video, to: h.draft, fileStore: h.files
+        )
+
+        var paths: [String] = []
+        for index in 0..<parts {
+            let written = try h.files.write(
+                Data(repeating: UInt8(index), count: 64),
+                id: item.id, preferredName: "part-\(index)", extension: "mp4"
+            )
+            paths.append(written.relativePath)
+        }
+        item.markSplit(into: paths, totalBytes: 64 * parts, level: .medium)
+        try h.store.flush()
+        return item
+    }
+
+    @Test("every part is uploaded, in order, as its own file")
+    func allPartsUploadedInOrder() async throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let h = try makeHarness(now: now)
+        try attachSplitVideo(h, parts: 4)
+        let api = StubNotionAPI()
+        let sut = SyncCoordinator(store: h.store, fileStore: h.files, notion: api, clock: { now })
+
+        let outcome = await sut.sync(draftId: h.draft.id)
+
+        #expect(outcome == .synced)
+        #expect(await api.callCount(.uploadFile) == 4, "one upload per part")
+        #expect(await api.uploadedFiles == [
+            "part-0.mp4", "part-1.mp4", "part-2.mp4", "part-3.mp4",
+        ])
+    }
+
+    @Test("each part carries its own idempotency key")
+    func keysAreDistinctPerPart() async throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let h = try makeHarness(now: now)
+        try attachSplitVideo(h, parts: 3)
+        let api = StubNotionAPI()
+        let sut = SyncCoordinator(store: h.store, fileStore: h.files, notion: api, clock: { now })
+
+        await sut.sync(draftId: h.draft.id)
+
+        // One key shared across parts would let the backend replay part one's response for
+        // part two, and the entry would hold three copies of the first minute.
+        let keys = await api.keys(.uploadFile)
+        #expect(Set(keys).count == 3)
+    }
+
+    @Test("a retry resumes at the part that failed instead of re-sending the ones that landed")
+    func retryResumesMidVideo() async throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let h = try makeHarness(now: now)
+        let item = try attachSplitVideo(h, parts: 4)
+        let api = StubNotionAPI()
+        let sut = SyncCoordinator(store: h.store, fileStore: h.files, notion: api, clock: { now })
+
+        // Two parts land, then the network goes.
+        await api.setFailure(nil)
+        await api.failAfterUploads(2, error: .server(status: 503, message: nil))
+        let first = await sut.sync(draftId: h.draft.id)
+        #expect(first != .synced)
+        #expect(item.uploadStatus == .failed)
+        #expect(item.uploadError?.contains("Part 3 of 4") == true,
+                "the message should name which part stopped, got \(item.uploadError ?? "nil")")
+
+        await api.failAfterUploads(nil, error: .server(status: 503, message: nil))
+        let second = await sut.sync(draftId: h.draft.id)
+
+        #expect(second == .synced)
+        // Five calls, not eight: two landed, one failed, and the retry sent only the two
+        // that were still outstanding. Without per-part resumption this would be four more.
+        #expect(await api.callCount(.uploadFile) == 5)
+    }
+
+    @Test("a video missing one of its parts is reported, not retried into a loop")
+    func aMissingPartIsNotRetriedForever() async throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let h = try makeHarness(now: now)
+        let item = try attachSplitVideo(h, parts: 3)
+        // A part vanishes from disk. Retrying cannot bring it back.
+        try FileManager.default.removeItem(at: h.files.url(for: item.partRelativePaths[1]))
+
+        let api = StubNotionAPI()
+        let sut = SyncCoordinator(store: h.store, fileStore: h.files, notion: api, clock: { now })
+
+        let outcome = await sut.sync(draftId: h.draft.id)
+
+        #expect(outcome == .synced, "the words still go, as ADR-015a requires")
+        #expect(item.uploadStatus == .failed)
+        #expect(item.uploadError?.contains("Part 2 of 3") == true)
+        // And the entry is clean, so nothing comes back for a file that does not exist.
+        #expect(h.draft.needsSync(to: .notion) == false)
+    }
+
+    @Test("half a video is never attached to the page")
+    func partialVideoIsNotAttached() async throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let h = try makeHarness(now: now)
+        try attachSplitVideo(h, parts: 4)
+        let api = StubNotionAPI()
+        let sut = SyncCoordinator(store: h.store, fileStore: h.files, notion: api, clock: { now })
+
+        await api.failAfterUploads(2, error: .server(status: 503, message: nil))
+        await sut.sync(draftId: h.draft.id)
+
+        // Two parts uploaded successfully, and neither was attached: a page showing minutes
+        // one and two of a four-minute video, with no sign the rest exists, is worse than a
+        // page that is visibly still waiting for it.
+        let state = h.draft.syncState(for: .notion)
+        #expect(state.videoBlockIds.isEmpty)
     }
 }

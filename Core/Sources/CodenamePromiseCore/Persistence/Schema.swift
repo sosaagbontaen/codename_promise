@@ -83,9 +83,31 @@ public enum SchemaV3: VersionedSchema {
 /// ADR-008a and the reason this migration opens the store instead of failing on a mandatory
 /// attribute.
 ///
-/// Its models are the live types, which is the privilege of being newest.
+/// Its models are frozen in `SchemaV4Models.swift`, because v5 exists.
 public enum SchemaV4: VersionedSchema {
     public static var versionIdentifier: Schema.Version { Schema.Version(4, 0, 0) }
+
+    public static var models: [any PersistentModel.Type] {
+        [SchemaV4.EntryDraft.self, SchemaV4.MediaItem.self,
+         SchemaV4.AudioCapture.self, SchemaV4.SyncState.self]
+    }
+}
+
+/// Adds `MediaItem.partRelativePaths`: the pieces a long video was cut into.
+///
+/// A destination that caps individual files used to mean a long video was simply dropped —
+/// re-encoded to fit, found still too big, and abandoned. It is now cut into parts that each
+/// fit, which needs somewhere to record what those parts are. Derived files, like
+/// `compressedRelativePath` beside it; the original the user attached is untouched.
+///
+/// An array of relative paths with an empty default, on a `@Model` rather than inside the
+/// `Codable` `EntryContent` composite — that distinction is ADR-008a and the reason this
+/// opens an existing store instead of failing on a mandatory attribute. Empty is the honest
+/// value for every video that was never split.
+///
+/// Its models are the live types, which is the privilege of being newest.
+public enum SchemaV5: VersionedSchema {
+    public static var versionIdentifier: Schema.Version { Schema.Version(5, 0, 0) }
 
     public static var models: [any PersistentModel.Type] {
         [EntryDraft.self, MediaItem.self, AudioCapture.self, SyncState.self]
@@ -94,7 +116,7 @@ public enum SchemaV4: VersionedSchema {
 
 public enum CodenamePromiseMigrationPlan: SchemaMigrationPlan {
     public static var schemas: [any VersionedSchema.Type] {
-        [SchemaV1.self, SchemaV2.self, SchemaV3.self, SchemaV4.self]
+        [SchemaV1.self, SchemaV2.self, SchemaV3.self, SchemaV4.self, SchemaV5.self]
     }
 
     public static var stages: [MigrationStage] {
@@ -105,6 +127,7 @@ public enum CodenamePromiseMigrationPlan: SchemaMigrationPlan {
             .lightweight(fromVersion: SchemaV1.self, toVersion: SchemaV2.self),
             .lightweight(fromVersion: SchemaV2.self, toVersion: SchemaV3.self),
             .lightweight(fromVersion: SchemaV3.self, toVersion: SchemaV4.self),
+            .lightweight(fromVersion: SchemaV4.self, toVersion: SchemaV5.self),
         ]
     }
 }
@@ -112,5 +135,5 @@ public enum CodenamePromiseMigrationPlan: SchemaMigrationPlan {
 public enum CodenamePromiseSchema {
     /// Always build containers from this, never from an ad-hoc `Schema([...])` — an
     /// unversioned container is how you end up unable to migrate.
-    public static var current: Schema { Schema(versionedSchema: SchemaV4.self) }
+    public static var current: Schema { Schema(versionedSchema: SchemaV5.self) }
 }

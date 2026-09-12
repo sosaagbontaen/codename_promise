@@ -34,6 +34,7 @@ struct AttachmentsView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     if !failures.isEmpty { failureNotice }
+                    if !staying.isEmpty { stayingNotice }
 
                     LazyVGrid(columns: columns, spacing: 10) {
                         ForEach(order, id: \.id) { item in
@@ -171,10 +172,39 @@ struct AttachmentsView: View {
         .background(Brand.failed.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
     }
 
+    /// Says plainly that a video is staying here, and why.
+    private var stayingNotice: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(
+                staying.count == 1 ? "One video stays on this phone" : "\(staying.count) videos stay on this phone",
+                systemImage: "iphone"
+            )
+            .font(Type.label(14))
+            .foregroundStyle(Brand.ink)
+
+            Text(staying.count == 1
+                 ? "It is too long to send anywhere without ruining it. It is still in this entry, and still on your phone. Everything else in this entry sends normally."
+                 : "They are too long to send anywhere without ruining them. They are still in this entry, and still on your phone. Everything else in this entry sends normally.")
+                .font(Type.caption(12))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+    }
+
     // MARK: - Words
 
     private var failures: [MediaItem] {
-        order.filter { $0.uploadStatus == .failed }
+        order.filter { $0.uploadStatus == .failed && !$0.isTooLargeToSend }
+    }
+
+    /// Videos too long for the destination to take at any watchable quality.
+    ///
+    /// Kept apart from ordinary upload failures because it is not a failure and retrying will
+    /// not change it. The entry has the video; the destination will not.
+    private var staying: [MediaItem] {
+        order.filter(\.isTooLargeToSend)
     }
 
     private var summary: String {
@@ -265,7 +295,7 @@ private struct AttachmentTile<Menu: View>: View {
 
     @State private var image: UIImage?
 
-    private var failed: Bool { item.uploadStatus == .failed }
+    private var failed: Bool { item.uploadStatus == .failed && !item.isTooLargeToSend }
 
     var body: some View {
         Button(action: onOpen) {
@@ -310,6 +340,7 @@ private struct AttachmentTile<Menu: View>: View {
                     .padding(6)
             }
         }
+        .overlay(alignment: .bottomLeading) { partsBadge }
     }
 
     @ViewBuilder
@@ -328,6 +359,30 @@ private struct AttachmentTile<Menu: View>: View {
                 .background(Brand.violet, in: Capsule())
                 .padding(6)
         }
+    }
+
+    /// What became of a video too big to send as one file.
+    ///
+    /// Worth saying on the tile. "Sent in 4 parts" explains why the page has four video blocks
+    /// where the entry has one attachment, and it is the difference between the app looking
+    /// broken and the app looking like it handled something.
+    @ViewBuilder
+    private var partsBadge: some View {
+        if item.isTooLargeToSend {
+            caption("Stays here", systemImage: "iphone")
+        } else if item.isSplit {
+            caption("\(item.partRelativePaths.count) parts", systemImage: "square.stack")
+        }
+    }
+
+    private func caption(_ text: String, systemImage: String) -> some View {
+        Label(text, systemImage: systemImage)
+            .font(Type.caption(9.5, .semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 3)
+            .background(.black.opacity(0.55), in: Capsule())
+            .padding(6)
     }
 
     @ViewBuilder

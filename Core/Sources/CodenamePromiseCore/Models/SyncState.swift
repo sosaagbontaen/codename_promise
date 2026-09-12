@@ -213,12 +213,22 @@ public final class SyncState {
         if phase.rank > self.phase.rank { self.phase = phase }
     }
 
-    public func recordUploadedFile(mediaId: UUID, externalFileId: String) {
-        uploadedFileIds[mediaId.uuidString] = externalFileId
+    public func recordUploadedFile(mediaId: UUID, part: Int = 0, externalFileId: String) {
+        uploadedFileIds[Self.uploadKey(mediaId, part)] = externalFileId
     }
 
-    public func uploadedFileId(for mediaId: UUID) -> String? {
-        uploadedFileIds[mediaId.uuidString]
+    public func uploadedFileId(for mediaId: UUID, part: Int = 0) -> String? {
+        uploadedFileIds[Self.uploadKey(mediaId, part)]
+    }
+
+    /// The key a media file's destination id is filed under.
+    ///
+    /// The first part keeps the bare UUID it has always used. A long video now arrives as
+    /// several files, and giving part 0 a new key shape would make every id recorded by an
+    /// earlier build invisible — a resumed sync would re-upload attachments that are already
+    /// sitting in the destination, and the entry would end up holding two of each.
+    private static func uploadKey(_ mediaId: UUID, _ part: Int) -> String {
+        part == 0 ? mediaId.uuidString : "\(mediaId.uuidString)#\(part)"
     }
 
     public func markSynced(externalId: String, contentHash: String, now: Date = Date()) {

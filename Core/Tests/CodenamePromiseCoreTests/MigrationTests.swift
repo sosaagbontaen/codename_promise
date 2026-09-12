@@ -367,4 +367,123 @@ struct MigrationTests {
             #expect(reopened.organiserVersion == "organise-test")
         }
     }
+
+    /// The build before long videos could be kept.
+    ///
+    /// v5 adds one attribute, `MediaItem.partRelativePaths`, and the thing that has to be
+    /// true is that a phone holding real entries opens afterwards — with its attachments
+    /// still pointing at the same bytes, and the new attribute arriving empty rather than
+    /// making the store unreadable.
+    @Suite("from a v4 store")
+    @MainActor
+    struct FromV4 {
+
+        /// Writes a store at v4's exact shape and returns its URL.
+        private func makeV4Store() throws -> URL {
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("v4-\(UUID().uuidString).store")
+
+            let schema = Schema(versionedSchema: SchemaV4.self)
+            let container = try ModelContainer(
+                for: schema,
+                configurations: [ModelConfiguration(schema: schema, url: url)]
+            )
+            let context = ModelContext(container)
+
+            let draft = SchemaV4.EntryDraft(entryDateKey: "2026-09-11")
+            var content = EntryContent()
+            content.rawText = "The day the video was too big."
+            draft.content = content
+            context.insert(draft)
+
+            let video = SchemaV4.MediaItem(relativePath: "media/abc/original.mov")
+            video.kindRaw = MediaKind.video.rawValue
+            video.originalSizeBytes = 210_000_000
+            video.sortIndex = 0
+            context.insert(video)
+            draft.media.append(video)
+
+            let sync = SchemaV4.SyncState()
+            sync.externalId = "page-4"
+            sync.photoBlockIds = ["block-photo"]
+            sync.videoBlockIds = ["block-video"]
+            context.insert(sync)
+            draft.syncStates.append(sync)
+
+            try context.save()
+            return url
+        }
+
+        private func openThroughApp(_ url: URL) throws -> DraftStore {
+            DraftStore(container: try ModelContainerFactory.makeAppContainer(url: url))
+        }
+
+        @Test("a store from the build before split videos still opens")
+        func v4StoreOpens() throws {
+            let url = try makeV4Store()
+            defer { try? FileManager.default.removeItem(at: url) }
+
+            #expect(try openThroughApp(url).allDrafts().count == 1)
+        }
+
+        @Test("an attachment still points at the same bytes")
+        func mediaSurvives() throws {
+            let url = try makeV4Store()
+            defer { try? FileManager.default.removeItem(at: url) }
+
+            let draft = try #require(try openThroughApp(url).allDrafts().first)
+            let item = try #require(draft.orderedMedia.first)
+            #expect(item.relativePath == "media/abc/original.mov")
+            #expect(item.originalSizeBytes == 210_000_000)
+            #expect(item.kind == .video)
+        }
+
+        @Test("the parts attribute arrives empty rather than broken")
+        func partsDefaultToEmpty() throws {
+            let url = try makeV4Store()
+            defer { try? FileManager.default.removeItem(at: url) }
+
+            let draft = try #require(try openThroughApp(url).allDrafts().first)
+            let item = try #require(draft.orderedMedia.first)
+            #expect(item.partRelativePaths.isEmpty)
+            // And an un-split item still reports exactly one file to send, so nothing in the
+            // sync path has to know whether it came through a migration.
+            #expect(item.pathsForUpload == ["media/abc/original.mov"])
+            #expect(item.isSplit == false)
+        }
+
+        @Test("a video split after the migration saves and reloads")
+        func splitPersists() throws {
+            let url = try makeV4Store()
+            defer { try? FileManager.default.removeItem(at: url) }
+
+            let store = try openThroughApp(url)
+            let draft = try #require(try store.allDrafts().first)
+            let item = try #require(draft.orderedMedia.first)
+            item.markSplit(
+                into: ["media/abc/part-0.mp4", "media/abc/part-1.mp4"],
+                totalBytes: 8_000_000,
+                level: .medium
+            )
+            try store.flush()
+
+            let reopened = try #require(try openThroughApp(url).allDrafts().first)
+            let reloaded = try #require(reopened.orderedMedia.first)
+            #expect(reloaded.partRelativePaths.count == 2)
+            #expect(reloaded.isSplit)
+            #expect(reloaded.ownedRelativePaths.contains("media/abc/part-1.mp4"))
+        }
+
+        @Test("the block ids each stage owns come through untouched")
+        func blockIdsSurvive() throws {
+            let url = try makeV4Store()
+            defer { try? FileManager.default.removeItem(at: url) }
+
+            let draft = try #require(try openThroughApp(url).allDrafts().first)
+            let sync = try #require(draft.syncStates.first)
+            #expect(sync.photoBlockIds == ["block-photo"])
+            #expect(sync.videoBlockIds == ["block-video"])
+        }
+    }
+
 }

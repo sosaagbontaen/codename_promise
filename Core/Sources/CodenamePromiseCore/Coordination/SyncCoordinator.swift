@@ -292,43 +292,80 @@ public final class SyncCoordinator {
 
         for item in items {
             defer { done += 1; if total > 0 { onProgress(done, total) } }
-            if let existing = state.uploadedFileId(for: item.id) {
-                fileIds.append(AttachedFile(id: existing, kind: item.kind))
-                continue
-            }
 
-            let path = item.pathForUpload
-            guard fileStore.exists(path) else {
-                // Gone from disk. Trying again cannot bring it back, so this is reported and
-                // the sync is allowed to finish — otherwise the entry stays dirty forever
-                // and retries a file that does not exist.
-                item.markUploadFailed("The file is missing.")
+            // Nothing here can be sent, and no amount of retrying changes that. Reported on
+            // the item and counted as lost rather than uploaded and rejected.
+            if item.isTooLargeToSend {
+                item.markUploadFailed(
+                    "Too long to send. It is still here, in this entry, on your phone."
+                )
                 lost.append(item)
                 try? store.flush()
                 continue
             }
 
-            item.markUploading(now: clock())
-            try? store.flush()
+            // One item, one or several files. A video too long to fit the destination's cap
+            // was cut into parts, and each part is its own upload — but the item succeeds or
+            // fails as a whole, because half a video attached to a page is worse than a video
+            // that is visibly still coming.
+            let paths = item.pathsForUpload
+            var uploaded: [AttachedFile] = []
+            var problem: (message: String, retryable: Bool)?
 
-            do {
-                let fileId = try await notion.uploadFile(
-                    UploadFileRequest(
-                        mediaId: item.id,
-                        fileURL: fileStore.url(for: path),
-                        idempotencyKey: key(state, step: "file-\(item.id.uuidString)")
+            for (part, path) in paths.enumerated() {
+                if let existing = state.uploadedFileId(for: item.id, part: part) {
+                    uploaded.append(AttachedFile(id: existing, kind: item.kind))
+                    continue
+                }
+
+                guard fileStore.exists(path) else {
+                    // Gone from disk. Trying again cannot bring it back, so this is reported
+                    // and the sync is allowed to finish — otherwise the entry stays dirty
+                    // forever and retries a file that does not exist.
+                    problem = (Self.missingMessage(part: part, of: paths.count), false)
+                    break
+                }
+
+                if part == 0 {
+                    item.markUploading(now: clock())
+                    try? store.flush()
+                }
+
+                do {
+                    let fileId = try await notion.uploadFile(
+                        UploadFileRequest(
+                            mediaId: item.id,
+                            fileURL: fileStore.url(for: path),
+                            idempotencyKey: key(state, step: Self.uploadStep(item.id, part))
+                        )
                     )
-                )
+                    // Recorded the moment it lands, so a failure three parts later does not
+                    // throw away the ones that arrived. The retry resumes from here.
+                    state.recordUploadedFile(mediaId: item.id, part: part, externalFileId: fileId)
+                    uploaded.append(AttachedFile(id: fileId, kind: item.kind))
+                    try? store.flush()
+                } catch let error as APIError {
+                    // Worth coming back for only if it could succeed later.
+                    problem = (
+                        Self.partMessage(error.userFacingMessage, part: part, of: paths.count),
+                        error.isRetryable
+                    )
+                    break
+                } catch {
+                    problem = (
+                        Self.partMessage(error.localizedDescription, part: part, of: paths.count),
+                        true
+                    )
+                    break
+                }
+            }
+
+            if let problem {
+                item.markUploadFailed(problem.message)
+                if problem.retryable { retryable.append(item) } else { lost.append(item) }
+            } else {
                 item.markUploaded()
-                state.recordUploadedFile(mediaId: item.id, externalFileId: fileId)
-                fileIds.append(AttachedFile(id: fileId, kind: item.kind))
-            } catch let error as APIError {
-                item.markUploadFailed(error.userFacingMessage)
-                // Worth coming back for only if it could succeed later.
-                if error.isRetryable { retryable.append(item) } else { lost.append(item) }
-            } catch {
-                item.markUploadFailed(error.localizedDescription)
-                retryable.append(item)
+                fileIds.append(contentsOf: uploaded)
             }
             try? store.flush()
         }
@@ -458,6 +495,22 @@ public enum SyncOutcome: Sendable, Equatable {
 
 extension SyncCoordinator {
     /// Names what was left behind, in the person's terms: "1 video" rather than an id.
+    /// The idempotency step for one file of one item.
+    ///
+    /// Part 0 keeps the step name it has always had, for the same reason its upload key does:
+    /// a retry of an attempt begun by an earlier build must replay rather than re-write.
+    static func uploadStep(_ mediaId: UUID, _ part: Int) -> String {
+        part == 0 ? "file-\(mediaId.uuidString)" : "file-\(mediaId.uuidString)-\(part)"
+    }
+
+    static func missingMessage(part: Int, of total: Int) -> String {
+        total > 1 ? "Part \(part + 1) of \(total) is missing." : "The file is missing."
+    }
+
+    static func partMessage(_ message: String, part: Int, of total: Int) -> String {
+        total > 1 ? "Part \(part + 1) of \(total): \(message)" : message
+    }
+
     static func describe(_ items: [MediaItem]) -> String {
         let photos = items.filter { $0.kind == .photo }.count
         let videos = items.filter { $0.kind == .video }.count

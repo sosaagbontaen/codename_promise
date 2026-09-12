@@ -22,6 +22,14 @@ public final class MediaItem {
     public var compressedRelativePath: String?
     public var compressedSizeBytes: Int?
 
+    /// The pieces a long video was cut into, in order, when no single file could hold it.
+    ///
+    /// A destination that caps individual files cannot take a four-minute clip at any
+    /// watchable bitrate. It can take four one-minute clips. These are those — derived files
+    /// like `compressedRelativePath`, and like it the original the user attached is never
+    /// replaced (invariant 5). Empty for every video that fitted, which is most of them.
+    public var partRelativePaths: [String] = []
+
     /// Explicit display order. Do not rely on the relationship array's order. See ADR-011.
     public var sortIndex: Int = 0
 
@@ -81,6 +89,37 @@ public final class MediaItem {
     /// otherwise the original.
     public var pathForUpload: String { compressedRelativePath ?? relativePath }
 
+    /// Every file this item sends, in order. One for almost everything; several for a video
+    /// that had to be cut up to fit.
+    ///
+    /// Callers upload this rather than `pathForUpload` so that splitting stays invisible to
+    /// the sync path — it is a list of files either way.
+    public var pathsForUpload: [String] {
+        partRelativePaths.isEmpty ? [pathForUpload] : partRelativePaths
+    }
+
+    /// True when this item arrives at the destination as several files.
+    public var isSplit: Bool { partRelativePaths.count > 1 }
+
+    /// True when there is no version of this the destination would take.
+    ///
+    /// Worth asking *before* uploading. The old path fell back to the untouched original
+    /// whenever compression failed, which meant pushing 200 MB up a phone connection for the
+    /// sole purpose of being rejected — the exact round trip ADR-015 exists to avoid.
+    public var isTooLargeToSend: Bool { compressionStatus == .tooLargeToSend }
+
+    public func markTooLargeToSend() {
+        compressionStatus = .tooLargeToSend
+        compressionLevel = .none
+    }
+
+    public func markSplit(into paths: [String], totalBytes: Int, level: CompressionLevel) {
+        partRelativePaths = paths
+        compressedSizeBytes = totalBytes
+        compressionLevel = level
+        compressionStatus = .compressed
+    }
+
     public var effectiveSizeBytes: Int { compressedSizeBytes ?? originalSizeBytes }
 
     public func markCompressed(relativePath: String, sizeBytes: Int, level: CompressionLevel) {
@@ -123,6 +162,10 @@ public final class MediaItem {
     /// All file paths this item owns, for cleanup when it is detached or its draft is
     /// deleted. Cascade delete removes the row; these bytes need removing explicitly.
     public var ownedRelativePaths: [String] {
-        [relativePath, compressedRelativePath].compactMap { $0 }.filter { !$0.isEmpty }
+        // The parts count: they are files this item made and nothing else refers to, so
+        // leaving them out would strand a few megabytes per split video on every delete.
+        // See ADR-018a.
+        ([relativePath, compressedRelativePath].compactMap { $0 } + partRelativePaths)
+            .filter { !$0.isEmpty }
     }
 }

@@ -30,6 +30,14 @@ public enum CompressionLevel: String, Codable, Sendable, CaseIterable {
 /// uploading" and left any retry pass unable to decide what to do. See ADR-013.
 public enum CompressionStatus: String, Codable, Sendable, CaseIterable {
     case pending, compressing, compressed, skipped, failed
+
+    /// Kept on the device, but there is no version of it a capped destination would accept.
+    ///
+    /// Distinct from `failed`, which means the encode itself went wrong and is worth another
+    /// go. This one is arithmetic: past a certain length, even splitting into the maximum
+    /// number of parts leaves each part below the quality floor. Nothing is deleted — the
+    /// video is still in the entry and still on the phone, it just does not travel.
+    case tooLargeToSend
 }
 
 public enum UploadStatus: String, Codable, Sendable, CaseIterable {

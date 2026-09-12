@@ -1,4 +1,5 @@
 import AVFoundation
+import CodenamePromiseCore
 import Foundation
 import OSLog
 
@@ -6,31 +7,40 @@ import OSLog
 /// track, a writer that won't accept settings. Each was an indistinguishable `return nil`.
 private let log = Logger(subsystem: "com.codenamepromise.journal", category: "transcode")
 
-/// Re-encodes a video to hit a size budget.
+/// Re-encodes a video, or one stretch of one, to settings someone else chose.
 ///
 /// **Why not an export preset.** `AVAssetExportSession` presets target a *quality level*, not
 /// a file size — `PresetLowQuality` produces whatever it produces, which for a long clip is
 /// still far over budget and for a short one wastes quality it could have kept. The fix isn't
-/// a cleverer codec; it's arithmetic. Bits available is a fixed number, so derive the bitrate
-/// from it and encode to that.
+/// a cleverer codec; it's arithmetic, and the arithmetic lives in `VideoPlanner` in Core where
+/// it can be tested without an encoder. This is the part that needs AVFoundation.
 ///
 /// **Why HEVC.** Roughly 40% fewer bits than H.264 for the same perceived quality, which at a
 /// tight budget is the single biggest lever available. Falls back to H.264 otherwise.
 ///
-/// **Where the wall is, honestly.** 5 MiB is about 40 megabits. A 30-second clip gets ~1.3
-/// Mbps, which looks decent at 720p. Five minutes gets ~130 kbps, which no codec makes look
-/// good — information theory, not a lack of cleverness. So resolution and frame rate step
-/// down with the budget, and past a point the right answer is to say so.
+/// **Why a time range.** 5 MiB is about 38 megabits, and no codec makes five minutes of video
+/// look like anything at 130 kbps — information theory, not a lack of cleverness. But the cap
+/// is per *file*, and an entry can hold several, so a long clip is encoded in pieces at a
+/// bitrate that still looks like something. Each call here produces one piece.
 enum VideoTranscoder {
 
-    struct Budget {
-        let bytes: Int
-        /// Kept low and mono: speech survives it, and every bit here is a bit the picture
-        /// doesn't get.
-        var audioBitrate: Int = 48_000
+    /// Loads what the planner needs to decide: how long it is, and how fat it already is.
+    static func inspect(source: URL) async -> (seconds: Double, bitrate: Int)? {
+        let asset = AVURLAsset(url: source)
+        guard
+            let duration = try? await asset.load(.duration),
+            duration.seconds > 0,
+            let track = try? await asset.loadTracks(withMediaType: .video).first
+        else { return nil }
+        let rate = (try? await track.load(.estimatedDataRate)) ?? 0
+        return (duration.seconds, Int(rate))
     }
 
-    static func transcode(source: URL, budget: Budget) async -> URL? {
+    static func transcode(
+        source: URL,
+        encoding: VideoEncoding,
+        timeRange: CMTimeRange? = nil
+    ) async -> URL? {
         let asset = AVURLAsset(url: source)
 
         // Everything the encoder needs is loaded asynchronously up front.
@@ -41,8 +51,7 @@ enum VideoTranscoder {
         // video straight out of the camera roll. The compiler warned; I shipped past it, and
         // it crashed the app on selection.
         guard
-            let duration = try? await asset.load(.duration),
-            duration.seconds > 0,
+            ((try? await asset.load(.duration))?.seconds ?? 0) > 0,
             let videoTrack = try? await asset.loadTracks(withMediaType: .video).first,
             let naturalSize = try? await videoTrack.load(.naturalSize),
             let transform = try? await videoTrack.load(.preferredTransform)
@@ -53,38 +62,21 @@ enum VideoTranscoder {
 
         let audioTrack = try? await asset.loadTracks(withMediaType: .audio).first
 
-        let seconds = duration.seconds
-        // 5% headroom: encoders overshoot their average target and containers add overhead.
-        let totalBits = Double(budget.bytes) * 8 * 0.95
-        let audioBits = audioTrack == nil ? 0 : Double(budget.audioBitrate) * seconds
-        let videoBitrate = Int(max((totalBits - audioBits) / seconds, 120_000))
-        let target = targetSize(for: videoBitrate, natural: naturalSize)
-        let frameRate = videoBitrate < 400_000 ? 24 : 30
-
         return await encode(
             asset: asset,
             videoTrack: videoTrack,
             audioTrack: audioTrack,
             transform: transform,
-            size: target,
-            videoBitrate: videoBitrate,
-            audioBitrate: budget.audioBitrate,
-            frameRate: frameRate
+            size: targetSize(longest: CGFloat(encoding.longestSide), natural: naturalSize),
+            videoBitrate: encoding.videoBitrate,
+            audioBitrate: encoding.audioBitrate,
+            frameRate: encoding.frameRate,
+            timeRange: timeRange
         )
     }
 
-    /// Resolution has to match the bitrate. Encoding 1080p at 300 kbps spends every bit on
-    /// blocking artefacts; the same bits at 480p look fine.
-    private static func targetSize(for bitrate: Int, natural: CGSize) -> CGSize {
-        let longest: CGFloat
-        switch bitrate {
-        case 2_500_000...: longest = 1920
-        case 1_200_000...: longest = 1280
-        case 600_000...: longest = 960
-        case 300_000...: longest = 640
-        default: longest = 480
-        }
-
+    /// Scales the source to the planner's chosen longest edge, keeping its aspect ratio.
+    private static func targetSize(longest: CGFloat, natural: CGSize) -> CGSize {
         let currentLongest = max(natural.width, natural.height)
         guard currentLongest > longest, currentLongest > 0 else { return natural }
 
@@ -104,7 +96,8 @@ enum VideoTranscoder {
         size: CGSize,
         videoBitrate: Int,
         audioBitrate: Int,
-        frameRate: Int
+        frameRate: Int,
+        timeRange: CMTimeRange?
     ) async -> URL? {
         let output = FileManager.default.temporaryDirectory
             .appendingPathComponent("transcode-\(UUID().uuidString).mp4")
@@ -131,6 +124,10 @@ enum VideoTranscoder {
         guard let reader = try? AVAssetReader(asset: asset),
               let writer = try? AVAssetWriter(outputURL: output, fileType: .mp4)
         else { return nil }
+
+        // One piece of a longer clip. Set before `startReading`, which is the only time the
+        // reader will accept it.
+        if let timeRange { reader.timeRange = timeRange }
 
         // The fallback this comment used to promise but not implement. HEVC is preferred —
         // ~40% fewer bits for the same quality — but it isn't available everywhere, notably
@@ -197,7 +194,11 @@ enum VideoTranscoder {
             return nil
         }
         log.info("encoding \(Int(size.width))x\(Int(size.height)) @ \(videoBitrate)bps")
-        writer.startSession(atSourceTime: .zero)
+        // The samples still carry their original timestamps, so a part that begins two
+        // minutes in must open its session there. Starting every part at zero makes the
+        // writer drop everything before its own start time, and parts after the first come
+        // out empty.
+        writer.startSession(atSourceTime: timeRange?.start ?? .zero)
 
         // Both tracks are drained from one scope on one queue.
         //

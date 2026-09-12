@@ -712,7 +712,12 @@ struct CaptureView: View {
     /// Names the attachments that did not upload, and why, rather than leaving somebody to
     /// work out which of nine thumbnails is the problem.
     private var failedUploadMessage: String? {
-        let failed = controller.orderedMedia.filter { $0.uploadStatus == .failed }
+        // A video kept on the phone is not an upload failure and must not be reported as one.
+        // It has no retry to offer and nothing went wrong; it is a video too long for the
+        // destination to take. The attachments screen explains it properly.
+        let failed = controller.orderedMedia.filter {
+            $0.uploadStatus == .failed && !$0.isTooLargeToSend
+        }
         guard !failed.isEmpty else { return nil }
 
         let photos = failed.filter { $0.kind == .photo }.count
@@ -979,7 +984,7 @@ struct MediaThumbnail: View {
                     }
                     .opacity(selecting && !isSelected ? 0.55 : 1)
                     .overlay {
-                        if !selecting, item.uploadStatus == .failed {
+                        if !selecting, item.uploadStatus == .failed, !item.isTooLargeToSend {
                             RoundedRectangle(cornerRadius: 8)
                                 .strokeBorder(Brand.failed, lineWidth: 2)
                         }
@@ -992,7 +997,7 @@ struct MediaThumbnail: View {
             // The failure was recorded on the item all along and shown nowhere, so a video
             // that never uploaded looked exactly like one that did. "Something failed" is
             // not useful when there are nine attachments; this marks the one.
-            if !selecting, item.uploadStatus == .failed {
+            if !selecting, item.uploadStatus == .failed, !item.isTooLargeToSend {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(.white, Brand.failed)
