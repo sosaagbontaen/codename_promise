@@ -182,6 +182,20 @@ def create_app(
     async def remove_vocabulary(term: str) -> dict:
         return {"terms": vocabulary.remove(term)}
 
+    @app.get("/auth/check")
+    async def auth_check(_: None = Depends(require_auth)) -> dict:
+        """Is this key accepted? Nothing else.
+
+        Exists because every other authenticated endpoint does real work — transcribes
+        audio, calls a model, writes to Notion — so a client had no way to find out whether
+        its key was right short of trying to use it and watching a recording fail. In the
+        app that read as "it is broken" with no way to tell a wrong address from a wrong key.
+
+        Cheap on purpose: no providers, no state, no side effects. When no key is configured
+        this returns ok to anybody, which is the truth — there is nothing to be wrong about.
+        """
+        return {"ok": True}
+
     @app.get("/health")
     async def health(verify: bool = False) -> dict:
         """What this server is wired to, and optionally whether that still exists.

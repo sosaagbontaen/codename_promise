@@ -317,3 +317,61 @@ struct UnlinkTests {
         #expect(draft.content.rawText == "Words I wrote")
     }
 }
+
+/// Not knowing is not the same as knowing there is nothing.
+///
+/// `refresh()` catches a failure and leaves `status` at its starting value, which reads
+/// exactly like a server with no Notion integration. The app told people their server had no
+/// Notion set up when the truth was that it had never been asked — and that message appeared
+/// in place of the controls that would have let them fix the connection.
+@Suite("Connection status is not a guess")
+@MainActor
+struct ConnectionAnswerTests {
+
+    /// Answers `status()` with whatever it is told to, so the difference between "could not
+    /// ask" and "asked, and the answer was no" can be tested directly.
+    private struct Stub: NotionConnectionService {
+        var failing = false
+        var authorizationURL: URL? { nil }
+        func status() async throws -> NotionConnectionStatus {
+            if failing { throw APIError.offline }
+            return .disconnected
+        }
+        func databases() async throws -> [NotionDatabase] { [] }
+        func pages() async throws -> [NotionPage] { [] }
+        func entryDays(from: CalendarDay, through: CalendarDay) async throws -> Set<CalendarDay> { [] }
+        func entryCoverage(
+            from: CalendarDay, through: CalendarDay
+        ) async throws -> [DestinationEntryRow] { [] }
+        func selectDatabase(id: String) async throws -> NotionConnectionStatus { .disconnected }
+        func disconnect() async throws {}
+    }
+
+    @Test("a server that could not be asked is not reported as having no Notion")
+    func failureIsNotAFinding() async {
+        let coordinator = ConnectionCoordinator(service: Stub(failing: true))
+        await coordinator.refresh()
+
+        #expect(coordinator.isUnavailable == false, "we never got an answer")
+        #expect(coordinator.hasAnswer == false)
+        if case .failed = coordinator.phase {} else {
+            Issue.record("a failure should still be reported as a failure")
+        }
+    }
+
+    @Test("a server that answered and has no integration is reported as such")
+    func answeredAbsenceIsAFinding() async {
+        let coordinator = ConnectionCoordinator(service: Stub())
+        await coordinator.refresh()
+
+        #expect(coordinator.hasAnswer)
+        #expect(coordinator.isUnavailable, "it told us, so we may say so")
+    }
+
+    @Test("before anything is asked, nothing is claimed")
+    func silenceAtRest() {
+        let coordinator = ConnectionCoordinator(service: Stub())
+        #expect(coordinator.hasAnswer == false)
+        #expect(coordinator.isUnavailable == false)
+    }
+}

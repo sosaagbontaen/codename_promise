@@ -34,14 +34,25 @@ public final class ConnectionCoordinator {
 
     public var authorizationURL: URL? { service.authorizationURL }
 
+    /// Whether `status` reflects an answer from the server rather than the starting value.
+    ///
+    /// Load-bearing. `refresh()` catches a failure and leaves `status` alone, so a rejected
+    /// or unreachable call left it at `.disconnected` — which is indistinguishable from a
+    /// server that genuinely has no Notion integration. The app then told people their
+    /// server had no Notion set up when the truth was that it had never been asked.
+    public private(set) var hasAnswer = false
+
     /// True when the backend can't offer sign-in at all, so the UI should explain that rather
     /// than showing a button that will fail.
-    public var isUnavailable: Bool { !status.configurable && !status.connected }
+    ///
+    /// Only once there is an answer. Not knowing is not the same as knowing there is nothing.
+    public var isUnavailable: Bool { hasAnswer && !status.configurable && !status.connected }
 
     public func refresh() async {
         phase = .loading
         do {
             status = try await service.status()
+            hasAnswer = true
             if status.connected {
                 databases = try await service.databases()
             } else {
@@ -49,8 +60,12 @@ public final class ConnectionCoordinator {
             }
             phase = .idle
         } catch let error as APIError {
+            // `status` is left alone, but `hasAnswer` goes back to false so nothing
+            // downstream reports a stale value as though it were a finding.
+            hasAnswer = false
             phase = .failed(error.userFacingMessage)
         } catch {
+            hasAnswer = false
             phase = .failed(error.localizedDescription)
         }
     }
