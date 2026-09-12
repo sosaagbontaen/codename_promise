@@ -15,6 +15,10 @@ struct SettingsView: View {
     @State private var confirmingDisconnect = false
     @State private var serverURL = ""
     @State private var serverSaved = false
+    /// Never pre-filled from the Keychain: reading a stored secret back into a field just
+    /// to show it is a way to leak it over somebody's shoulder. Blank means "unchanged".
+    @State private var apiKey = ""
+    @State private var apiKeySaved = false
     @AppStorage(Appearance.storageKey) private var appearance: Appearance = .dark
     @AppStorage(JournalFont.storageKey) private var journalFont: JournalFont = .sans
     // Stored as its raw string rather than as the enum. @AppStorage does support a
@@ -325,6 +329,23 @@ struct SettingsView: View {
                     .font(.footnote)
                     .foregroundStyle(Brand.reached)
             }
+
+            // Nothing wrote to the Keychain before this existed. APIKeyStore().read() was
+            // consulted on every request and always came back nil, so a backend that
+            // required a key could only ever answer 401 — and the only way to run one was
+            // to leave it open, which on a public URL is somebody else's free inference.
+            SecureField("API key, if your server needs one", text: $apiKey)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .onSubmit(saveAPIKey)
+
+            Button("Save API key", action: saveAPIKey)
+
+            if apiKeySaved {
+                Label("Saved to the Keychain.", systemImage: "checkmark.circle")
+                    .font(.footnote)
+                    .foregroundStyle(Brand.reached)
+            }
         } header: {
             Text("Server")
         } footer: {
@@ -412,6 +433,18 @@ struct SettingsView: View {
     }
 
     // MARK: - Actions
+
+    private func saveAPIKey() {
+        let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            APIKeyStore().delete()
+        } else {
+            try? APIKeyStore().write(trimmed)
+        }
+        apiKey = ""
+        apiKeySaved = true
+        Haptics.picked()
+    }
 
     private func saveServerURL() {
         AppServices.backendSettings.setOverride(serverURL)
