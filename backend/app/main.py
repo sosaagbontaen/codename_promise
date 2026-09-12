@@ -182,6 +182,21 @@ def create_app(
     async def remove_vocabulary(term: str) -> dict:
         return {"terms": vocabulary.remove(term)}
 
+    @app.get("/")
+    async def root() -> dict:
+        """Something to see when you open the address in a browser.
+
+        Without this, opening the server in Safari answers `{"detail":"Not Found"}`, which is
+        FastAPI correctly saying there is no route here and reads exactly like a broken
+        deployment. The address bar is the first thing anybody tries when wondering whether
+        their server is up, so it should answer that question.
+
+        Deliberately says nothing about configuration. `/health` is the endpoint for that and
+        it is unauthenticated, but there is no reason for a passer-by to get a summary of
+        what this server is wired to.
+        """
+        return {"service": "dumpnotes", "status": "ok", "health": "/health"}
+
     @app.get("/auth/check")
     async def auth_check(_: None = Depends(require_auth)) -> dict:
         """Is this key accepted? Nothing else.

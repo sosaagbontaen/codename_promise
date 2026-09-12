@@ -57,3 +57,17 @@ def test_health_says_whether_a_key_is_required():
     """So the app can tell "this server wants a key" from "your key is wrong"."""
     assert make_client(api_key="secret").get("/health").json()["auth_required"] is True
     assert make_client().get("/health").json()["auth_required"] is False
+
+
+def test_root_says_the_server_is_up():
+    """Opening the address in a browser is how people check. It should answer."""
+    response = make_client().get("/")
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+
+
+def test_root_gives_nothing_away():
+    """/health is the place for configuration, and a passer-by has no need of it."""
+    body = make_client(api_key="secret").get("/").json()
+    assert "auth_required" not in body
+    assert "models" not in body
