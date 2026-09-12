@@ -147,6 +147,12 @@ struct CaptureView: View {
             if let service = services.connectionService {
                 ExistingEntryPicker(service: service) { page in
                     controller.attachToExistingPage(page.id, title: page.title)
+                    // And actually send it. Attaching only records which page this entry
+                    // belongs to; the send used to be a separate press on the full-width
+                    // button that no longer exists, so choosing a page marked the entry as
+                    // needing sync and then left it there. Picking a destination is the
+                    // whole action, not half of it.
+                    Task { await pushToNotion() }
                 }
             }
         }
@@ -476,15 +482,19 @@ struct CaptureView: View {
                     selection: $photoSelections, maxSelectionCount: nil,
                     matching: .any(of: [.images, .videos])
                 ) {
-                    CompactAction(symbol: "photo.on.rectangle.angled", tint: Brand.Mode.photo)
+                    CompactAction(symbol: "photo.on.rectangle.angled", title: "Photos", tint: Brand.Mode.photo)
                 }
+                // The only control in this row that is not a Button, so it was the only one
+                // with no press treatment: no shrink, no dim, no tap back. That is most of
+                // what "it feels like a picture rather than a button" is.
+                .buttonStyle(.pressable)
                 .disabled(recorder.isRecording)
 
                 Button {
                     Haptics.committed()
                     beginRecording()
                 } label: {
-                    CompactAction(symbol: "mic.fill", tint: Brand.Mode.voice)
+                    CompactAction(symbol: "mic.fill", title: "Record", tint: Brand.Mode.voice)
                 }
                 .buttonStyle(.pressable)
                 .disabled(recorder.isRecording)
@@ -492,10 +502,13 @@ struct CaptureView: View {
                 Button {
                     formatOrConfirm()
                 } label: {
-                    CompactAction(symbol: "sparkles", tint: Brand.ai)
+                    CompactAction(symbol: "sparkles", title: "Structure", tint: Brand.ai, busy: isFormatting)
                 }
                 .buttonStyle(.pressable)
-                .disabled(controller.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(
+                    controller.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        || isFormatting
+                )
 
                 // Organising sits beside formatting rather than replacing it. Formatting may
                 // not change a word; organising may not lose a thought. Two jobs, two
@@ -503,19 +516,24 @@ struct CaptureView: View {
                 Button {
                     Task { await organise() }
                 } label: {
-                    if services.organising?.isOrganising(controller.draftId) == true {
-                        CompactAction(symbol: "ellipsis", tint: Brand.violet)
-                    } else {
-                        CompactAction(symbol: "list.bullet.rectangle", tint: Brand.violet)
-                    }
+                    CompactAction(
+                        symbol: "list.bullet.rectangle",
+                        title: "Arrange",
+                        tint: Brand.violet,
+                        busy: isOrganising
+                    )
                 }
                 .buttonStyle(.pressable)
-                .disabled(!canOrganise)
+                // Disabled while it runs, not just visually busy. The coordinator already
+                // refuses a second run for the same draft, so extra taps were harmless — but
+                // a button that accepts a press and does nothing is how somebody learns the
+                // app is broken.
+                .disabled(!canOrganise || isOrganising)
 
                 Button {
                     showingSendSheet = true
                 } label: {
-                    CompactAction(symbol: "square.and.arrow.up", tint: Brand.muted)
+                    CompactAction(symbol: "square.and.arrow.up", title: "Send", tint: Brand.muted)
                 }
                 .buttonStyle(.pressable)
                 .disabled(controller.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -643,6 +661,12 @@ struct CaptureView: View {
         var seen = Set<String>()
         var messages: [String] = []
         let candidates = [
+            // First, because it is the only one describing something happening right now.
+            // Organising is two model calls and can take most of a minute against a server
+            // that has to wake up, and a spinner on a 46-point button is not enough to
+            // explain a wait that long.
+            isOrganising ? "Grouping what goes together\u{2026}" : nil,
+            isFormatting ? "Tidying the structure\u{2026}" : nil,
             controller.pendingTranscriptionCount > 0 ? services.transcriptions?.blockedReason : nil,
             services.formatting?.blockedReason,
             services.organising?.blockedReason,
@@ -681,6 +705,14 @@ struct CaptureView: View {
         if controller.organised != nil { modes.append(.organised) }
         if controller.hasFormatting { modes.append(.formatted) }
         return modes
+    }
+
+    private var isOrganising: Bool {
+        services.organising?.isOrganising(controller.draftId) == true
+    }
+
+    private var isFormatting: Bool {
+        services.formatting?.isFormatting(controller.draftId) == true
     }
 
     /// False while a recording is still waiting to be transcribed: arranging a transcript
@@ -872,14 +904,44 @@ struct CaptureView: View {
 /// of them plus the primary on one line.
 struct CompactAction: View {
     let symbol: String
+    /// Said out loud, under the icon.
+    ///
+    /// Five tinted squares in a row is a puzzle, not a toolbar. Two of these are AI actions
+    /// whose icons cannot possibly carry the distinction between them, and an icon nobody
+    /// can name is a button nobody presses.
+    let title: String
     let tint: Color
+    /// Swaps the icon for a spinner.
+    ///
+    /// Organising a long entry is two model calls and can take the better part of a minute
+    /// against a server that has to wake up first. A static icon swap was not enough to read
+    /// as "working" — it looked like nothing had happened, so people pressed it again.
+    var busy: Bool = false
 
     var body: some View {
-        Image(systemName: symbol)
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(tint)
-            .frame(width: 46, height: 46)
-            .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 13))
+        VStack(spacing: 4) {
+            Group {
+                if busy {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(tint)
+                } else {
+                    Image(systemName: symbol)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(tint)
+                }
+            }
+            .frame(width: 46, height: 40)
+            .frame(maxWidth: .infinity)
+            .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
+
+            Text(title)
+                .font(Type.caption(10.5, .medium))
+                .foregroundStyle(tint.opacity(0.85))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
