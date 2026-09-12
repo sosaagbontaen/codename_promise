@@ -27,3 +27,16 @@ services:
       # app/main.py's require_auth returns early when it is unset.
       - key: CP_API_KEY
         sync: false
+      # Optional. Leave all three unset and Notion simply does not appear in the app, which
+      # is the right default now that the journal lives here rather than there.
+      #
+      # NOTION_REDIRECT_URI must match what the integration has registered at
+      # notion.so/my-integrations exactly, including the scheme, and a hosted backend is
+      # https where a laptop was http. Getting it wrong fails at the end of the sign-in,
+      # after the user has already approved, which reads as the app being broken.
+      - key: NOTION_CLIENT_ID
+        sync: false
+      - key: NOTION_CLIENT_SECRET
+        sync: false
+      - key: NOTION_REDIRECT_URI
+        sync: false
