@@ -165,6 +165,12 @@ struct CaptureView: View {
                 controller.absorbExternalChanges()
             }
         }
+        // A transcript arriving behind an open editor is invisible otherwise: the buffer is
+        // deliberately not bound to the model. TextMerge keeps anything typed in the
+        // meantime, so this cannot overwrite somebody mid-sentence.
+        .onChange(of: services.backgroundWrites) { _, _ in
+            controller.absorbExternalChanges()
+        }
         .onChange(of: photoSelections) { _, items in
             guard !items.isEmpty else { return }
             Task { await adopt(items) }

@@ -141,6 +141,26 @@ final class AppServices {
 
     /// Works through recordings waiting to become text. Safe to call repeatedly — the
     /// coordinator ignores overlapping passes.
+    /// Bumped whenever background work has written to a draft.
+    ///
+    /// An editor that is already open holds a text buffer rather than binding to the model
+    /// (ADR-001), so a transcript arriving behind it is invisible until something says so.
+    private(set) var backgroundWrites = 0
+
+    /// Transcribe a finished recording, then arrange it, then say so.
+    ///
+    /// Lives here rather than in the view that starts it because the view is dismissed
+    /// immediately: the entry opens as soon as the audio is durable, and none of this is
+    /// worth making somebody watch. On a host that has to wake up first, watching it would
+    /// mean a minute of spinner before seeing an entry that was already saved.
+    func completeRecording(draftId: UUID) async {
+        await drainTranscriptions()
+        if organising?.canOrganise(draftId: draftId) == true {
+            _ = await organising?.organise(draftId: draftId)
+        }
+        backgroundWrites += 1
+    }
+
     func drainTranscriptions() async {
         await transcriptions?.drain()
     }

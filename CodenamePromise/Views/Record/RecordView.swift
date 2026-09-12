@@ -36,14 +36,15 @@ struct RecordView: View {
         case idle
         case recording
         /// Writing the bytes to the container. Brief, and the moment the promise is kept.
+        ///
+        /// There is no transcribing or arranging state any more. Both now happen after the
+        /// entry has opened, so this screen never waits on the network at all.
         case saving
-        case transcribing
-        case arranging
         case failed(String)
 
         var isBusy: Bool {
             switch self {
-            case .saving, .transcribing, .arranging: true
+            case .saving: true
             default: false
             }
         }
@@ -98,20 +99,12 @@ struct RecordView: View {
             }
             .transition(.opacity)
 
-        case .saving, .transcribing, .arranging:
+        case .saving:
             VStack(spacing: 14) {
                 ProgressView().controlSize(.large)
                 Text(busyLabel)
                     .font(Type.body(16))
                     .foregroundStyle(Brand.ink)
-                // The guarantee, and only once it is true. While the recorder is running
-                // the bytes are still in a temporary file, so claiming safety a moment
-                // earlier would be claiming something the app cannot yet honour.
-                if phase != .saving {
-                    Label("Saved on this phone", systemImage: "checkmark.circle.fill")
-                        .font(Type.caption(13))
-                        .foregroundStyle(Brand.reached)
-                }
             }
             .transition(.opacity)
 
@@ -140,8 +133,6 @@ struct RecordView: View {
     private var busyLabel: String {
         switch phase {
         case .saving: "Saving what you said"
-        case .transcribing: "Writing it down"
-        case .arranging: "Grouping what goes together"
         default: ""
         }
     }
@@ -277,20 +268,20 @@ struct RecordView: View {
 
         Haptics.landed()
 
-        Task {
-            phase = .transcribing
-            await services.drainTranscriptions()
+        // Straight into the entry. The words are already on disk, so there is nothing here
+        // worth making somebody wait for: transcription and arranging are improvements to an
+        // entry that already exists, not conditions of it existing.
+        //
+        // This used to block until both had finished, which was tolerable against a server
+        // on the same desk and is not against one that sleeps when idle. A minute of spinner
+        // before seeing an entry that was saved sixty seconds ago is the app calling its own
+        // promise into question.
+        phase = .idle
+        draftId = nil
+        onFinished(id)
 
-            phase = .arranging
-            // Organising needs the transcript. If it never arrived the entry still opens,
-            // holding recordings that are queued and will be picked up later.
-            if services.organising?.canOrganise(draftId: id) == true {
-                _ = await services.organising?.organise(draftId: id)
-            }
-
-            phase = .idle
-            onFinished(id)
-        }
+        // Deliberately on the service rather than here: this screen is gone by the next line.
+        Task { await services.completeRecording(draftId: id) }
     }
 
     private static func clock(_ seconds: TimeInterval) -> String {

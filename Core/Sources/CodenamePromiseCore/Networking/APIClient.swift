@@ -208,7 +208,15 @@ public struct APIClient: Sendable {
 
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.timeoutInterval = 60
+        // Two minutes, not one. A free-tier host sleeps after a quarter hour of quiet and
+        // takes about a minute to wake, and this app is used once a day, so almost every
+        // real request arrives at a cold server. At 60s the first attempt of the day timed
+        // out on the wake-up alone, before the work even started. Transcribing a chunk or
+        // organising a long entry then adds its own time on top.
+        //
+        // The cost of being generous is a slow failure against a server that is genuinely
+        // down, which the retry queue already treats as retryable and backs off from.
+        request.timeoutInterval = 120
 
         if let key = configuration.apiKey() {
             request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")

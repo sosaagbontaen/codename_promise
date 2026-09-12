@@ -1,0 +1,29 @@
+# One-click deploy of the backend, so the app works without a laptop on the desk.
+#
+# Development use. Render's free instances have no persistent disk and lose the filesystem
+# on every spin-down, restart and deploy, so `.state` does not survive: a connected Notion
+# workspace has to be reconnected, and the protected-word list resets. Capture, transcription
+# and organising are unaffected, because none of them keep anything server-side.
+#
+# Free instances also sleep after fifteen idle minutes and take about a minute to wake. The
+# app is built for that now — an entry opens the moment the recording is safe, and the
+# transcript arrives behind it — so a cold start costs a wait for the words, not for the
+# entry.
+services:
+  - type: web
+    name: dumpnotes-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    envVars:
+      # Both set in the Render dashboard, never committed. sync:false means Render prompts
+      # for them rather than expecting a value here.
+      - key: GROQ_API_KEY
+        sync: false
+      # Without this the API is open and anyone who finds the URL spends your Groq quota.
+      # app/main.py's require_auth returns early when it is unset.
+      - key: CP_API_KEY
+        sync: false
