@@ -19,6 +19,7 @@ struct SettingsView: View {
     /// to show it is a way to leak it over somebody's shoulder. Blank means "unchanged".
     @State private var apiKey = ""
     @State private var apiKeySaved = false
+    @State private var revealingAPIKey = false
     @AppStorage(Appearance.storageKey) private var appearance: Appearance = .dark
     @AppStorage(JournalFont.storageKey) private var journalFont: JournalFont = .sans
     // Stored as its raw string rather than as the enum. @AppStorage does support a
@@ -334,10 +335,31 @@ struct SettingsView: View {
             // consulted on every request and always came back nil, so a backend that
             // required a key could only ever answer 401 — and the only way to run one was
             // to leave it open, which on a public URL is somebody else's free inference.
-            SecureField("API key, if your server needs one", text: $apiKey)
+            HStack(spacing: 8) {
+                // Swapped rather than overlaid, because SecureField cannot be asked to stop
+                // being secure. The cost is that focus is lost on the toggle, which is worth
+                // it: typing forty characters of key blind and finding out it was wrong only
+                // when every request returns 401 is worse.
+                Group {
+                    if revealingAPIKey {
+                        TextField("API key, if your server needs one", text: $apiKey)
+                    } else {
+                        SecureField("API key, if your server needs one", text: $apiKey)
+                    }
+                }
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .onSubmit(saveAPIKey)
+
+                Button {
+                    revealingAPIKey.toggle()
+                } label: {
+                    Image(systemName: revealingAPIKey ? "eye.slash" : "eye")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(revealingAPIKey ? "Hide the API key" : "Show the API key")
+            }
 
             Button("Save API key", action: saveAPIKey)
 
@@ -442,6 +464,7 @@ struct SettingsView: View {
             try? APIKeyStore().write(trimmed)
         }
         apiKey = ""
+        revealingAPIKey = false
         apiKeySaved = true
         Haptics.picked()
     }
