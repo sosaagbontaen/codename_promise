@@ -325,7 +325,7 @@ struct SettingsView: View {
                 .disabled(!serverURL.isEmpty && !BackendSettings.isValid(serverURL))
 
             if serverSaved {
-                Label("Saved. Reopen the app to apply.", systemImage: "checkmark.circle")
+                Label("Saved. In use from the next request.", systemImage: "checkmark.circle")
                     .font(.footnote)
                     .foregroundStyle(Brand.reached)
             }
@@ -353,7 +353,7 @@ struct SettingsView: View {
                AppServices.backendSettings.isUsingOverride {
                 Text("Overriding the built-in address (\(bundled)). Leave blank to go back to it. On a physical device use your Mac's IP on the local network, not localhost.")
             } else {
-                Text("On a physical device use your Mac's IP on the local network. Localhost points at the phone itself. Leave blank to use the built-in address.")
+                Text("A hosted address like https://your-app.onrender.com, or your Mac's IP on the local network. Localhost points at the phone itself. Leave blank to use the built-in address.")
             }
         }
     }

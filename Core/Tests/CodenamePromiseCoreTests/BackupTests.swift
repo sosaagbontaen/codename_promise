@@ -213,3 +213,39 @@ struct BackupMediaRootTests {
         #expect(store.ensureDownloaded("media/nope/original.jpg") == false)
     }
 }
+
+/// Changing where the app points must not need a relaunch.
+///
+/// The address was captured once, at launch, so saving a new one in Settings did nothing
+/// until the app was restarted — on the single setting somebody is most likely to be editing
+/// precisely because nothing is connecting.
+@Suite("Backend address")
+struct BackendAddressTests {
+
+    @Test("the address is read per request, not captured once")
+    func addressIsResolvedLive() {
+        nonisolated(unsafe) var current: URL? = URL(string: "https://first.example.com")
+        let configuration = APIConfiguration(baseURL: { current }, apiKey: { nil })
+
+        #expect(configuration.baseURL()?.host() == "first.example.com")
+
+        current = URL(string: "https://second.example.com")
+        #expect(configuration.baseURL()?.host() == "second.example.com",
+                "a saved address must apply without rebuilding the client")
+    }
+
+    @Test("an absent address is still a supported state")
+    func absentAddressIsFine() {
+        let configuration = APIConfiguration(baseURL: { nil }, apiKey: { nil })
+        #expect(configuration.isConfigured == false)
+    }
+
+    /// The fixed-value initialiser is what tests and simple callers use; it must keep working.
+    @Test("a fixed address still works")
+    func fixedAddressStillWorks() {
+        let url = URL(string: "https://example.com")!
+        let configuration = APIConfiguration(baseURL: url, apiKey: { nil })
+        #expect(configuration.isConfigured)
+        #expect(configuration.baseURL() == url)
+    }
+}

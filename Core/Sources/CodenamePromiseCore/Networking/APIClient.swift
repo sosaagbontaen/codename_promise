@@ -8,17 +8,34 @@ import Foundation
 /// must behave exactly as it does offline: capture and editing work, everything else queues
 /// visibly. See ADR-019a.
 public struct APIConfiguration: Sendable {
-    public let baseURL: URL?
+    /// Resolved per request rather than captured once.
+    ///
+    /// It used to be a stored value, which meant changing the server address in Settings did
+    /// nothing until the app was relaunched: every coordinator held a client built at launch
+    /// against the old address. Saying "reopen the app to apply" is a reasonable thing to
+    /// print and an unreasonable thing to require, particularly of the one setting somebody
+    /// changes while trying to work out why nothing is connecting.
+    ///
+    /// A closure, for the same reason `apiKey` is one.
+    public let baseURL: @Sendable () -> URL?
     /// Read lazily so the key is fetched from the Keychain at call time, never held in a
     /// long-lived value that could end up in a log or a crash report. See ADR-022.
     public let apiKey: @Sendable () -> String?
 
-    public init(baseURL: URL?, apiKey: @escaping @Sendable () -> String?) {
+    public init(
+        baseURL: @escaping @Sendable () -> URL?,
+        apiKey: @escaping @Sendable () -> String?
+    ) {
         self.baseURL = baseURL
         self.apiKey = apiKey
     }
 
-    public var isConfigured: Bool { baseURL != nil }
+    /// Convenience for tests and callers with a fixed address.
+    public init(baseURL: URL?, apiKey: @escaping @Sendable () -> String?) {
+        self.init(baseURL: { baseURL }, apiKey: apiKey)
+    }
+
+    public var isConfigured: Bool { baseURL() != nil }
 }
 
 // MARK: - Errors
@@ -92,7 +109,7 @@ public struct APIClient: Sendable {
 
     /// The configured backend, if there is one. Used to build the URL handed to a web
     /// authentication session, which the app opens itself rather than fetching.
-    public var baseURL: URL? { configuration.baseURL }
+    public var baseURL: URL? { configuration.baseURL() }
 
     public var isConfigured: Bool { configuration.isConfigured }
 
@@ -191,7 +208,7 @@ public struct APIClient: Sendable {
         idempotencyKey: IdempotencyKey?,
         query: [String: String] = [:]
     ) throws -> URLRequest {
-        guard let baseURL = configuration.baseURL else { throw APIError.notConfigured }
+        guard let baseURL = configuration.baseURL() else { throw APIError.notConfigured }
         guard reachability.isReachable else { throw APIError.offline }
 
         var url = baseURL.appendingPathComponent(path)

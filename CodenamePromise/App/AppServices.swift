@@ -81,7 +81,9 @@ final class AppServices {
             // An absent base URL is not an error: the app then behaves exactly as it does
             // offline — capture works, everything else queues visibly. See ADR-019a.
             let configuration = APIConfiguration(
-                baseURL: Self.backendSettings.baseURL,
+                // Recomputed per request, so saving a new address in Settings takes
+                // effect on the next call rather than the next launch.
+                baseURL: { Self.backendSettings.baseURL },
                 apiKey: { APIKeyStore().read() }
             )
             let client = APIClient(
@@ -176,7 +178,10 @@ final class AppServices {
     /// populates from `BACKEND_BASE_URL`. Note for anyone tempted to simplify that to
     /// `INFOPLIST_KEY_BackendBaseURL`: that mechanism only recognises Apple's own key names and
     /// silently drops custom ones — no warning, no key, no backend.
-    static var backendSettings: BackendSettings {
+    /// `nonisolated` because the client resolves the address per request, from whatever
+    /// thread that request is on. Nothing here touches actor state: it reads Info.plist and
+    /// UserDefaults, both of which are safe to read concurrently.
+    nonisolated static var backendSettings: BackendSettings {
         BackendSettings(
             bundledValue: Bundle.main.object(forInfoDictionaryKey: "BackendBaseURL") as? String
         )
