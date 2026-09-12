@@ -40,15 +40,26 @@ def build_router(
 ) -> APIRouter:
     router = APIRouter(prefix="/notion", tags=["notion-auth"])
 
-    @router.get("/connection")
-    async def connection_status() -> Dict[str, Any]:
-        """What the app polls. Never includes the token."""
+    def status_payload() -> Dict[str, Any]:
+        """The one shape the client decodes as a connection status.
+
+        Assembled here rather than at each route because it was assembled at each route and
+        they drifted: /connection added `configurable` and /database did not, so picking a
+        database returned a body the app could not decode and every attempt reported "the
+        server sent something unexpected". The client requires the field, so a route that
+        forgets it fails at the only moment somebody is using the feature.
+        """
         connection = store.get()
         if connection is None:
             return {"connected": False, "ready": False, "configurable": oauth.is_configured}
         summary = connection.public_summary()
         summary["configurable"] = oauth.is_configured
         return summary
+
+    @router.get("/connection")
+    async def connection_status() -> Dict[str, Any]:
+        """What the app polls. Never includes the token."""
+        return status_payload()
 
     @router.get("/oauth/start")
     async def oauth_start() -> RedirectResponse:
@@ -214,13 +225,13 @@ def build_router(
         connection.title_property = resolved.get("title_property")
         connection.date_property = resolved.get("date_property")
         store.save(connection)
-        return connection.public_summary()
+        return status_payload()
 
     @router.delete("/connection")
     async def disconnect() -> Dict[str, bool]:
         """Forgets the token. Local entries are untouched — sync is optional (tenet 4)."""
         store.clear()
-        return {"connected": False, "ready": False}
+        return status_payload()
 
     return router
 

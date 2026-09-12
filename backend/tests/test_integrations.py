@@ -1048,3 +1048,81 @@ class TestModelVerification:
 
         assert body["status"] == "ok"
         assert "skipped" in body["models_verified"]
+
+
+class TestConnectionStatusShape:
+    """Every route that answers with a connection status must answer with the same one.
+
+    /connection added `configurable` and /database did not, so selecting a database returned
+    a body the iOS client could not decode. It reported "the server sent something
+    unexpected" at the exact moment somebody was choosing where their journal goes, and the
+    two shapes were assembled in separate places with nothing holding them together.
+    """
+
+    REQUIRED = {"connected", "ready", "configurable"}
+
+    def _client(self, connection=None):
+        settings = Settings(
+            notion_client_id="cid",
+            notion_client_secret="secret",
+            notion_redirect_uri="http://localhost:8000/notion/oauth/callback",
+        )
+        store = InMemoryConnectionStore(connection)
+        app = create_app(settings=settings, connections=store)
+        return TestClient(app, follow_redirects=False)
+
+    def test_status_carries_the_required_keys(self):
+        client = self._client(NotionConnection(access_token="t", workspace_id="ws"))
+        assert self.REQUIRED <= set(client.get("/notion/connection").json())
+
+    def test_status_carries_them_when_disconnected_too(self):
+        assert self.REQUIRED <= set(self._client().get("/notion/connection").json())
+
+    def test_selecting_a_database_returns_the_same_shape(self):
+        """The one that was broken. Wired to fakes so it exercises the real route."""
+        from app import routes_notion_auth
+
+        class FakeGateway:
+            def __init__(self, **kwargs):
+                pass
+
+            async def resolve_properties(self):
+                return {"title_property": "Name", "date_property": "When"}
+
+        async def fake_lister(token, base_url=None):
+            return [{"id": "db-1", "title": "Journal"}]
+
+        store = InMemoryConnectionStore(
+            NotionConnection(access_token="t", workspace_id="ws")
+        )
+        app = create_app(
+            settings=Settings(
+                notion_client_id="cid",
+                notion_client_secret="s",
+                notion_redirect_uri="http://localhost/cb",
+            ),
+            connections=store,
+        )
+        app.router.routes = [
+            r for r in app.router.routes if not getattr(r, "path", "").startswith("/notion/")
+        ]
+        app.include_router(
+            routes_notion_auth.build_router(
+                oauth=NotionOAuth("cid", "s", "http://localhost/cb"),
+                store=store,
+                app_return_url="app://done",
+                database_lister=fake_lister,
+                gateway_factory=FakeGateway,
+            )
+        )
+
+        body = TestClient(app).post(
+            "/notion/database", json={"database_id": "db-1"}
+        ).json()
+        missing = self.REQUIRED - set(body)
+        assert not missing, f"a client decoding this would fail on {missing}"
+        assert body["ready"] is True
+
+    def test_disconnecting_returns_the_same_shape(self):
+        client = self._client(NotionConnection(access_token="t", workspace_id="ws"))
+        assert self.REQUIRED <= set(client.delete("/notion/connection").json())
