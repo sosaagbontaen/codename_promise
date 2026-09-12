@@ -29,7 +29,7 @@ struct CaptureView: View {
     @State private var selectedMedia = Set<UUID>()
     @State private var selectingMedia = false
     @State private var showingMoveSheet = false
-    @State private var showingReorder = false
+    @State private var showingAttachments = false
     @State private var moveNotice: String?
 
     /// Which version of the entry is on screen. `rawText` is always editable; the AI's
@@ -138,10 +138,24 @@ struct CaptureView: View {
             .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showingSendSheet) { sendSheet }
-        .sheet(isPresented: $showingReorder) {
-            MediaOrderSheet(items: controller.orderedMedia, fileStore: fileStore) { ids in
-                controller.reorderMedia(ids)
-            }
+        .sheet(isPresented: $showingAttachments) {
+            AttachmentsView(
+                items: controller.orderedMedia,
+                fileStore: fileStore,
+                onReorder: { controller.reorderMedia($0) },
+                onRemove: { controller.removeMedia(id: $0, fileStore: fileStore) },
+                onAdd: { photoSelections = $0 },
+                onOpen: { id in
+                    // Deferred: the attachments sheet is still dismissing, and presenting the
+                    // viewer in the same runloop pass drops it on the floor.
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(350))
+                        viewerDetent = controller.orderedMedia
+                            .first { $0.id == id }?.kind == .video ? .large : .medium
+                        viewingMedia = ViewingMedia(id: id)
+                    }
+                }
+            )
         }
         .sheet(isPresented: $showingEntryPicker) {
             if let service = services.connectionService {
@@ -383,13 +397,13 @@ struct CaptureView: View {
                     Label("Select", systemImage: "checkmark.circle")
                 }
 
-                // Only worth offering once there is an order to have.
-                if controller.orderedMedia.count > 1 {
-                    Button {
-                        showingReorder = true
-                    } label: {
-                        Label("Reorder", systemImage: "arrow.up.arrow.down")
-                    }
+                // The strip is a glance, not a workspace. This is where you go to see
+                // them at a usable size, put them in an order, and find the one that
+                // failed to upload.
+                Button {
+                    showingAttachments = true
+                } label: {
+                    Label("See all \(controller.orderedMedia.count)", systemImage: "square.grid.2x2")
                 }
                 if let moveNotice {
                     Text(moveNotice)
