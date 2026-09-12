@@ -652,6 +652,7 @@ struct CaptureView: View {
             // that has to wake up, and a spinner on a 46-point button is not enough to
             // explain a wait that long.
             isOrganising ? "Grouping what goes together\u{2026}" : nil,
+            failedUploadMessage,
             controller.pendingTranscriptionCount > 0 ? services.transcriptions?.blockedReason : nil,
             services.organising?.blockedReason,
             controller.syncSummary,
@@ -692,6 +693,25 @@ struct CaptureView: View {
         var modes: [Mode] = [.raw]
         if controller.organised != nil { modes.append(.organised) }
         return modes
+    }
+
+    /// Names the attachments that did not upload, and why, rather than leaving somebody to
+    /// work out which of nine thumbnails is the problem.
+    private var failedUploadMessage: String? {
+        let failed = controller.orderedMedia.filter { $0.uploadStatus == .failed }
+        guard !failed.isEmpty else { return nil }
+
+        let photos = failed.filter { $0.kind == .photo }.count
+        let videos = failed.filter { $0.kind == .video }.count
+        var parts: [String] = []
+        if photos > 0 { parts.append("\(photos) photo\(photos == 1 ? "" : "s")") }
+        if videos > 0 { parts.append("\(videos) video\(videos == 1 ? "" : "s")") }
+
+        // One reason when they all share it, which is the common case — the network went, or
+        // the destination refused everything. Listing it nine times says nothing extra.
+        let reasons = Set(failed.compactMap(\.uploadError))
+        let why = reasons.count == 1 ? " \(reasons.first!)" : ""
+        return "\(parts.joined(separator: " and ")) didn\u{2019}t upload, marked in red.\(why)"
     }
 
     private var isOrganising: Bool {
@@ -944,8 +964,26 @@ struct MediaThumbnail: View {
                         }
                     }
                     .opacity(selecting && !isSelected ? 0.55 : 1)
+                    .overlay {
+                        if !selecting, item.uploadStatus == .failed {
+                            RoundedRectangle(cornerRadius: 8)
+                                .strokeBorder(Brand.failed, lineWidth: 2)
+                        }
+                    }
             }
             .buttonStyle(.plain)
+
+            // Which one did not make it.
+            //
+            // The failure was recorded on the item all along and shown nowhere, so a video
+            // that never uploaded looked exactly like one that did. "Something failed" is
+            // not useful when there are nine attachments; this marks the one.
+            if !selecting, item.uploadStatus == .failed {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white, Brand.failed)
+                    .padding(2)
+            }
 
             // While selecting, the corner control is the tick — offering delete in the same
             // spot would put "remove for good" one slip away from "choose".

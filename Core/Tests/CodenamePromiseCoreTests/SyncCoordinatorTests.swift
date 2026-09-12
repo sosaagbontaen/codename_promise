@@ -234,11 +234,35 @@ struct SyncCoordinatorTests {
 
         let outcome = await sut.sync(draftId: h.draft.id)
 
-        #expect(outcome == .synced, "the words must get through regardless")
+        // The words get through regardless — that was the founding requirement and it still
+        // holds. What changed is that this is no longer reported as a finished sync. A 500 is
+        // retryable, so the photo can still arrive; calling the entry synced marked it clean,
+        // and a clean entry is never picked up again, which is how a missing attachment
+        // became permanent and silent.
+        #expect(await api.callCount(.insertContent) == 1, "the words must get through")
+        if case .syncedWithoutSomeMedia = outcome {} else {
+            Issue.record("expected a partial sync, got \(outcome)")
+        }
         #expect(item.uploadStatus == .failed)
         #expect(item.uploadError != nil)
-        #expect(await api.callCount(.insertContent) == 1)
-        #expect(h.draft.syncState(for: .notion).status == .synced)
+        #expect(h.draft.syncState(for: .notion).status == .failed)
+        #expect(h.draft.needsSync(to: .notion), "so it comes back for the photo")
+    }
+
+    /// The other half of the same rule. A file that is gone from disk cannot arrive however
+    /// many times it is asked for, so it must not keep the entry dirty forever.
+    @Test("a file lost from disk does not keep the entry retrying")
+    func lostFileDoesNotBlockCompletion() async throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let h = try makeHarness(now: now)
+        let item = try attachPhoto(h, name: "gone.png")
+        h.files.delete(relativePaths: [item.relativePath])
+        let api = StubNotionAPI()
+        let sut = SyncCoordinator(store: h.store, fileStore: h.files, notion: api, clock: { now })
+
+        #expect(await sut.sync(draftId: h.draft.id) == .synced)
+        #expect(item.uploadStatus == .failed, "still visible on the item itself")
+        #expect(!h.draft.needsSync(to: .notion), "but not retried into a loop")
     }
 
     @Test("media missing from disk is reported, not retried into a loop")

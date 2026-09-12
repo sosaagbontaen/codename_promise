@@ -121,15 +121,24 @@ public final class SyncCoordinator {
             let photos = draft.orderedMedia.filter { $0.kind == .photo }
             let videos = draft.orderedMedia.filter { $0.kind == .video }
 
+            // Worth another attempt. A file that is gone for good is reported on the item
+            // itself and deliberately not counted here: keeping a stage open for it would
+            // retry something that cannot succeed, forever.
+            var stranded: [MediaItem] = []
+
             if !photos.isEmpty || !state.photoBlockIds.isEmpty {
-                let uploaded = await uploadPendingMedia(photos, state: state) { done, total in
+                let result = await uploadPendingMedia(photos, state: state) { done, total in
                     self.report(draftId, .uploadingPhotos(done: done, total: total))
                 }
+                stranded += result.retryable
                 report(draftId, .attachingPhotos)
                 try await attach(
-                    uploaded, state: state, pageId: pageId,
+                    result.files, state: state, pageId: pageId,
                     replacing: state.photoBlockIds, step: "insert-photos",
-                    reached: .photosAttached
+                    // Only done when all of them arrived. Advancing past a stage that left
+                    // something behind is what made a failed attachment permanent: the entry
+                    // was marked clean, so nothing ever came back for it.
+                    reached: result.retryable.isEmpty ? .photosAttached : nil
                 ) { state.photoBlockIds = $0 }
             } else {
                 state.advance(to: .photosAttached)
@@ -138,14 +147,15 @@ public final class SyncCoordinator {
             // Videos last because they are the biggest and slowest. By the time one is still
             // climbing, the entry and every photo are already on the page.
             if !videos.isEmpty || !state.videoBlockIds.isEmpty {
-                let uploaded = await uploadPendingMedia(videos, state: state) { done, total in
+                let result = await uploadPendingMedia(videos, state: state) { done, total in
                     self.report(draftId, .uploadingVideos(done: done, total: total))
                 }
+                stranded += result.retryable
                 report(draftId, .attachingVideos)
                 try await attach(
-                    uploaded, state: state, pageId: pageId,
+                    result.files, state: state, pageId: pageId,
                     replacing: state.videoBlockIds, step: "insert-videos",
-                    reached: .videosAttached
+                    reached: result.retryable.isEmpty ? .videosAttached : nil
                 ) { state.videoBlockIds = $0 }
             } else {
                 state.advance(to: .videosAttached)
@@ -162,6 +172,19 @@ public final class SyncCoordinator {
             report(draftId, .finishing)
 
             guard let draft = try? store.draft(id: draftId) else { return .vanished }
+
+            // Something did not make it. The words and everything that uploaded are on the
+            // page, so this is not a failure — but it is not finished either, and calling it
+            // synced would mark the entry clean and mean nothing ever came back for the file
+            // that was left behind. That is how a missing video became permanent and silent.
+            if !stranded.isEmpty {
+                let names = Self.describe(stranded)
+                state.markFailed(names)
+                try? store.flush()
+                lastError = names
+                return .syncedWithoutSomeMedia(names)
+            }
+
             let stillCurrent = draft.contentHash == snapshot.contentHash
             state.markSynced(externalId: pageId, contentHash: snapshot.contentHash, now: clock())
             try store.flush()
@@ -209,6 +232,11 @@ public final class SyncCoordinator {
                 return summary
             case .failed:
                 summary.failed += 1
+            // Counted as incomplete rather than synced: the entry is still dirty and will be
+            // picked up again, and calling it synced here would make a batch run report
+            // success for something it left half-done.
+            case .syncedWithoutSomeMedia:
+                summary.incomplete += 1
             case .nothingToSync, .vanished, .alreadyRunning:
                 summary.skipped += 1
             }
@@ -254,8 +282,10 @@ public final class SyncCoordinator {
         _ items: [MediaItem],
         state: SyncState,
         onProgress: (Int, Int) -> Void = { _, _ in }
-    ) async -> [AttachedFile] {
+    ) async -> (files: [AttachedFile], retryable: [MediaItem], lost: [MediaItem]) {
         var fileIds: [AttachedFile] = []
+        var retryable: [MediaItem] = []
+        var lost: [MediaItem] = []
         let total = items.count
         var done = 0
         if total > 0 { onProgress(0, total) }
@@ -269,7 +299,11 @@ public final class SyncCoordinator {
 
             let path = item.pathForUpload
             guard fileStore.exists(path) else {
+                // Gone from disk. Trying again cannot bring it back, so this is reported and
+                // the sync is allowed to finish — otherwise the entry stays dirty forever
+                // and retries a file that does not exist.
                 item.markUploadFailed("The file is missing.")
+                lost.append(item)
                 try? store.flush()
                 continue
             }
@@ -290,15 +324,17 @@ public final class SyncCoordinator {
                 fileIds.append(AttachedFile(id: fileId, kind: item.kind))
             } catch let error as APIError {
                 item.markUploadFailed(error.userFacingMessage)
+                // Worth coming back for only if it could succeed later.
+                if error.isRetryable { retryable.append(item) } else { lost.append(item) }
             } catch {
                 item.markUploadFailed(error.localizedDescription)
+                retryable.append(item)
             }
             try? store.flush()
         }
 
-        state.advance(to: .filesUploaded)
         try? store.flush()
-        return fileIds
+        return (fileIds, retryable, lost)
     }
 
     /// The entry's words, with no media attached to them.
@@ -339,15 +375,17 @@ public final class SyncCoordinator {
         pageId: String,
         replacing previous: [String],
         step: String,
-        reached phase: SyncPhase,
+        /// Nil when something in this batch did not upload, so the stage stays open and a
+        /// later attempt comes back for what was left behind.
+        reached phase: SyncPhase?,
         record: ([String]) -> Void
     ) async throws {
-        guard state.phase.rank < phase.rank else { return }
+        if let phase, state.phase.rank >= phase.rank { return }
 
         // Nothing to send and nothing left behind: skip the round trip rather than ask the
         // server to delete nothing and append nothing.
         if files.isEmpty, previous.isEmpty {
-            state.advance(to: phase)
+            if let phase { state.advance(to: phase) }
             try? store.flush()
             return
         }
@@ -362,7 +400,7 @@ public final class SyncCoordinator {
             )
         )
         record(blockIds)
-        state.advance(to: phase)
+        if let phase { state.advance(to: phase) }
         try? store.flush()
     }
 
@@ -404,6 +442,13 @@ public enum SyncOutcome: Sendable, Equatable {
     case synced
     /// Succeeded, but the user edited while it was in flight, so the draft is dirty again.
     case syncedButSupersededByEdits
+    /// The words and some attachments arrived; at least one file did not.
+    ///
+    /// Deliberately its own case rather than folded into `failed`. The entry *is* on the
+    /// page and saying it failed would send somebody looking for writing that is already
+    /// there — but it is not done, and saying it succeeded is what made a missing video
+    /// permanent, because a clean entry is never retried.
+    case syncedWithoutSomeMedia(String)
     case deferred(String)
     case failed(String)
     case nothingToSync
@@ -411,12 +456,27 @@ public enum SyncOutcome: Sendable, Equatable {
     case alreadyRunning
 }
 
+extension SyncCoordinator {
+    /// Names what was left behind, in the person's terms: "1 video" rather than an id.
+    static func describe(_ items: [MediaItem]) -> String {
+        let photos = items.filter { $0.kind == .photo }.count
+        let videos = items.filter { $0.kind == .video }.count
+        var parts: [String] = []
+        if photos > 0 { parts.append("\(photos) photo\(photos == 1 ? "" : "s")") }
+        if videos > 0 { parts.append("\(videos) video\(videos == 1 ? "" : "s")") }
+        let what = parts.joined(separator: " and ")
+        return "\(what) didn\u{2019}t upload. Your words are there. Sync again to send the rest."
+    }
+}
+
 public struct SyncRunSummary: Sendable, Equatable {
     public var synced = 0
     public var deferred = 0
     public var failed = 0
+    /// Entries whose words arrived and whose attachments did not, all of them.
+    public var incomplete = 0
     public var skipped = 0
     public var stoppedEarlyBecause: String?
 
-    public var total: Int { synced + deferred + failed + skipped }
+    public var total: Int { synced + deferred + failed + incomplete + skipped }
 }
