@@ -55,8 +55,15 @@ struct RecordView: View {
             Spacer()
             readout
             Spacer()
-            recordButton
-                .padding(.bottom, 28)
+            HStack(spacing: 20) {
+                pauseButton
+                recordButton
+                // Balances the pause button so the record button stays centred, which
+                // matters because it is the thing people aim at without looking.
+                Color.clear.frame(width: 56, height: 56)
+            }
+            .padding(.bottom, 28)
+            .animation(.easeOut(duration: 0.2), value: recorder.isActive)
             footnote
                 .padding(.bottom, 12)
         }
@@ -91,11 +98,21 @@ struct RecordView: View {
                 Text(Self.clock(recorder.elapsed))
                     .font(Type.mono(46))
                     .monospacedDigit()
-                    .foregroundStyle(Brand.ink)
+                    .foregroundStyle(recorder.isPaused ? Brand.muted : Brand.ink)
                     .contentTransition(.numericText())
-                LiveWaveform(levels: recorder.levels, tint: Brand.Mode.voice)
-                    .frame(height: 54)
-                    .padding(.horizontal, 44)
+
+                if recorder.isPaused {
+                    // A waveform that has stopped moving looks like a bug rather than a
+                    // choice, and a flat line looks like a microphone that stopped working.
+                    Label("Paused", systemImage: "pause.fill")
+                        .font(Type.label(15))
+                        .foregroundStyle(Brand.muted)
+                        .frame(height: 54)
+                } else {
+                    LiveWaveform(levels: recorder.levels, tint: Brand.Mode.voice)
+                        .frame(height: 54)
+                        .padding(.horizontal, 44)
+                }
             }
             .transition(.opacity)
 
@@ -139,21 +156,57 @@ struct RecordView: View {
 
     // MARK: - The button
 
+    /// Pause sits beside the main button rather than replacing it.
+    ///
+    /// Stop is the move you cannot take back into the same recording, so the two must not be
+    /// the same target. This one only exists mid-session, which is also when it means
+    /// anything.
+    @ViewBuilder
+    private var pauseButton: some View {
+        if recorder.isActive {
+            Button {
+                Haptics.committed()
+                if recorder.isPaused {
+                    Task { await recorder.resume() }
+                } else {
+                    // Closes the chunk, so from here the app can be killed without losing
+                    // a word of it.
+                    recorder.pause()
+                }
+            } label: {
+                ZStack {
+                    Circle()
+                        .strokeBorder(Brand.muted.opacity(0.5), lineWidth: 1.5)
+                        .frame(width: 56, height: 56)
+                    Image(systemName: recorder.isPaused ? "mic.fill" : "pause.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(recorder.isPaused ? Brand.Mode.voice : Brand.ink)
+                }
+            }
+            .buttonStyle(.pressable)
+            .disabled(phase.isBusy)
+            .accessibilityLabel(recorder.isPaused ? "Resume recording" : "Pause recording")
+        } else {
+            // Holds the main button on the centre line whether or not this is showing.
+            Color.clear.frame(width: 56, height: 56)
+        }
+    }
+
     private var recordButton: some View {
         Button {
             toggle()
         } label: {
             ZStack {
                 Circle()
-                    .fill(recorder.isRecording ? Brand.failed : Brand.Mode.voice)
+                    .fill(recorder.isActive ? Brand.failed : Brand.Mode.voice)
                     .frame(width: 92, height: 92)
                     .shadow(
-                        color: (recorder.isRecording ? Brand.failed : Brand.Mode.voice)
+                        color: (recorder.isActive ? Brand.failed : Brand.Mode.voice)
                             .opacity(0.35),
                         radius: 18, y: 6
                     )
-                Image(systemName: recorder.isRecording ? "stop.fill" : "mic.fill")
-                    .font(.system(size: recorder.isRecording ? 30 : 34, weight: .semibold))
+                Image(systemName: recorder.isActive ? "stop.fill" : "mic.fill")
+                    .font(.system(size: recorder.isActive ? 30 : 34, weight: .semibold))
                     .foregroundStyle(.white)
             }
         }
@@ -162,7 +215,7 @@ struct RecordView: View {
         // screen is reachable at any time.
         .disabled(phase.isBusy)
         .opacity(phase.isBusy ? 0.4 : 1)
-        .accessibilityLabel(recorder.isRecording ? "Stop recording" : "Start recording")
+        .accessibilityLabel(recorder.isActive ? "Stop recording" : "Start recording")
     }
 
     /// The one line of small print, and it changes rather than the row disappearing.
@@ -170,7 +223,9 @@ struct RecordView: View {
     private var footnote: some View {
         switch phase {
         case .recording:
-            Text("Tap to finish")
+            Text(recorder.isPaused
+                 ? "Saved so far. Closing the app won\u{2019}t lose it."
+                 : "Keeps going if you leave the app")
                 .font(Type.caption(12.5))
                 .foregroundStyle(Brand.muted)
         case .failed:
@@ -189,7 +244,9 @@ struct RecordView: View {
     // MARK: - Actions
 
     private func toggle() {
-        if recorder.isRecording {
+        // Paused counts as started: the big button is stop either way, so pausing and then
+        // hitting it finishes the recording rather than beginning a second one on top.
+        if recorder.isActive {
             finish()
         } else {
             begin()
@@ -218,6 +275,8 @@ struct RecordView: View {
             }
             // Registered the moment the chunk closes. Until this runs the bytes are an
             // orphan, so it does the least possible work and does it synchronously.
+            recorder.activityName = CalendarDay.today().representativeDate()
+                .formatted(.dateTime.weekday(.wide).month().day())
             recorder.onChunkFinished = { file, duration in
                 guard let draft = try? store.draft(id: id) else { return }
                 try? store.attachAudioCapture(

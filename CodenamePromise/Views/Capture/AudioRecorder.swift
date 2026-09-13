@@ -29,6 +29,16 @@ import Observation
 /// meter that drives the waveform already knows when somebody has stopped talking, so after
 /// `minimumChunk` the recorder waits for a pause and rotates there. `maximumChunk` is the
 /// backstop for someone who never pauses.
+///
+/// **Pausing closes the chunk.** It would be easier to call `AVAudioRecorder.pause()` and
+/// leave the file open, and it would also mean a paused recording — the state someone leaves
+/// the app in precisely because they expect to come back to it — was the one state where a
+/// force-quit lost everything since the last rotation. Closing the chunk instead makes every
+/// paused recording fully durable, which is the whole reason to offer a pause.
+///
+/// **Recording survives leaving the app.** `UIBackgroundModes: audio` plus an active session
+/// is what keeps the process alive while somebody checks a message. The session is therefore
+/// *not* deactivated when the app goes to the background, only on stop and on pause.
 @MainActor
 @Observable
 final class AudioRecorder {
@@ -36,6 +46,8 @@ final class AudioRecorder {
         case idle
         case denied
         case recording
+        /// Mid-session, microphone released, everything recorded so far already on disk.
+        case paused
         case failed(String)
     }
 
@@ -51,6 +63,9 @@ final class AudioRecorder {
 
     /// Somewhere durable to write the next chunk. Set before `start()`.
     var reserveChunk: (() throws -> ReservedFile)?
+
+    /// What the Lock Screen calls this recording. Set before `start()`.
+    var activityName: String = "your entry"
 
     /// A finished chunk, already closed and on disk at `file.relativePath`. The handler must
     /// register it synchronously: until it does, the bytes are an orphan that `reapOrphans`
@@ -79,11 +94,19 @@ final class AudioRecorder {
     /// system work in between, which keeps the seam under a millisecond.
     private var standby: (recorder: AVAudioRecorder, file: ReservedFile)?
     private var ticker: Task<Void, Never>?
+    private var interruptions: Task<Void, Never>?
     /// Completed chunks only. The one in progress is added when it closes.
     private var completedDuration: TimeInterval = 0
     private var silentFor: TimeInterval = 0
 
     var isRecording: Bool { state == .recording }
+    var isPaused: Bool { state == .paused }
+    /// Mid-session either way: there is a recording to come back to.
+    var isActive: Bool { state == .recording || state == .paused }
+
+    /// Set when a phone call or another app took the microphone away, so the UI can say what
+    /// happened rather than leave a pause nobody asked for looking like a bug.
+    private(set) var interruptionNotice: String?
 
     // MARK: - Session
 
@@ -115,9 +138,71 @@ final class AudioRecorder {
             self.recorder = recorder
             self.current = file
             self.state = .recording
+            self.interruptionNotice = nil
             startTicking()
+            watchForInterruptions()
+            RecordingActivity.start(entryName: activityName)
         } catch {
             state = .failed(error.localizedDescription)
+        }
+    }
+
+    // MARK: - Pause
+
+    /// Ends the chunk in progress and lets the microphone go.
+    ///
+    /// Everything said so far is on disk and registered before this returns, so a pause is a
+    /// safe place to leave a recording — including leaving it by force-quitting the app.
+    ///
+    /// The session is deactivated rather than held open. Holding it would keep the orange
+    /// microphone indicator lit in the status bar while the app was not, in fact, listening,
+    /// which is a thing a journaling app should never do.
+    func pause() {
+        guard state == .recording else { return }
+
+        ticker?.cancel()
+        ticker = nil
+        closeCurrentChunk()
+        standby?.recorder.deleteRecording()
+        standby = nil
+        silentFor = 0
+        levels = []
+
+        state = .paused
+        elapsed = completedDuration
+        RecordingActivity.update(banked: completedDuration, isRecording: false)
+        try? AVAudioSession.sharedInstance().setActive(
+            false, options: .notifyOthersOnDeactivation
+        )
+    }
+
+    /// Picks the session back up with a fresh chunk.
+    ///
+    /// Can genuinely fail: another app may have taken the microphone while this one was
+    /// paused. Nothing recorded is at risk either way, so the failure is reported and the
+    /// recorder stays paused rather than pretending to be running.
+    func resume() async {
+        guard state == .paused else { return }
+
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.record, mode: .default)
+            try session.setActive(true)
+
+            let (recorder, file) = try makeRecorder()
+            guard recorder.record() else {
+                interruptionNotice = "Couldn\u{2019}t start recording again. What you have so far is saved."
+                return
+            }
+            self.recorder = recorder
+            self.current = file
+            self.state = .recording
+            self.interruptionNotice = nil
+            startTicking()
+            watchForInterruptions()
+            RecordingActivity.update(banked: completedDuration, isRecording: true)
+        } catch {
+            interruptionNotice = "Couldn\u{2019}t start recording again. What you have so far is saved."
         }
     }
 
@@ -128,6 +213,10 @@ final class AudioRecorder {
     func stop() -> TimeInterval? {
         ticker?.cancel()
         ticker = nil
+        interruptions?.cancel()
+        interruptions = nil
+        interruptionNotice = nil
+        RecordingActivity.end()
 
         let closed = closeCurrentChunk()
 
@@ -136,7 +225,9 @@ final class AudioRecorder {
         standby = nil
 
         state = .idle
-        try? AVAudioSession.sharedInstance().setActive(false)
+        try? AVAudioSession.sharedInstance().setActive(
+            false, options: .notifyOthersOnDeactivation
+        )
 
         let total = completedDuration
         completedDuration = 0
@@ -249,6 +340,43 @@ final class AudioRecorder {
                 }
                 if self.shouldRotate(chunkTime: chunkTime) {
                     self.rotate()
+                }
+            }
+        }
+    }
+
+    // MARK: - Interruptions
+
+    /// A phone call, Siri, or another app taking the microphone.
+    ///
+    /// Without this a call would stop the recording dead: iOS tears the session down, the
+    /// `AVAudioRecorder` quietly stops, and the timer on screen keeps counting a recording
+    /// that no longer exists. Treated as a pause, which means the chunk is closed and safe,
+    /// and picked back up automatically when the system says it is allowed.
+    private func watchForInterruptions() {
+        guard interruptions == nil else { return }
+        interruptions = Task { [weak self] in
+            let stream = NotificationCenter.default.notifications(
+                named: AVAudioSession.interruptionNotification
+            )
+            for await note in stream {
+                guard let self else { return }
+                let type = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt)
+                    .flatMap(AVAudioSession.InterruptionType.init(rawValue:))
+                let options = (note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt)
+                    .map(AVAudioSession.InterruptionOptions.init(rawValue:)) ?? []
+
+                switch type {
+                case .began:
+                    guard self.state == .recording else { continue }
+                    self.pause()
+                    self.interruptionNotice =
+                        "Paused \u{2014} something else needed the microphone. Everything so far is saved."
+                case .ended:
+                    guard self.state == .paused, options.contains(.shouldResume) else { continue }
+                    await self.resume()
+                default:
+                    continue
                 }
             }
         }

@@ -286,6 +286,42 @@ failed and the walk continues, and the entry syncs with whatever media did make 
 photo is annoying; losing the reflection because of a photo is the bug the project exists to
 fix. Covered by `mediaFailureDoesNotFailTheEntry`.
 
+### ADR-002b · Recording survives leaving the app, and pausing closes the chunk
+**Status:** Accepted · `AudioRecorder`, `RecordingActivity`, `Config/Info.plist`
+
+Two things were true and shouldn't have been. Leaving the app stopped the recording, because
+iOS suspends a process with no background mode and the chunk in progress died with it. And
+there was no pause — the only way to stop talking for a moment was to stop, which is the one
+move that cannot be taken back into the same recording.
+
+**Decided:** `UIBackgroundModes: audio` keeps the process alive while the session is active,
+so the session is deactivated only on stop and on pause, never on backgrounding.
+
+**Pause closes the chunk rather than calling `AVAudioRecorder.pause()`.** Leaving the file
+open would be less code and would make a paused recording — the state someone leaves the app
+in *precisely because they mean to come back* — the one state where a force-quit loses
+everything since the last rotation. Closing it makes every paused recording fully durable,
+which is the only reason to offer a pause in a journal that promises not to lose things.
+Verified by pausing, force-quitting, and relaunching: the words were in the entry.
+
+An interruption (a call, Siri, another app taking the microphone) is handled as a pause for
+the same reason, and resumed automatically when the system says `shouldResume`. Before this,
+a call stopped the recording dead while the timer kept counting something that no longer
+existed.
+
+**The Lock Screen timer is a Live Activity** in the `DumpNotesWidgets` extension. Without it
+the only evidence of a background recording is the microphone dot in the status bar, which
+says something is listening and not what, for how long, or whether it is paused. The widget
+runs its own clock from a start date rather than being pushed a number every second, because
+activity updates are rate limited and cost power; the app only updates it on pause and
+resume. A paused activity shows a frozen total, since `Text(timerInterval:)` cannot stop and
+a counter climbing while nothing is recorded would be a lie told on a lock screen.
+
+A Live Activity outlives the process that started it, so `RecordingActivity.endStale()` runs
+at launch beside the lease reconciliation — same principle, that a dead process's claims are
+cleared before anything reads them. Without it a force-quit left a frozen timer in the
+Dynamic Island with nothing behind it, which is how this bug was found.
+
 ### ADR-015b · A video too big for the destination is split, not dropped
 **Status:** Accepted · `VideoPlanner`, `MediaCompressor`, `SyncCoordinator.uploadPendingMedia`
 

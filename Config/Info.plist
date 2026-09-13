@@ -85,6 +85,27 @@
 <key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 
+	<!--
+	  Recording keeps going after you leave the app.
+	  
+	  Without this iOS suspends the process the moment somebody checks a message, and the
+	  chunk in progress dies with it. With it, an active audio session keeps the app running
+	  and the system shows the microphone indicator in the status bar the whole time, which
+	  is the honest signal that something is listening.
+	-->
+	<!--
+	  The recording timer on the Lock Screen and in the Dynamic Island, drawn by the
+	  DumpNotesWidgets extension. Without this key ActivityKit reports the feature as
+	  unavailable and every request to start one fails.
+	-->
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

@@ -72,6 +72,12 @@ final class AppServices {
                 backup: opening.isBackedUp ? .iCloud : .thisPhoneOnly
             )
 
+            // A Live Activity outlives the process that made it, so a force-quit mid
+            // recording leaves a frozen timer in the Dynamic Island with nothing behind it.
+            // Same principle as the lease reconciliation below: a dead process's claims are
+            // cleared before anything reads them.
+            RecordingActivity.endStale()
+
             // Before any UI reads state: demote operations abandoned by a dead process, so
             // nothing is stuck claiming to be in flight. See ADR-004.
             let report = try store.reconcileAbandonedOperations()

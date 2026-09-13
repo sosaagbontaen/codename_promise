@@ -538,8 +538,8 @@ struct CaptureView: View {
                 .buttonStyle(.pressable)
                 .disabled(controller.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            .overlay { if recorder.isRecording { recordingCapsule } }
-            .animation(.easeOut(duration: 0.18), value: recorder.isRecording)
+            .overlay { if recorder.isActive { recordingCapsule } }
+            .animation(.easeOut(duration: 0.18), value: recorder.isActive)
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
@@ -547,23 +547,58 @@ struct CaptureView: View {
         .background(.bar)
     }
 
+    /// The bar that replaces the action row while a recording is going.
+    ///
+    /// Two controls now rather than one. Stop used to be the whole capsule, which made it the
+    /// thing you hit by reflex when you only wanted to think for a moment — and stopping is
+    /// the one move you cannot take back into the same recording.
     private var recordingCapsule: some View {
-        Button {
-            Haptics.committed()
-            stopRecording()
-        } label: {
-            HStack(spacing: 12) {
+        HStack(spacing: 10) {
+            Button {
+                Haptics.committed()
+                togglePause()
+            } label: {
+                Image(systemName: recorder.isPaused ? "mic.fill" : "pause.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(recorder.isPaused ? "Resume recording" : "Pause recording")
+
+            if recorder.isPaused {
+                // A waveform that has stopped moving looks like a bug. Say the word instead.
+                Text("Paused")
+                    .font(Type.label(13))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
                 LiveWaveform(levels: recorder.levels, tint: .white)
                     .frame(height: 20).frame(maxWidth: .infinity)
-                Text(elapsedLabel).font(Type.mono(13)).foregroundStyle(.white)
-                Image(systemName: "stop.fill")
-                    .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
             }
-            .padding(.horizontal, 14)
-            .frame(height: 44)
-            .background(Brand.gradient, in: Capsule())
+
+            Text(elapsedLabel).font(Type.mono(13)).foregroundStyle(.white)
+
+            Button {
+                Haptics.committed()
+                stopRecording()
+            } label: {
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Stop recording")
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 8)
+        .frame(height: 44)
+        .background(
+            recorder.isPaused ? AnyShapeStyle(Brand.muted) : AnyShapeStyle(Brand.gradient),
+            in: Capsule()
+        )
     }
 
     /// Whether there is anywhere to send to at all. Nil when no backend is configured, which
@@ -666,6 +701,7 @@ struct CaptureView: View {
             // that has to wake up, and a spinner on a 46-point button is not enough to
             // explain a wait that long.
             isOrganising ? "Grouping what goes together\u{2026}" : nil,
+            recorder.interruptionNotice,
             failedUploadMessage,
             controller.pendingTranscriptionCount > 0 ? services.transcriptions?.blockedReason : nil,
             services.organising?.blockedReason,
@@ -779,7 +815,27 @@ struct CaptureView: View {
         recorder.onChunkFinished = { file, duration in
             controller.registerChunk(file, duration: duration, fileStore: fileStore)
         }
+        recorder.activityName = recordingName
         Task { await recorder.start() }
+    }
+
+    /// What the Lock Screen calls this recording. The entry's title when it has one, its
+    /// date otherwise — never its contents, which have no business on a lock screen.
+    private var recordingName: String {
+        let title = controller.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !title.isEmpty { return title }
+        return controller.entryDate.representativeDate()
+            .formatted(.dateTime.weekday(.wide).month().day())
+    }
+
+    private func togglePause() {
+        if recorder.isPaused {
+            Task { await recorder.resume() }
+        } else {
+            // Everything said so far is closed and registered by the time this returns, so
+            // the app can be killed from here without costing a word.
+            recorder.pause()
+        }
     }
 
     private func stopRecording() {
