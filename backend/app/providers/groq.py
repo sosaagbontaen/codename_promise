@@ -10,7 +10,10 @@ never written to disk. See ADR-022.
 
 from __future__ import annotations
 
+import asyncio
+import contextvars
 import json
+import time
 
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Set
 
@@ -250,7 +253,7 @@ def _split_for_formatting(text: str, threshold: int) -> List[str]:
 
     Splits only at boundaries the author already made, so no sentence is ever cut in half —
     each piece is something they wrote as a unit.
-    """
+"""
     if len(text) <= threshold:
         return [text]
 
@@ -310,7 +313,7 @@ async def list_models(api_key: str, base_url: str = GROQ_BASE_URL) -> Set[str]:
     request path notices until a user hits it, and then the failure is a 404 from a request
     nobody changed. Asking up front is a few hundred milliseconds and turns that into
     something a deploy check can see.
-    """
+"""
     headers = {"Authorization": f"Bearer {api_key}"}
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -364,22 +367,71 @@ class GroqRateLimited(GroqError):
     Worth its own type because the free tier caps tokens per minute, and one long entry is
     most of a minute's budget: a user with an eight-minute recording will meet this in normal
     use, not only under load.
-    """
+"""
 
     def __init__(self, message: str, retry_after: Optional[str] = None) -> None:
         super().__init__(message)
         self.retry_after = retry_after
 
 
+class GroqBudgetExhausted(GroqError):
+    """The model spent its whole allowance thinking and returned nothing.
+
+    Groq reports this as `400 json_validate_failed` with an empty `failed_generation`, which
+    reads exactly like a broken prompt and is not one. It is worth its own type because the
+    recovery is specific and works: more room, less thinking.
+"""
+
+
+#: How long the whole organise may take, waiting on rate limits included.
+#:
+#: A ceiling on the operation rather than on each call: six calls each allowed two minutes is
+#: twelve minutes, which is not a bound on anything. Set below the client's own timeout so a
+#: request that cannot finish comes back as a clean "busy, try again" instead of the client
+#: giving up on a server still working.
+ORGANISE_DEADLINE_SECONDS = 75.0
+
+#: The deadline for the organise currently being served.
+#:
+#: A `ContextVar` because `GroqOrganiser` is built once at startup and shared by every
+#: request, so per-request state cannot live on the instance. Set by the route; read by every
+#: call underneath it.
+_deadline: contextvars.ContextVar[Optional[float]] = contextvars.ContextVar(
+    "organise_deadline", default=None
+)
+
+
+def begin_organise(seconds: float = ORGANISE_DEADLINE_SECONDS) -> None:
+    """Starts the clock for one organise, covering every call it makes."""
+    _deadline.set(time.monotonic() + seconds)
+
+
 class GroqOrganiser:
     """Both passes of the organiser against a Groq chat model.
 
-    `reasoning_effort` is set explicitly and deliberately. These are reasoning models and
-    reasoning counts against `max_completion_tokens`: left at the default, the assignment pass
-    spent 84% of its allowance thinking and returned an empty string, which the API reports as
-    `400 json_validate_failed` and which reads exactly like a broken prompt. "medium" also
-    groups better than "low", which split a colleague out of the work thread.
-    """
+    Three things here exist because a ten-minute recording broke all of them.
+
+    **The completion budget scales with the transcript.** It was a flat 6,000 tokens. Reasoning
+    counts against `max_completion_tokens`, and reasoning grows with the input, so on a long
+    entry the model thought until the allowance was gone and returned an empty string — a
+    `400` that looks like a broken prompt and is really a budget that stopped being big enough
+    somewhere around six minutes of talking. Worse, it was *intermittent*: at 129 lines the
+    pass needed about 4,000 tokens against a 6,000 ceiling, so it failed only when reasoning
+    ran long.
+
+    **The reasoning effort stayed where it was.** Dropping the assignment pass to "low" made
+    it cheap and noticeably worse: on the same transcript `dropguard` had to rescue 23 lines
+    the model had called filler, against 5 at "medium". The flat budget was the bug; the
+    effort was not, and lowering it would have been a quality regression dressed up as a fix.
+    The writing pass does use "low", where it measurably changes nothing — those calls spend
+    20 to 60 tokens reasoning either way.
+
+    **Rate limits are waited out, not raised.** The free tier allows 8,000 tokens per minute
+    and one seven-minute entry costs about 7,200 across six calls, so hitting the limit
+    partway through is not an edge case, it is the normal path. Each call now honours the
+    provider's own `Retry-After` until `ORGANISE_DEADLINE_SECONDS`, which turned three hard
+    failures into 27 seconds of waiting on the run this was built against.
+"""
 
     def __init__(
         self,
@@ -393,7 +445,29 @@ class GroqOrganiser:
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
 
-    async def _json_call(self, system: str, user: str, max_tokens: int) -> Dict[str, Any]:
+    @staticmethod
+    def assign_budget(lines: int) -> int:
+        """Room for the answer plus the thinking that produces it.
+
+        The answer itself is proportional to the line count — every line number appears once.
+        The thinking is the larger and less predictable part, so the allowance is generous:
+        the cost of over-asking is nothing (unused tokens are not billed or counted), and the
+        cost of under-asking is an empty completion and a failed entry.
+    """
+        return min(32_000, 4_000 + 90 * max(lines, 1))
+
+    @staticmethod
+    def write_budget(lines: int) -> int:
+        """Prose is roughly the size of what it came from, and needs less thinking."""
+        return min(16_000, 2_000 + 60 * max(lines, 1))
+
+    async def _json_call(
+        self,
+        system: str,
+        user: str,
+        max_tokens: int,
+        effort: str = "medium",
+    ) -> Dict[str, Any]:
         body = {
             "model": self._model,
             "messages": [
@@ -402,40 +476,71 @@ class GroqOrganiser:
             ],
             "temperature": 0.3,
             "max_completion_tokens": max_tokens,
-            "reasoning_effort": "medium",
+            "reasoning_effort": effort,
             "response_format": {"type": "json_object"},
         }
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
         }
-        try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                response = await client.post(
-                    f"{self._base_url}/chat/completions", headers=headers, json=body
-                )
-        except httpx.HTTPError as exc:
-            raise GroqError(f"Could not reach Groq: {exc}") from exc
 
-        if response.status_code == 429:
-            # Not a fault, a queue. Raised distinctly so the route can answer 429 with the
-            # provider's own Retry-After instead of a 502, which would tell the client the
-            # server is broken and invite it to hammer a bucket that needs a minute.
-            raise GroqRateLimited(
-                "Too many requests just now.",
-                retry_after=response.headers.get("retry-after"),
-            )
-        if response.status_code >= 400:
-            raise GroqError(f"Groq organising failed ({response.status_code}).")
-        try:
-            return json.loads(response.json()["choices"][0]["message"]["content"])
-        except (KeyError, ValueError) as exc:
-            raise GroqError("Groq returned something that was not the expected JSON.") from exc
+        while True:
+            try:
+                async with httpx.AsyncClient(timeout=self._timeout) as client:
+                    response = await client.post(
+                        f"{self._base_url}/chat/completions", headers=headers, json=body
+                    )
+            except httpx.HTTPError as exc:
+                raise GroqError(f"Could not reach Groq: {exc}") from exc
+
+            if response.status_code == 429:
+                retry_after = response.headers.get("retry-after")
+                wait = _seconds(retry_after, default=10.0)
+                # Waited out rather than raised. The provider is metering, not failing, and
+                # the token budget refills on its own — the only thing raising here achieves
+                # is handing the user a failure for something that resolves in ten seconds.
+                # Bounded by the deadline so the request cannot outlive the client.
+                deadline = _deadline.get()
+                if deadline is not None and time.monotonic() + wait > deadline:
+                    raise GroqRateLimited(
+                        "Too many requests just now.", retry_after=retry_after
+                    )
+                await asyncio.sleep(wait + 0.5)
+                continue
+
+            if response.status_code >= 400:
+                raise _describe_failure(response)
+
+            try:
+                content = response.json()["choices"][0]["message"]["content"]
+            except (KeyError, ValueError) as exc:
+                raise GroqError("Groq returned something unexpected.") from exc
+            if not content.strip():
+                # Same thing as `json_validate_failed`, reported as a success.
+                raise GroqBudgetExhausted("The model ran out of room before answering.")
+            try:
+                return json.loads(content)
+            except ValueError as exc:
+                raise GroqError(
+                    "Groq returned something that was not the expected JSON."
+                ) from exc
 
     async def assign(self, sentences: Sequence[str]) -> Dict[str, List[int]]:
         numbered = "\n".join(f"{i}. {s}" for i, s in enumerate(sentences, 1))
         tail = f"\n\n(That is {len(sentences)} lines. Assign every one.)"
-        payload = await self._json_call(ASSIGN_PROMPT, numbered + tail, 6000)
+        user = numbered + tail
+        budget = self.assign_budget(len(sentences))
+
+        try:
+            payload = await self._json_call(ASSIGN_PROMPT, user, budget, "medium")
+        except GroqBudgetExhausted:
+            # It thought its way through the whole allowance. Retrying the same request is
+            # the definition of pointless; more room and less thinking is the fix, and it is
+            # still far better than telling somebody their ten minutes cannot be organised.
+            payload = await self._json_call(
+                ASSIGN_PROMPT, user, min(32_000, budget * 2), "low"
+            )
+
         threads = payload.get("threads", {})
         return {
             str(name): [int(i) for i in lines if isinstance(i, (int, float))]
@@ -444,8 +549,44 @@ class GroqOrganiser:
         }
 
     async def write(self, thread: str, lines: Sequence[str]) -> Dict[str, str]:
-        payload = await self._json_call(WRITE_PROMPT, "\n".join(lines), 2500)
+        budget = self.write_budget(len(lines))
+        try:
+            payload = await self._json_call(WRITE_PROMPT, "\n".join(lines), budget, "low")
+        except GroqBudgetExhausted:
+            payload = await self._json_call(
+                WRITE_PROMPT, "\n".join(lines), min(16_000, budget * 2), "low"
+            )
         return {
             "heading": str(payload.get("heading", thread)),
             "body": str(payload.get("body", "")),
         }
+
+
+def _seconds(retry_after: Optional[str], default: float) -> float:
+    """Groq sends a float of seconds; be forgiving about what arrives."""
+    try:
+        return max(0.0, min(60.0, float(retry_after)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _describe_failure(response: httpx.Response) -> GroqError:
+    """Says what the provider actually said.
+
+    The old message was "Groq organising failed (400)." for every 4xx, which the app showed as
+    "the server had a problem". The real cause was `json_validate_failed` with an empty
+    generation — a fact that was in the response body the whole time and thrown away, and
+    without which this bug was invisible from the outside.
+"""
+    try:
+        error = response.json().get("error", {})
+        code = error.get("code", "")
+        message = error.get("message", "")
+    except ValueError:
+        code, message = "", ""
+
+    if code == "json_validate_failed" and not (error.get("failed_generation") or "").strip():
+        return GroqBudgetExhausted("The model ran out of room before answering.")
+    if message:
+        return GroqError(f"Groq organising failed ({response.status_code}): {message}")
+    return GroqError(f"Groq organising failed ({response.status_code}).")

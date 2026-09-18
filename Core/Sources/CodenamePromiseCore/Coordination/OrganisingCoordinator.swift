@@ -31,9 +31,24 @@ public final class OrganisingCoordinator {
     private let store: DraftStore
     private let service: any OrganisingService
 
-    public init(store: DraftStore, service: any OrganisingService) {
+    /// How long to wait before the one retry. Long enough for a token bucket to refill
+    /// rather than a token gesture — and injectable, because a test asserting the retry
+    /// happens should not sit through the wait to find out.
+    private let retryAfter: Duration
+    private let sleep: @Sendable (Duration) async throws -> Void
+
+    public init(
+        store: DraftStore,
+        service: any OrganisingService,
+        retryAfter: Duration = .seconds(20),
+        sleep: @escaping @Sendable (Duration) async throws -> Void = {
+            try await Task.sleep(for: $0)
+        }
+    ) {
         self.store = store
         self.service = service
+        self.retryAfter = retryAfter
+        self.sleep = sleep
     }
 
     public func isOrganising(_ draftId: UUID) -> Bool { inFlight.contains(draftId) }
@@ -69,7 +84,7 @@ public final class OrganisingCoordinator {
         defer { inFlight.remove(draftId) }
 
         do {
-            let result = try await service.organise(request)
+            let result = try await attempt(request)
 
             guard let draft = try? store.draft(id: draftId) else { return .vanished }
             guard draft.contentHash == result.sourceContentHash else {
@@ -86,19 +101,42 @@ public final class OrganisingCoordinator {
             lastError = nil
             return .organised
         } catch let error as APIError {
-            blockedReason = error.userFacingMessage
-            lastError = error.userFacingMessage
             // Nothing was written and the transcript was never at risk, so this is a delay
             // rather than a loss, and the message must not imply otherwise.
-            return error.isRetryable
-                ? .deferred(error.userFacingMessage)
-                : .failed(error.userFacingMessage)
+            let message = error.isRetryable ? Self.busyMessage : error.userFacingMessage
+            blockedReason = message
+            lastError = message
+            return error.isRetryable ? .deferred(message) : .failed(message)
         } catch {
             blockedReason = error.localizedDescription
             lastError = error.localizedDescription
             return .failed(error.localizedDescription)
         }
     }
+
+    /// Tries once, waits, tries once more.
+    ///
+    /// "Server is busy. Will try again shortly." was shown for a retryable failure and
+    /// nothing ever tried again — the message described a behaviour the app did not have, so
+    /// a long entry looked like it had simply stopped. Sync retries because a person presses
+    /// Send again and the queue picks it up; organising has no queue behind it.
+    ///
+    /// One retry, not a loop. The backend already waits out the provider's rate limit for
+    /// over a minute before giving up, so a busy answer reaching here means the wait was
+    /// genuinely not enough, and grinding away at it would only hold somebody in front of a
+    /// spinner for minutes.
+    private func attempt(_ request: OrganiseRequest) async throws -> OrganiseResult {
+        do {
+            return try await service.organise(request)
+        } catch let error as APIError where error.isRetryable {
+            try? await sleep(retryAfter)
+            return try await service.organise(request)
+        }
+    }
+
+    /// Said after the retry, so it does not promise a third attempt that is not coming.
+    private static let busyMessage =
+        "The server is busy right now. Try arranging again in a minute."
 }
 
 public enum OrganisingOutcome: Sendable, Equatable {

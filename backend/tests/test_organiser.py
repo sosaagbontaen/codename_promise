@@ -243,3 +243,186 @@ class TestOrganiseEndpoint:
         )
         assert r.status_code == 429
         assert r.headers.get("Retry-After") == "30"
+
+
+class TestLongTranscripts:
+    """The ten-minute recording that could not be arranged.
+
+    Every test here corresponds to something that actually happened against the real provider
+    on a 129-line transcript, not to a hypothetical. Two distinct failures reached the user as
+    "the server had a problem" and "server is busy": a completion budget that stopped being
+    big enough somewhere around six minutes of talking, and a free-tier token-per-minute
+    limit that one long entry exceeds on its own.
+    """
+
+    def _organiser(self, responses, **kwargs):
+        """A GroqOrganiser whose HTTP calls return a scripted sequence."""
+        import httpx
+        from app.providers.groq import GroqOrganiser
+
+        sent = []
+
+        class Client:
+            def __init__(self, *a, **kw):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, headers=None, json=None):
+                sent.append(json)
+                status, payload, hdrs = responses.pop(0)
+                return httpx.Response(
+                    status, json=payload, headers=hdrs or {},
+                    request=httpx.Request("POST", url),
+                )
+
+        organiser = GroqOrganiser(api_key="k", **kwargs)
+        return organiser, Client, sent
+
+    @staticmethod
+    def _ok(content):
+        import json as _json
+        return (200, {"choices": [{"message": {"content": _json.dumps(content)}}]}, None)
+
+    def test_the_budget_grows_with_the_transcript(self):
+        """It was a flat 6,000 for every length, which is where this bug lived."""
+        from app.providers.groq import GroqOrganiser
+
+        short = GroqOrganiser.assign_budget(10)
+        long = GroqOrganiser.assign_budget(129)
+        assert long > short
+        # Comfortably past the old ceiling, which a seven-minute entry sat right on top of.
+        assert long > 6_000
+        # And bounded, so a transcript of any length still asks for something sane.
+        assert GroqOrganiser.assign_budget(100_000) <= 32_000
+
+    def test_a_long_transcript_still_gets_the_finer_grouping(self, monkeypatch):
+        """Lowering the reasoning effort looked like a cheap fix and was a quality
+        regression: on the same 129-line transcript `dropguard` had to rescue 23 lines the
+        model called filler at "low", against 5 at "medium". The flat budget was the bug."""
+        import asyncio
+        import httpx
+
+        organiser, Client, sent = self._organiser([self._ok({"threads": {"work": [1]}})])
+        monkeypatch.setattr(httpx, "AsyncClient", Client)
+
+        asyncio.run(organiser.assign([f"Line {i}." for i in range(200)]))
+        assert sent[0]["reasoning_effort"] == "medium"
+        assert sent[0]["max_completion_tokens"] > 6_000
+
+    def test_being_rate_limited_waits_rather_than_failing(self, monkeypatch):
+        """The free tier allows 8,000 tokens a minute and one seven-minute entry costs about
+        7,200, so meeting the limit partway through is the normal path, not an edge case."""
+        import asyncio
+        import httpx
+
+        organiser, Client, sent = self._organiser([
+            (429, {"error": {"message": "slow down"}}, {"retry-after": "0.01"}),
+            self._ok({"threads": {"work": [1, 2]}}),
+        ])
+        monkeypatch.setattr(httpx, "AsyncClient", Client)
+
+        threads = asyncio.run(organiser.assign(["One thing.", "Two things."]))
+        assert threads == {"work": [1, 2]}
+        assert len(sent) == 2, "the call should have been retried, not abandoned"
+
+    def test_a_rate_limit_that_outlasts_the_deadline_still_gives_up(self, monkeypatch):
+        """Waiting is right; waiting forever is not. The request must not outlive the client
+        holding it open."""
+        import asyncio
+        import httpx
+        from app.providers.groq import GroqRateLimited
+
+        from app.providers.groq import begin_organise
+
+        organiser, Client, sent = self._organiser(
+            [(429, {"error": {"message": "slow down"}}, {"retry-after": "60"})]
+        )
+        monkeypatch.setattr(httpx, "AsyncClient", Client)
+        begin_organise(seconds=0.0)
+
+        with pytest.raises(GroqRateLimited):
+            asyncio.run(organiser.assign(["One thing."]))
+        assert len(sent) == 1
+
+    def test_an_exhausted_budget_is_retried_with_more_room(self, monkeypatch):
+        """Groq reports this as 400 json_validate_failed with an empty generation, which reads
+        exactly like a broken prompt and is really a budget that ran out."""
+        import asyncio
+        import httpx
+
+        organiser, Client, sent = self._organiser([
+            (400, {"error": {
+                "code": "json_validate_failed",
+                "message": "Failed to validate JSON.",
+                "failed_generation": "",
+            }}, None),
+            self._ok({"threads": {"work": [1]}}),
+        ])
+        monkeypatch.setattr(httpx, "AsyncClient", Client)
+
+        threads = asyncio.run(organiser.assign([f"Line {i}." for i in range(100)]))
+        assert threads == {"work": [1]}
+        assert len(sent) == 2
+        # Retrying the identical request would be pointless. More room, less thinking.
+        assert sent[1]["max_completion_tokens"] > sent[0]["max_completion_tokens"]
+        assert sent[1]["reasoning_effort"] == "low"
+
+    def test_an_empty_answer_counts_as_an_exhausted_budget(self, monkeypatch):
+        """The same failure sometimes arrives as a 200 with nothing in it."""
+        import asyncio
+        import httpx
+
+        organiser, Client, sent = self._organiser([
+            (200, {"choices": [{"message": {"content": "   "}}]}, None),
+            self._ok({"threads": {"work": [1]}}),
+        ])
+        monkeypatch.setattr(httpx, "AsyncClient", Client)
+
+        assert asyncio.run(organiser.assign(["One thing."])) == {"work": [1]}
+        assert len(sent) == 2
+
+    def test_a_provider_error_says_what_the_provider_said(self, monkeypatch):
+        """Every 4xx used to become "Groq organising failed (400)." The real cause was in the
+        body all along, and throwing it away is what made this bug invisible from outside."""
+        import asyncio
+        import httpx
+        from app.providers.groq import GroqError
+
+        organiser, Client, _ = self._organiser([
+            (400, {"error": {"code": "model_decommissioned",
+                             "message": "`some-model` has been decommissioned."}}, None),
+        ])
+        monkeypatch.setattr(httpx, "AsyncClient", Client)
+
+        with pytest.raises(GroqError) as caught:
+            asyncio.run(organiser.assign(["One thing."]))
+        assert "decommissioned" in str(caught.value)
+
+    def test_the_deadline_covers_the_whole_organise_not_each_call(self, monkeypatch):
+        """A long entry is six or seven calls. Two minutes each is twelve minutes, which is
+        not a bound on anything — the clock has to start once and cover all of them."""
+        import asyncio
+        import httpx
+        from app.providers.groq import GroqRateLimited, begin_organise
+
+        organiser, Client, sent = self._organiser([
+            self._ok({"threads": {"work": [1]}}),
+            (429, {"error": {"message": "slow down"}}, {"retry-after": "60"}),
+        ])
+        monkeypatch.setattr(httpx, "AsyncClient", Client)
+
+        async def both():
+            begin_organise(seconds=0.05)
+            await organiser.assign(["One thing."])
+            await asyncio.sleep(0.1)
+            # The first call spent the budget; the second must not get a fresh one.
+            await organiser.write("work", ["One thing."])
+
+        with pytest.raises(GroqRateLimited):
+            asyncio.run(both())
+        assert len(sent) == 2

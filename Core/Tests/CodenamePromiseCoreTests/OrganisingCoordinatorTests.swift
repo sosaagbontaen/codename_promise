@@ -7,6 +7,12 @@ import Testing
 @MainActor
 struct OrganisingCoordinatorTests {
 
+    /// Somewhere a `@Sendable` closure can record what it was asked to wait for.
+    actor Recorded {
+        private(set) var value: Duration?
+        func note(_ duration: Duration) { value = duration }
+    }
+
     final class StubOrganiser: OrganisingService, @unchecked Sendable {
         var result: OrganisedEntry = OrganisedEntry(
             sentences: ["One thing.", "Um.", "Two things."],
@@ -15,13 +21,18 @@ struct OrganisingCoordinatorTests {
             version: "organise-test"
         )
         var error: Error?
+        /// Fails once, then behaves — a server that was momentarily busy.
+        var clearErrorAfterFirstCall = false
         /// The hash to echo back. Nil means echo the request's own, which is the honest case.
         var echoHash: String?
         private(set) var calls = 0
 
         func organise(_ request: OrganiseRequest) async throws -> OrganiseResult {
             calls += 1
-            if let error { throw error }
+            if let error {
+                if clearErrorAfterFirstCall { self.error = nil }
+                throw error
+            }
             return OrganiseResult(
                 draftId: request.draftId,
                 organised: result,
@@ -139,7 +150,9 @@ struct OrganisingCoordinatorTests {
         service.error = APIError.offline
         let draft = try draftWithText(store, "One thing.")
 
-        let coordinator = OrganisingCoordinator(store: store, service: service)
+        let coordinator = OrganisingCoordinator(
+            store: store, service: service, retryAfter: .zero, sleep: { _ in }
+        )
         let outcome = await coordinator.organise(draftId: draft.id)
 
         guard case .deferred(let message) = outcome else {
@@ -186,5 +199,51 @@ struct OrganisingCoordinatorTests {
 
         #expect(draft.organised?.sections.first?.heading == "Rethought")
         #expect(draft.organiserVersion == "organise-test-2")
+    }
+
+    @Test("a busy server is actually tried again, not just told about")
+    func retriesOnceBeforeGivingUp() async throws {
+        let store = try makeStore()
+        let service = StubOrganiser()
+        // Busy the first time, fine the second.
+        service.error = APIError.server(status: 429, message: nil)
+        service.clearErrorAfterFirstCall = true
+        let draft = try draftWithText(store, "One thing. Two things.")
+
+        // A box rather than a captured var: the closure is `@Sendable`, and Swift 6 is
+        // right that a local would be mutated across isolation.
+        let waited = Recorded()
+        let coordinator = OrganisingCoordinator(
+            store: store, service: service,
+            retryAfter: .seconds(20), sleep: { await waited.note($0) }
+        )
+        let outcome = await coordinator.organise(draftId: draft.id)
+
+        #expect(outcome == .organised, "the retry should have succeeded, got \(outcome)")
+        #expect(service.calls == 2)
+        #expect(await waited.value == .seconds(20), "retrying instantly meets the same wall")
+    }
+
+    /// The message said "will try again shortly" and nothing ever did, so a long entry
+    /// looked like it had simply stopped.
+    @Test("after the retry it stops promising another one")
+    func saysWhatItWillActuallyDo() async throws {
+        let store = try makeStore()
+        let service = StubOrganiser()
+        service.error = APIError.server(status: 429, message: nil)
+        let draft = try draftWithText(store, "One thing.")
+
+        let coordinator = OrganisingCoordinator(
+            store: store, service: service, retryAfter: .zero, sleep: { _ in }
+        )
+        let outcome = await coordinator.organise(draftId: draft.id)
+
+        guard case .deferred(let message) = outcome else {
+            Issue.record("a busy server is a delay: \(outcome)")
+            return
+        }
+        #expect(service.calls == 2, "it should have tried twice before saying anything")
+        #expect(!message.contains("Will try again"),
+                "it has stopped trying, so it must not say it hasn't")
     }
 }

@@ -28,6 +28,7 @@ from .providers.groq import (
     GroqOrganiser,
     GroqRateLimited,
     GroqTranscriber,
+    begin_organise,
     list_models,
 )
 from .providers.notion_api import (
@@ -308,6 +309,10 @@ def create_app(
         the app show a line of the finished entry beside the words it came from.
         """
         async def run() -> OrganiseResponse:
+            # One clock for the whole operation, not one per call. A long entry is six or
+            # seven calls and the free tier meters tokens per minute, so some of them will
+            # wait — but the total has to stay under what the client will hold open.
+            begin_organise()
             try:
                 result = await organise(request.transcript, organiser, organiser)
             except GroqRateLimited as exc:

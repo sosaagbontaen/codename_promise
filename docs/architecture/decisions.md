@@ -286,6 +286,54 @@ failed and the walk continues, and the entry syncs with whatever media did make 
 photo is annoying; losing the reflection because of a photo is the bug the project exists to
 fix. Covered by `mediaFailureDoesNotFailTheEntry`.
 
+### ADR-020b · The organiser's budget scales with the transcript, and rate limits are waited out
+**Status:** Accepted · `GroqOrganiser`, `OrganisingCoordinator`
+
+Arranging a ten-minute recording failed, intermittently, with either "the server had a
+problem" or "server is busy". Three separate causes, all of them length-dependent, all
+reproduced against the real provider on a 129-line transcript:
+
+**A flat completion budget.** `max_completion_tokens` was 6,000 for every transcript. Reasoning
+counts against it and reasoning grows with the input: at 129 lines the assignment pass needed
+about 4,000 tokens, so it fitted on a good run and returned an empty string on a bad one.
+Groq reports that as `400 json_validate_failed`, which reads exactly like a broken prompt.
+
+**Decided:** the budget scales with the line count (`assign_budget`, `write_budget`). Unused
+tokens are neither billed nor counted, so over-asking costs nothing and under-asking costs the
+entry.
+
+**The provider's error was thrown away.** Every 4xx became `Groq organising failed (400).`
+The cause was in the response body the whole time. It is now surfaced, and
+`json_validate_failed` with an empty generation is recognised as its own condition with its
+own recovery: retry with more room and less reasoning, since repeating the identical request
+is by definition pointless.
+
+**Tokens per minute.** The free tier allows 8,000 and one seven-minute entry costs about 7,200
+across six calls, so meeting the limit partway through is the normal path rather than an edge
+case. Waiting was already the right answer and was not being done: a 429 became a failure.
+Calls now honour the provider's `Retry-After` until `ORGANISE_DEADLINE_SECONDS` — one clock
+for the whole operation, held in a `ContextVar` because the organiser is a startup singleton
+shared by every request. Six calls each allowed their own deadline is not a bound on anything.
+
+**Rejected: lowering `reasoning_effort` on long transcripts.** It looked like the obvious
+saving and it was a quality regression. On the same transcript `dropguard` had to rescue 23
+lines the model had called filler at "low", against 5 at "medium". The flat budget was the
+bug; the reasoning was not. The writing pass does use "low", where it measurably changes
+nothing — those calls spend 20 to 60 tokens reasoning either way.
+
+**And the app never retried.** `OrganisingCoordinator` showed "Server is busy. Will try again
+shortly." and nothing ever did — sync retries because a person presses Send again, and
+organising has no queue behind it. It now tries once more after twenty seconds, and once it
+has stopped trying it stops saying it hasn't.
+
+Measured after: a 129-line transcript organises in 45 to 50 seconds end to end, six sections,
+every line accounted for.
+
+**The remaining ceiling is the free tier itself.** One seven-minute entry is 90% of a minute's
+entire token budget. Arranging two entries back to back will still wait, and a transcript long
+enough that one call exceeds 8,000 tokens cannot be served at all. That is a plan limit, not a
+bug to fix in this repository.
+
 ### ADR-002b · Recording survives leaving the app, and pausing closes the chunk
 **Status:** Accepted · `AudioRecorder`, `RecordingActivity`, `Config/Info.plist`
 

@@ -233,7 +233,11 @@ public struct APIClient: Sendable {
         //
         // The cost of being generous is a slow failure against a server that is genuinely
         // down, which the retry queue already treats as retryable and backs off from.
-        request.timeoutInterval = 120
+        // Long, because organising a ten-minute entry is six or seven model calls and the
+        // free tier meters tokens per minute, so some of them wait. The backend gives up at
+        // a hundred seconds; this leaves room for that plus a cold start on a hosted
+        // instance that has been asleep, which on the free tier is about a minute on its own.
+        request.timeoutInterval = 180
 
         if let key = configuration.apiKey() {
             request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
