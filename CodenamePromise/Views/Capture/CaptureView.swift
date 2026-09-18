@@ -35,6 +35,13 @@ struct CaptureView: View {
     @FocusState private var writing: Bool
     @FocusState private var titling: Bool
 
+    /// Whether the pinned bars are folded away, leaving the entry on its own.
+    ///
+    /// Stored rather than per-screen: somebody who wants the page out of the way wants it out
+    /// of the way for every entry, not one at a time. It is a toggle in the toolbar, so a
+    /// person who forgets they set it is one tap from the answer.
+    @AppStorage("entryChromeHidden") private var chromeHidden = false
+
     /// Which version of the entry is on screen. `rawText` is always editable; the AI's
     /// structured pass is read-only, because it is a view of the user's words rather than a
     /// second place to write them.
@@ -78,6 +85,7 @@ struct CaptureView: View {
                     actionPanel
                 }
                 .animation(.easeOut(duration: 0.2), value: isEditingText)
+                .animation(.easeInOut(duration: 0.22), value: chromeHidden)
             }
         // One date, not two.
         //
@@ -112,12 +120,24 @@ struct CaptureView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
+                    withAnimation(.easeInOut(duration: 0.22)) { chromeHidden.toggle() }
+                    Haptics.picked()
+                } label: {
+                    Label(
+                        chromeHidden ? "Show the details" : "Just the entry",
+                        systemImage: chromeHidden
+                            ? "arrow.up.left.and.arrow.down.right"
+                            : "arrow.down.right.and.arrow.up.left"
+                    )
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
                     showingDatePicker = true
                 } label: {
                     Label("Change day", systemImage: "calendar")
                 }
             }
-
         }
         .sheet(isPresented: $showingMoveSheet) {
             MoveMediaSheet(
@@ -247,12 +267,15 @@ struct CaptureView: View {
             .padding(.horizontal, 16)
             .padding(.top, 12)
         }
-        .safeAreaInset(edge: .top, spacing: 0) { pinnedHeader }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if !chromeHidden { pinnedHeader }
+        }
         .background(Brand.ground)
     }
 
     /// The entry's filing details: what day it is, what it is called, which version you are
     /// looking at. None of it should disappear when you scroll the words.
+    @ViewBuilder
     private var pinnedHeader: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(controller.entryDate.representativeDate()
@@ -296,7 +319,7 @@ struct CaptureView: View {
     /// the middle of a sentence.
     @ViewBuilder
     private var pinnedDetails: some View {
-        if !isEditingText, hasPinnedDetails {
+        if !chromeHidden, !isEditingText, hasPinnedDetails {
             VStack(alignment: .leading, spacing: 10) {
                 if !controller.orderedMedia.isEmpty {
                     mediaStrip
