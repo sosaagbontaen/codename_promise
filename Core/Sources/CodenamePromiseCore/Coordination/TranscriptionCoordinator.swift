@@ -24,16 +24,24 @@ public final class TranscriptionCoordinator {
     private let service: any TranscriptionService
     private let clock: () -> Date
 
+    /// Read fresh on every merge rather than captured once, so a correction added in
+    /// Settings takes effect on the next recording instead of the next launch.
+    private let corrections: @Sendable () -> NameCorrections
+
     public init(
         store: DraftStore,
         fileStore: MediaFileStore,
         service: any TranscriptionService,
-        clock: @escaping () -> Date = { Date() }
+        clock: @escaping () -> Date = { Date() },
+        corrections: @escaping @Sendable () -> NameCorrections = {
+            NameCorrectionStore().load()
+        }
     ) {
         self.store = store
         self.fileStore = fileStore
         self.service = service
         self.clock = clock
+        self.corrections = corrections
     }
 
     /// Processes every due recording. Safe to call on launch, after a recording finishes, and
@@ -136,10 +144,16 @@ public final class TranscriptionCoordinator {
                 return .permanentlyFailed
             }
 
+            // Names the transcriber reliably gets wrong, fixed before the words become part
+            // of an entry. This is the one thing allowed to rewrite a transcript, and it is
+            // allowed because it makes it *more* faithful to the recording: the person said
+            // "Lizzy" and the machine wrote "Lizzie". See `NameCorrections`.
+            let corrected = corrections().apply(to: text)
+
             // One commit sets the transcript, appends it to the draft, and marks the audio
             // releasable — there is no window where the audio looks disposable but its words
             // aren't saved.
-            try store.mergeTranscript(text, from: capture, into: draft)
+            try store.mergeTranscript(corrected, from: capture, into: draft)
             lastError = nil
             return .transcribed
         } catch let error as APIError {

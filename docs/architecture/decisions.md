@@ -286,6 +286,44 @@ failed and the walk continues, and the entry syncs with whatever media did make 
 photo is annoying; losing the reflection because of a photo is the bug the project exists to
 fix. Covered by `mediaFailureDoesNotFailTheEntry`.
 
+### ADR-002c · Name corrections are the one thing allowed to rewrite a transcript
+**Status:** Accepted · `NameCorrections`, `NameCorrectionStore`, `TranscriptionCoordinator`
+
+Speech-to-text cannot learn that your Lizzy is a Lizzy. It picks whichever spelling is
+commoner in its training data and produces that one in every entry, forever, so the name of
+someone you love is permanently wrong in your journal and the only remedy is retyping it each
+time.
+
+This is the single code path allowed to change `rawText`, which tenet 3 otherwise forbids
+outright. It is allowed because it runs the other way: the person *said* "Lizzy" and the
+machine wrote "Lizzie", so correcting it makes the transcript more faithful to the recording,
+not less. The audio remains the record of what was actually said, and the corrections are the
+user's own, typed by them, not a model's opinion.
+
+**Decided:** pairs of (heard, meant), applied to a transcript in `TranscriptionCoordinator`
+before it is merged into a draft.
+
+- **Whole words only.** A plain replace of "Aiden" with "Aidan" also rewrites "Aidenfield".
+  `\b` is the obvious way to say that and is wrong at either end of a name that does not
+  begin or end with a letter — in "J.R. arrived" there is no boundary between the full stop
+  and the space — so the boundary is asserted as "the neighbouring character is not part of a
+  word" instead.
+- **One pass, not one per rule.** Rules run in sequence would turn "Ann" into "Anna" and then,
+  given a rule about Anna, into "Annabel": a name nobody typed, from two rules that were each
+  right alone.
+- **Longest match first**, so a rule for "Sam Osa" beats one for "Sam".
+- **Replacement is literal.** Matching ignores case; what you typed is what you get. Guessing
+  capitalisation from context is a cleverness that would eventually be wrong about someone's
+  name, which is the problem this exists to end.
+
+**Stored on the device**, in `UserDefaults`, never sent anywhere. A list of the people in
+somebody's life is exactly what this app promises not to put on a server — and a hosted free
+tier that wipes its disk when it sleeps would lose it by Tuesday regardless. Local also means
+corrections work with no backend at all, which is how the app ships.
+
+Applying them to entries already written is an explicit action that reports what it did,
+because it edits words already in the journal and nothing else does that unasked.
+
 ### ADR-020b · The organiser's budget scales with the transcript, and rate limits are waited out
 **Status:** Accepted · `GroqOrganiser`, `OrganisingCoordinator`
 

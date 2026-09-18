@@ -247,6 +247,18 @@ struct SettingsView: View {
         backupSection
 
         Section {
+            if let store = services.store {
+                NavigationLink {
+                    NameCorrectionsView(store: store)
+                } label: {
+                    Label("Names it gets wrong", systemImage: "character.cursor.ibeam")
+                }
+            }
+        } footer: {
+            Text("Teach it how to spell the people in your life, once.")
+        }
+
+        Section {
             Button {
                 showingExport = true
             } label: {

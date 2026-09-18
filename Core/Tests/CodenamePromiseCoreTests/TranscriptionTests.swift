@@ -245,6 +245,44 @@ struct TranscriptionCoordinatorTests {
         #expect(try after.releaseTranscribedAudio(olderThan: 0) == 1)
         #expect(h.files.exists(path) == false)
     }
+
+    /// The one place anything is allowed to rewrite a transcript, and only ever towards what
+    /// was actually said: the person said "Lizzy" and the machine wrote "Lizzie".
+    @Test("a name the transcriber always gets wrong is fixed on the way in")
+    func correctsNamesOnMerge() async throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let h = try makeHarness(now: now)
+        let service = StubTranscriptionService(.succeed("Lizzie called about Aiden."))
+        let coordinator = TranscriptionCoordinator(
+            store: h.store, fileStore: h.files, service: service, clock: { now },
+            corrections: {
+                NameCorrections([
+                    NameCorrection(heard: "Lizzie", meant: "Lizzy"),
+                    NameCorrection(heard: "Aiden", meant: "Aidan"),
+                ])
+            }
+        )
+
+        await coordinator.drain()
+
+        #expect(h.draft.content.rawText.contains("Lizzy called about Aidan."))
+        #expect(!h.draft.content.rawText.contains("Lizzie"))
+    }
+
+    @Test("with no corrections the transcript arrives exactly as transcribed")
+    func leavesTranscriptAloneByDefault() async throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let h = try makeHarness(now: now)
+        let service = StubTranscriptionService(.succeed("Lizzie called about Aiden."))
+        let coordinator = TranscriptionCoordinator(
+            store: h.store, fileStore: h.files, service: service, clock: { now },
+            corrections: { NameCorrections() }
+        )
+
+        await coordinator.drain()
+
+        #expect(h.draft.content.rawText.contains("Lizzie called about Aiden."))
+    }
 }
 
 @Suite("API error classification")
