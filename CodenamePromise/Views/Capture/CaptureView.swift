@@ -31,6 +31,9 @@ struct CaptureView: View {
     @State private var showingMoveSheet = false
     @State private var showingAttachments = false
     @State private var moveNotice: String?
+    /// Which field has the keyboard, so the pinned details can get out of its way.
+    @FocusState private var writing: Bool
+    @FocusState private var titling: Bool
 
     /// Which version of the entry is on screen. `rawText` is always editable; the AI's
     /// structured pass is read-only, because it is a view of the user's words rather than a
@@ -70,9 +73,11 @@ struct CaptureView: View {
         editor
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 VStack(spacing: 0) {
+                    pinnedDetails
                     syncProgressBar
                     actionPanel
                 }
+                .animation(.easeOut(duration: 0.2), value: isEditingText)
             }
         // One date, not two.
         //
@@ -208,124 +213,181 @@ struct CaptureView: View {
 
     // MARK: - Editor
 
+    /// The entry itself, and nothing else.
+    ///
+    /// Everything around it — the date, the title, the Yours/Arranged switch, the photos, the
+    /// notes about what was left out — is *about* the entry rather than part of it, and used
+    /// to scroll away with it. Which meant the title of the thing you were reading vanished
+    /// as soon as you read past the fold, and checking which photos were attached meant
+    /// scrolling to the end and back. They are pinned now, top and bottom, and only the words
+    /// move.
     private var editor: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                TextField("Title (optional)", text: $controller.title)
-                    .font(Type.title(25))
-                    .textInputAutocapitalization(.sentences)
-
-                if controller.organised != nil {
-                    Picker("View", selection: $mode) {
-                        ForEach(availableModes, id: \.self) { Text($0.rawValue).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.bottom, 2)
-                    .onChange(of: mode) { Haptics.picked() }
-                }
-
-                Group {
-                    if mode == .organised, let organised = controller.organised {
-                        OrganisedEntryView(organised: organised, isStale: controller.organisedIsStale)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        TextEditor(text: $controller.text)
-                            .writingSurface()
-                            .overlay(alignment: .topLeading) {
-                                if controller.text.isEmpty {
-                                    Text("What went well today?")
-                                        .font(Type.journal(17))
-                                        .foregroundStyle(.tertiary)
-                                        .padding(.top, 8)
-                                        .padding(.leading, 5)
-                                        .allowsHitTesting(false)
-                                }
-                            }
-                    }
-                }
-                .animation(.easeInOut(duration: 0.18), value: mode)
-
-                if !controller.orderedMedia.isEmpty {
-                    mediaStrip
-                }
-
-
-                // Everything below is *about* the entry rather than part of it, so it sits
-                // together on its own ground instead of trailing off as loose grey text.
-                if hasFooterNotes {
-                    VStack(alignment: .leading, spacing: 10) {
-                        if controller.pendingTranscriptionCount > 0 {
-                            queuedRecordingsNotice
-                        }
-
-                        if let attachProgress {
-                            HStack(spacing: 8) {
-                                ProgressView().controlSize(.mini)
-                                Text("Adding \(attachProgress.done) of \(attachProgress.total)\u{2026}")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+            Group {
+                if mode == .organised, let organised = controller.organised {
+                    OrganisedEntryView(organised: organised, isStale: controller.organisedIsStale)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    TextEditor(text: $controller.text)
+                        .writingSurface()
+                        .focused($writing)
+                        .overlay(alignment: .topLeading) {
+                            if controller.text.isEmpty {
+                                Text("What went well today?")
+                                    .font(Type.journal(17))
+                                    .foregroundStyle(.tertiary)
+                                    .padding(.top, 8)
+                                    .padding(.leading, 5)
+                                    .allowsHitTesting(false)
                             }
                         }
-
-                        if controller.appendsToExistingPage {
-                            Label(
-                                controller.notionSyncState?.externalTitle.map {
-                                    "Will be added to the end of \"\($0)\""
-                                } ?? "Will be added to the end of an existing Notion entry",
-                                systemImage: "text.append"
-                            )
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-
-                        ForEach(statusMessages, id: \.self) { message in
-                            Text(message)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        // Right after a sync this is where you're already looking, so put
-                        // the way to go and see the result here rather than only in a menu.
-                        if controller.destinationLink != nil {
-                            Button {
-                                openInDestination()
-                            } label: {
-                                Label("Open in Notion", systemImage: "arrow.up.forward.app")
-                                    .font(.caption.weight(.medium))
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(Brand.azure)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(14)
-                    .background(.quaternary.opacity(0.28), in: RoundedRectangle(cornerRadius: 12))
-                    .padding(.top, 4)
                 }
             }
+            .animation(.easeInOut(duration: 0.18), value: mode)
             .padding(.horizontal, 16)
             .padding(.top, 12)
         }
-        // The date, pinned rather than scrolled. It is the entry's filing key, so it should
-        // not disappear the moment somebody writes past the fold - which is the one thing the
-        // nav-bar version did better before it was removed as a duplicate.
-        .safeAreaInset(edge: .top, spacing: 0) {
+        .safeAreaInset(edge: .top, spacing: 0) { pinnedHeader }
+        .background(Brand.ground)
+    }
+
+    /// The entry's filing details: what day it is, what it is called, which version you are
+    /// looking at. None of it should disappear when you scroll the words.
+    private var pinnedHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
             Text(controller.entryDate.representativeDate()
                 .formatted(.dateTime.weekday(.wide).month(.wide).day().year()))
                 .font(Type.caption(11.5, .bold))
                 .foregroundStyle(Brand.azure)
                 .textCase(.uppercase)
                 .tracking(1.1)
-                // Aligned to the same 16pt margin the content below it uses, so the date and
-                // the first line of the entry start on one edge.
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 9)
-                .background(Brand.ground)
+
+            TextField("Title (optional)", text: $controller.title)
+                .font(Type.title(25))
+                .textInputAutocapitalization(.sentences)
+                .focused($titling)
+
+            if controller.organised != nil {
+                Picker("View", selection: $mode) {
+                    ForEach(availableModes, id: \.self) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: mode) { Haptics.picked() }
+            }
         }
-        // Otherwise this screen falls back to the system ground, which is pure black in dark
-        // mode and does not match anything else in the app.
+        // Aligned to the same 16pt margin the words below use, so the title and the first
+        // line of the entry start on one edge.
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.top, 9)
+        .padding(.bottom, 10)
         .background(Brand.ground)
+        .overlay(alignment: .bottom) {
+            // Only once there is something scrolling underneath to divide it from.
+            Rectangle().fill(Brand.edge).frame(height: 0.5)
+        }
+    }
+
+    /// The photos and the small print, pinned above the action panel.
+    ///
+    /// Hidden while the keyboard is up. Everything here is pinned to the bottom, which is
+    /// also where the keyboard is, and keeping it visible while somebody types would leave
+    /// them writing into a two-line slot. You are not checking which photos are attached in
+    /// the middle of a sentence.
+    @ViewBuilder
+    private var pinnedDetails: some View {
+        if !isEditingText, hasPinnedDetails {
+            VStack(alignment: .leading, spacing: 10) {
+                if !controller.orderedMedia.isEmpty {
+                    mediaStrip
+                }
+                if hasFooterNotes {
+                    // Bounded, because these stack up: a queued recording, an append target,
+                    // a sync message and a link is four lines before the photos get a look in.
+                    ScrollView {
+                        footerNotes
+                    }
+                    .frame(maxHeight: 118)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+                if mode == .organised, let organised = controller.organised,
+                   !organised.dropped.isEmpty {
+                    DroppedLinesNotice(organised: organised)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 4)
+            // Only as tall as it needs to be. A `maxHeight` here reserves the whole ceiling
+            // whether or not there is anything to put in it, which left a hand's width of
+            // empty ground between the entry and the photos. The one part that can grow
+            // without limit is the notes, so that is the part that is bounded.
+            .fixedSize(horizontal: false, vertical: true)
+            .background(Brand.ground)
+            .overlay(alignment: .top) {
+                Rectangle().fill(Brand.edge).frame(height: 0.5)
+            }
+        }
+    }
+
+    private var hasPinnedDetails: Bool {
+        !controller.orderedMedia.isEmpty
+            || hasFooterNotes
+            || (mode == .organised && controller.organised?.dropped.isEmpty == false)
+    }
+
+    private var isEditingText: Bool { writing || titling }
+
+    /// Everything below is *about* the entry rather than part of it, so it sits together on
+    /// its own ground instead of trailing off as loose grey text.
+    private var footerNotes: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if controller.pendingTranscriptionCount > 0 {
+                queuedRecordingsNotice
+            }
+
+            if let attachProgress {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.mini)
+                    Text("Adding \(attachProgress.done) of \(attachProgress.total)\u{2026}")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if controller.appendsToExistingPage {
+                Label(
+                    controller.notionSyncState?.externalTitle.map {
+                        "Will be added to the end of \"\($0)\""
+                    } ?? "Will be added to the end of an existing Notion entry",
+                    systemImage: "text.append"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
+            ForEach(statusMessages, id: \.self) { message in
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            // Right after a sync this is where you're already looking, so put the way to go
+            // and see the result here rather than only in a menu.
+            if controller.destinationLink != nil {
+                Button {
+                    openInDestination()
+                } label: {
+                    Label("Open in Notion", systemImage: "arrow.up.forward.app")
+                        .font(.caption.weight(.medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Brand.azure)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(.quaternary.opacity(0.28), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var mediaStrip: some View {

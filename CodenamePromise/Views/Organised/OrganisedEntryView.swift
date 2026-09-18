@@ -61,9 +61,6 @@ struct OrganisedEntryView: View {
                 }
             }
 
-            if !organised.dropped.isEmpty {
-                droppedNotice
-            }
         }
     }
 
@@ -84,27 +81,6 @@ struct OrganisedEntryView: View {
             Rectangle().fill(Brand.edge).frame(width: 2)
         }
         .padding(.top, 2)
-    }
-
-    /// Says plainly what was left out, because a count nobody can inspect is worse than none.
-    private var droppedNotice: some View {
-        DisclosureGroup {
-            VStack(alignment: .leading, spacing: 5) {
-                ForEach(organised.dropped, id: \.self) { index in
-                    if index >= 1, index <= organised.sentences.count {
-                        Text(organised.sentences[index - 1])
-                            .font(Type.journal(13))
-                            .foregroundStyle(Brand.muted.opacity(0.8))
-                    }
-                }
-            }
-            .padding(.top, 6)
-        } label: {
-            Text("\(organised.dropped.count) filler \(organised.dropped.count == 1 ? "line" : "lines") left out")
-                .font(Type.caption(11.5))
-                .foregroundStyle(Brand.muted)
-        }
-        .tint(Brand.muted)
     }
 
     private var staleNotice: some View {
@@ -189,5 +165,42 @@ private struct SectionBody: View {
         .foregroundStyle(Brand.ink)
         .lineSpacing(5)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Says plainly what was left out, because a count nobody can inspect is worse than none.
+///
+/// Lives beside the entry rather than at the end of it. It is a fact *about* the arrangement,
+/// and putting it after the last section meant the only way to find out what the app had
+/// discarded was to scroll past everything it had kept.
+struct DroppedLinesNotice: View {
+    let organised: OrganisedEntry
+
+    @State private var expanded = false
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $expanded) {
+            // Its own scroll: this sits in a pinned bar with a height limit, and a long
+            // enough ramble can drop a dozen lines.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(organised.dropped, id: \.self) { index in
+                        if index >= 1, index <= organised.sentences.count {
+                            Text(organised.sentences[index - 1])
+                                .font(Type.journal(13))
+                                .foregroundStyle(Brand.muted.opacity(0.8))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }
+                .padding(.top, 6)
+            }
+            .frame(maxHeight: 140)
+        } label: {
+            Text("\(organised.dropped.count) filler \(organised.dropped.count == 1 ? "line" : "lines") left out")
+                .font(Type.caption(11.5))
+                .foregroundStyle(Brand.muted)
+        }
+        .tint(Brand.muted)
     }
 }

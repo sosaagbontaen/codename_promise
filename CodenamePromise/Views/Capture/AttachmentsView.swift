@@ -26,6 +26,8 @@ struct AttachmentsView: View {
     @State private var order: [MediaItem] = []
     @State private var dragging: MediaItem?
     @State private var picking: [PhotosPickerItem] = []
+    @State private var selected: Set<UUID> = []
+    @State private var selecting = false
 
     private let columns = [GridItem(.adaptive(minimum: 104), spacing: 10)]
 
@@ -42,6 +44,8 @@ struct AttachmentsView: View {
                         }
                     }
 
+                    if selecting { selectionActions }
+
                     Text(hint)
                         .font(Type.caption(12))
                         .foregroundStyle(.secondary)
@@ -55,15 +59,31 @@ struct AttachmentsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
+                    Button(selecting ? "Cancel" : "Done") {
+                        if selecting { endSelecting() } else { dismiss() }
+                    }
                 }
                 ToolbarItem(placement: .primaryAction) {
-                    PhotosPicker(
-                        selection: $picking,
-                        maxSelectionCount: nil,
-                        matching: .any(of: [.images, .videos])
-                    ) {
-                        Label("Add", systemImage: "plus")
+                    if selecting {
+                        Button(selected.count == order.count ? "None" : "All") {
+                            selected = selected.count == order.count
+                                ? [] : Set(order.map(\.id))
+                        }
+                    } else if order.count > 1 {
+                        Button("Select") {
+                            withAnimation(.easeOut(duration: 0.15)) { selecting = true }
+                        }
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    if !selecting {
+                        PhotosPicker(
+                            selection: $picking,
+                            maxSelectionCount: nil,
+                            matching: .any(of: [.images, .videos])
+                        ) {
+                            Label("Add", systemImage: "plus")
+                        }
                     }
                 }
             }
@@ -86,15 +106,27 @@ struct AttachmentsView: View {
             item: item,
             fileStore: fileStore,
             isCover: isCover,
+            selecting: selecting,
+            isSelected: selected.contains(item.id),
             onOpen: {
-                onOpen(item.id)
-                dismiss()
+                if selecting {
+                    toggle(item.id)
+                } else {
+                    onOpen(item.id)
+                    dismiss()
+                }
             },
             menu: { menu(for: item, isCover: isCover) }
         )
-        .opacity(dragging?.id == item.id ? 0.35 : 1)
+        .opacity(isMoving(item) ? 0.35 : 1)
         .onDrag {
             dragging = item
+            // Dragging one of a selection carries the whole selection. Picking up a tile
+            // that is *not* selected is the ordinary one-tile drag, and ends the selection
+            // rather than silently dragging something you did not pick up.
+            if selecting, !selected.contains(item.id) {
+                selected = [item.id]
+            }
             // A provider is required. The id is enough to identify the tile and nothing
             // outside this screen consumes the drag.
             return NSItemProvider(object: item.id.uuidString as NSString)
@@ -103,9 +135,78 @@ struct AttachmentsView: View {
             of: [.text],
             delegate: ReorderDrop(
                 item: item, order: $order, dragging: $dragging,
+                moving: { movingIds },
                 onDrop: { commit() }
             )
         )
+    }
+
+    /// Every tile this drag is carrying: the whole selection, or just the one picked up.
+    private var movingIds: [UUID] {
+        guard let dragging else { return [] }
+        if selecting, selected.contains(dragging.id) {
+            return order.map(\.id).filter { selected.contains($0) }
+        }
+        return [dragging.id]
+    }
+
+    private func isMoving(_ item: MediaItem) -> Bool {
+        dragging != nil && movingIds.contains(item.id)
+    }
+
+    private func toggle(_ id: UUID) {
+        if selected.contains(id) { selected.remove(id) } else { selected.insert(id) }
+        Haptics.picked()
+    }
+
+    private func endSelecting() {
+        withAnimation(.easeOut(duration: 0.15)) {
+            selecting = false
+            selected = []
+        }
+    }
+
+    /// What you can do with a selection, spelled out.
+    ///
+    /// Dragging a group is the quick way and needs a steady hand on a phone; these are the
+    /// ones that always work, and "to the front" is the only reordering most people want —
+    /// it is how you choose the picture that represents the day.
+    private var selectionActions: some View {
+        HStack(spacing: 10) {
+            Button {
+                moveSelection(toFront: true)
+            } label: {
+                Label("To the front", systemImage: "arrow.up.to.line")
+            }
+            Button {
+                moveSelection(toFront: false)
+            } label: {
+                Label("To the end", systemImage: "arrow.down.to.line")
+            }
+            Spacer()
+            Button(role: .destructive) {
+                for id in selected { onRemove(id) }
+                endSelecting()
+            } label: {
+                Label("Remove", systemImage: "trash")
+            }
+        }
+        .font(Type.caption(13, .medium))
+        .disabled(selected.isEmpty)
+        .opacity(selected.isEmpty ? 0.45 : 1)
+        .padding(.horizontal, 2)
+    }
+
+    /// Moves the selection as a block, keeping the order they are already in.
+    private func moveSelection(toFront: Bool) {
+        let picked = order.filter { selected.contains($0.id) }
+        let rest = order.filter { !selected.contains($0.id) }
+        guard !picked.isEmpty else { return }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            order = toFront ? picked + rest : rest + picked
+        }
+        Haptics.landed()
+        commit()
     }
 
     @ViewBuilder
@@ -220,7 +321,12 @@ struct AttachmentsView: View {
     }
 
     private var hint: String {
-        order.count <= 1
+        if selecting {
+            return selected.isEmpty
+                ? "Tap the ones you want to move."
+                : "Drag any of them to move all \(selected.count) together, or use the buttons above."
+        }
+        return order.count <= 1
             ? "This one represents the entry in your list."
             : "Drag to reorder, or use the button on any tile. The first one represents this entry in your list."
     }
@@ -258,16 +364,28 @@ private struct ReorderDrop: DropDelegate {
     let item: MediaItem
     @Binding var order: [MediaItem]
     @Binding var dragging: MediaItem?
+    /// Every tile being carried. One for an ordinary drag, several when a selection is
+    /// being moved as a block.
+    let moving: () -> [UUID]
     let onDrop: () -> Void
 
     func dropEntered(info: DropInfo) {
-        guard let dragging, dragging.id != item.id,
-              let from = order.firstIndex(where: { $0.id == dragging.id }),
+        guard dragging != nil else { return }
+        let carried = Set(moving())
+        // Dropping onto one of the tiles you are carrying is a no-op, not a reorder.
+        guard !carried.isEmpty, !carried.contains(item.id),
               let to = order.firstIndex(where: { $0.id == item.id })
         else { return }
 
+        // Lifted out and reinserted, rather than moved one at a time. Moving them
+        // individually shifts the indices under the ones not moved yet, which scrambles a
+        // multiple selection into whatever order the loop happened to visit it in.
+        let offsets = IndexSet(order.indices.filter { carried.contains(order[$0].id) })
+        let insertAt = to - offsets.filter { $0 < to }.count
         withAnimation(.easeInOut(duration: 0.18)) {
-            order.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+            let picked = offsets.map { order[$0] }
+            order.remove(atOffsets: offsets)
+            order.insert(contentsOf: picked, at: min(max(insertAt, 0), order.count))
         }
     }
 
@@ -290,12 +408,24 @@ private struct AttachmentTile<Menu: View>: View {
     let item: MediaItem
     let fileStore: MediaFileStore
     let isCover: Bool
+    var selecting: Bool = false
+    var isSelected: Bool = false
     let onOpen: () -> Void
     @ViewBuilder let menu: () -> Menu
 
     @State private var image: UIImage?
 
     private var failed: Bool { item.uploadStatus == .failed && !item.isTooLargeToSend }
+
+    private var border: Color {
+        if selecting { return isSelected ? Brand.violet : .clear }
+        return failed ? Brand.failed : Brand.violet
+    }
+
+    private var borderWidth: CGFloat {
+        if selecting { return isSelected ? 3 : 0 }
+        return failed || isCover ? 2 : 0
+    }
 
     var body: some View {
         Button(action: onOpen) {
@@ -313,23 +443,31 @@ private struct AttachmentTile<Menu: View>: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay {
                     RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(
-                            failed ? Brand.failed : Brand.violet,
-                            lineWidth: failed || isCover ? 2 : 0
-                        )
+                        .strokeBorder(border, lineWidth: borderWidth)
                 }
+                .opacity(selecting && !isSelected ? 0.55 : 1)
         }
         .buttonStyle(.plain)
         .overlay(alignment: .topLeading) { badge }
         .overlay(alignment: .topTrailing) {
-            SwiftUI.Menu {
-                menu()
-            } label: {
-                Image(systemName: "ellipsis.circle.fill")
+            if selecting {
+                // The tick takes the corner while selecting. Offering the menu in the same
+                // spot would put "remove for good" one slip away from "choose".
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 19))
-                    .foregroundStyle(.white, .black.opacity(0.45))
+                    .foregroundStyle(isSelected ? .white : .white.opacity(0.9),
+                                     isSelected ? Brand.violet : .black.opacity(0.45))
+                    .padding(5)
+            } else {
+                SwiftUI.Menu {
+                    menu()
+                } label: {
+                    Image(systemName: "ellipsis.circle.fill")
+                        .font(.system(size: 19))
+                        .foregroundStyle(.white, .black.opacity(0.45))
+                }
+                .padding(5)
             }
-            .padding(5)
         }
         .overlay(alignment: .bottomTrailing) {
             if item.kind == .video {
