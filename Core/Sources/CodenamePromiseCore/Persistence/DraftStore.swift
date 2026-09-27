@@ -69,6 +69,13 @@ public final class DraftStore {
         return draft
     }
 
+    /// One attachment by id, wherever it lives.
+    public func mediaItem(id: UUID) throws -> MediaItem? {
+        var descriptor = FetchDescriptor<MediaItem>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
+    }
+
     public func draft(id: UUID) throws -> EntryDraft? {
         // Note: fetched by an explicit predicate on a UUID attribute rather than by
         // PersistentIdentifier, so callers can hold a plain UUID across an await boundary
@@ -233,13 +240,17 @@ public final class DraftStore {
     /// The ordering matters: bytes first, row second, so the worst case is an orphan file
     /// rather than a row pointing at nothing.
     @discardableResult
+    /// - Parameter id: the id the attached item will carry. Chosen by the caller when it
+    ///   needs to recognise the item later — a resumed import asks whether this exact photo
+    ///   is already in the journal before attaching it a second time.
     public func attachMedia(
         from sourceURL: URL,
         kind: MediaKind,
         to draft: EntryDraft,
-        fileStore: MediaFileStore
+        fileStore: MediaFileStore,
+        id: UUID = UUID()
     ) throws -> MediaItem {
-        let adopted = try fileStore.adopt(fileAt: sourceURL)
+        let adopted = try fileStore.adopt(fileAt: sourceURL, id: id)
         let item = MediaItem(
             id: adopted.id,
             kind: kind,

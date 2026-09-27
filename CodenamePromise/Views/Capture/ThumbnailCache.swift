@@ -52,11 +52,22 @@ final class ThumbnailCache {
         fileStore: MediaFileStore,
         maxPixel: CGFloat = 240
     ) async -> UIImage? {
+        await thumbnail(
+            id: id, url: fileStore.url(for: relativePath), isVideo: isVideo, maxPixel: maxPixel
+        )
+    }
+
+    /// The same thing for a file that is not in the media store yet — a photo staged by an
+    /// import and still waiting to be confirmed.
+    func thumbnail(
+        id: UUID,
+        url: URL,
+        isVideo: Bool,
+        maxPixel: CGFloat = 240
+    ) async -> UIImage? {
         let key = "\(id.uuidString)-\(Int(maxPixel))"
         if let hit = cache.object(forKey: key as NSString) { return hit }
         if let existing = inFlight[key] { return await existing.value }
-
-        let url = fileStore.url(for: relativePath)
 
         let task = Task<UIImage?, Never> {
             let image: UIImage? = await Task.detached(priority: .utility) {

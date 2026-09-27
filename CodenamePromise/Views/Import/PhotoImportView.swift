@@ -11,89 +11,99 @@ import SwiftUI
 ///
 /// Reading the date from the file rather than from PhotoKit is what keeps this from needing
 /// full photo library access.
+///
+/// **This is a view onto the import, not the import itself.** The work and its state live in
+/// `ImportCoordinator`, for the life of the app, and are written to disk as they happen. That
+/// is what lets a five hundred photo import survive the phone locking, the app being left,
+/// or the process being reclaimed: this screen can disappear at any moment and the import is
+/// still there to come back to.
 struct PhotoImportView: View {
+    let imports: ImportCoordinator
     let store: DraftStore
-    let fileStore: MediaFileStore
-    let onFinish: () -> Void
 
     @Environment(\.dismiss) private var dismiss
 
     @State private var selections: [PhotosPickerItem] = []
-    @State private var staged: [StagedMedia] = []
-    @State private var destinations: [String: ImportDestination] = [:]
-    @State private var newEntryTitles: [String: String] = [:]
     /// A second picker, used from the review screen. Separate from `selections` so that
     /// adding more photos appends to what is already staged instead of replacing it.
     @State private var moreSelections: [PhotosPickerItem] = []
-    /// Overrides for individual items, by staged id.
-    ///
-    /// Grouping by date is the default and it is usually right, but "usually" is not "always":
-    /// one photo in a day's batch often belongs to a different entry than the rest of them.
-    /// A per-day choice alone forced the whole batch to move together, so the only way to
-    /// split one out was to import twice.
-    ///
-    /// Absent means "whatever the day is doing", so changing a day's destination still moves
-    /// everything that has not been individually pinned.
-    @State private var itemDestinations: [UUID: ImportDestination] = [:]
     /// Whichever group or item is currently choosing an entry from the whole journal.
     @State private var choosing: ChooserTarget?
-    /// Progress while adding a second batch. Deliberately not the `phase` enum: switching
-    /// phase swaps `reviewView` out of the hierarchy, and it owns the picker that is at that
-    /// moment still dismissing itself. Destroying it took the whole sheet down with it.
-    @State private var addingMore: (done: Int, total: Int)?
-    @State private var phase: Phase = .picking
-    @State private var summary: String?
+    @State private var confirmingCancel = false
 
-    private enum Phase: Equatable {
-        case picking
-        case loading(done: Int, total: Int)
-        case review
-        case applying
-    }
+    private var session: ImportSession? { imports.session }
 
     var body: some View {
         NavigationStack {
             Group {
-                switch phase {
-                case .picking: pickingView
-                case .loading(let done, let total): loadingView(done: done, total: total)
-                case .review: reviewView
-                case .applying: ProgressView("Adding to your entries…")
+                if let applying = imports.applying {
+                    progressView(
+                        "Adding to your entries",
+                        done: applying.done, total: applying.total,
+                        detail: "Keep the app open if you can. If you leave, it carries on from where it stopped."
+                    )
+                } else if session == nil {
+                    pickingView
+                } else if let staging = imports.staging, session?.items.isEmpty ?? true {
+                    progressView(
+                        "Reading dates",
+                        done: staging.done, total: staging.total,
+                        detail: "The screen stays on while this runs. Everything read so far is kept if you leave."
+                    )
+                } else {
+                    reviewView
                 }
             }
             .navigationTitle("Import photos")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { cleanUpAndDismiss() }
+                    // Closing the sheet is not cancelling. Cancel says so and asks, because it
+                    // throws away five hundred photos' worth of reading.
+                    if session == nil {
+                        Button("Close") { dismiss() }
+                    } else {
+                        Button("Cancel", role: .destructive) { confirmingCancel = true }
+                            .disabled(imports.applying != nil)
+                    }
                 }
-                if phase == .review {
+                if let session, session.phase == .reviewing, imports.applying == nil {
                     ToolbarItem(placement: .confirmationAction) {
                         // "Import", not "Add": there is an "Add more photos" row further
                         // down, and two buttons both saying add is a coin toss.
-                        Button("Import") { Task { await apply() } }
-                            .disabled(nothingToImport)
+                        Button("Import") { imports.confirm() }
+                            .disabled(nothingToImport || imports.staging != nil)
                     }
                 }
+            }
+            .confirmationDialog(
+                "Cancel this import?", isPresented: $confirmingCancel, titleVisibility: .visible
+            ) {
+                Button("Cancel import", role: .destructive) {
+                    imports.discard()
+                    dismiss()
+                }
+                Button("Keep it", role: .cancel) {}
+            } message: {
+                Text("The photos read so far are discarded. Nothing already in your journal changes.")
             }
         }
         .onChange(of: selections) { _, items in
             guard !items.isEmpty else { return }
-            Task { await load(items) }
+            imports.begin(with: items)
+            selections = []
         }
         .onChange(of: moreSelections) { _, items in
             guard !items.isEmpty else { return }
-            Task {
-                await load(items, appending: true)
-                // Cleared so picking the same photo again later still registers a change.
-                moreSelections = []
-            }
+            imports.add(items)
+            // Cleared so picking the same photo again later still registers a change.
+            moreSelections = []
         }
         .sheet(item: $choosing) { target in
             EntryChooser(store: store) { chosen in
                 switch target {
-                case .group(let id): destinations[id] = .existingDraft(chosen)
-                case .item(let id): itemDestinations[id] = .existingDraft(chosen)
+                case .group(let id): imports.setDestination(.existingDraft(chosen), forGroup: id)
+                case .item(let id): imports.setDestination(.existingDraft(chosen), forItem: id)
                 }
             }
         }
@@ -118,21 +128,47 @@ struct PhotoImportView: View {
         }
     }
 
-    private func loadingView(done: Int, total: Int) -> some View {
+    private func progressView(_ title: String, done: Int, total: Int, detail: String) -> some View {
         VStack(spacing: 12) {
             ProgressView(value: Double(done), total: Double(max(total, 1)))
-                .frame(maxWidth: 220)
-            Text("Reading dates: \(done) of \(total)")
-                .font(.footnote)
+                .frame(maxWidth: 240)
+            Text("\(title): \(done) of \(total)")
+                .font(.footnote.monospacedDigit())
                 .foregroundStyle(.secondary)
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
         }
     }
 
     private var reviewView: some View {
         List {
-            if let summary {
-                Section { Text(summary).font(.footnote).foregroundStyle(.secondary) }
+            if let notice = imports.notice {
+                Section {
+                    Label(notice, systemImage: "arrow.clockwise.circle")
+                        .font(.footnote)
+                }
             }
+            if let session {
+                Section {
+                    Text(summary(of: session))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    if let staging = imports.staging {
+                        // Still reading, and already reviewable: the first photos are usable
+                        // long before the five-hundredth arrives.
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Still reading: \(staging.done) of \(staging.total)")
+                                .font(.footnote.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+
             ForEach(groups) { group in
                 Section {
                     thumbnails(for: group)
@@ -173,81 +209,43 @@ struct PhotoImportView: View {
                 ) {
                     Label("Add more photos", systemImage: "plus.circle")
                 }
-                .disabled(addingMore != nil)
-
-                if let addingMore {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text("Reading dates: \(addingMore.done) of \(addingMore.total)")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                .disabled(imports.staging != nil)
             }
         }
     }
 
+    private func summary(of session: ImportSession) -> String {
+        let days = session.groups.count
+        let count = session.items.count
+        return "\(count) \(count == 1 ? "item" : "items") across \(days) \(days == 1 ? "day" : "days")."
+    }
+
     private func thumbnails(for group: MediaDayGrouping.Group) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(items(in: group)) { media in
+            LazyHStack(spacing: 6) {
+                ForEach(items(in: group)) { item in
                     Menu {
-                        itemMenu(for: media, in: group)
+                        itemMenu(for: item, in: group)
                     } label: {
-                        thumbnail(media, pinned: itemDestinations[media.id] != nil)
+                        StagedThumbnail(
+                            item: item,
+                            url: imports.url(for: item),
+                            pinned: session?.itemDestinations[item.id] != nil
+                        )
                     }
                 }
             }
             .padding(.vertical, 2)
         }
-    }
-
-    private func thumbnail(_ media: StagedMedia, pinned: Bool) -> some View {
-        Group {
-            if let thumbnail = media.thumbnail {
-                Image(uiImage: thumbnail).resizable().scaledToFill()
-            } else {
-                Color.secondary.opacity(0.15)
-            }
-        }
-        .frame(width: 56, height: 56)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        // Says which photos have been pulled out of the day's choice. Without it the list
-        // looks identical whether one item is going somewhere else or not, and the only way
-        // to find out is to open every thumbnail in turn.
-        .overlay {
-            if pinned {
-                RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(Brand.violet, lineWidth: 2)
-            }
-        }
-        .overlay(alignment: .topTrailing) {
-            if pinned {
-                Image(systemName: "pin.fill")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(3)
-                    .background(Brand.violet, in: Circle())
-                    .offset(x: 4, y: -4)
-            }
-        }
-        .overlay(alignment: .bottomTrailing) {
-            if media.kind == .video {
-                Image(systemName: "play.fill")
-                    .font(.system(size: 8))
-                    .foregroundStyle(.white)
-                    .padding(3)
-            }
-        }
+        .frame(height: 60)
     }
 
     /// Where this one photo goes, independently of the rest of its day.
     @ViewBuilder
-    private func itemMenu(for media: StagedMedia, in group: MediaDayGrouping.Group) -> some View {
-        if itemDestinations[media.id] != nil {
+    private func itemMenu(for item: ImportSession.Item, in group: MediaDayGrouping.Group) -> some View {
+        if session?.itemDestinations[item.id] != nil {
             Button {
-                itemDestinations.removeValue(forKey: media.id)
+                imports.setDestination(nil, forItem: item.id)
             } label: {
                 Label("Follow this day\u{2019}s choice", systemImage: "arrow.uturn.backward")
             }
@@ -256,24 +254,24 @@ struct PhotoImportView: View {
 
         ForEach(existingDrafts(for: group.day), id: \.id) { draft in
             Button(label(for: draft, in: group)) {
-                itemDestinations[media.id] = .existingDraft(draft.id)
+                imports.setDestination(.existingDraft(draft.id), forItem: item.id)
             }
         }
 
         Button {
-            choosing = .item(media.id)
+            choosing = .item(item.id)
         } label: {
             Label("Another entry\u{2026}", systemImage: "tray.and.arrow.down")
         }
 
         Button {
-            itemDestinations[media.id] = .newDraft
+            imports.setDestination(.newDraft, forItem: item.id)
         } label: {
             Label(group.isUndated ? "New entry (today)" : "New entry", systemImage: "plus")
         }
 
         Button(role: .destructive) {
-            itemDestinations[media.id] = .skip
+            imports.setDestination(.skip, forItem: item.id)
         } label: {
             Label("Skip this one", systemImage: "xmark")
         }
@@ -287,9 +285,11 @@ struct PhotoImportView: View {
 
     /// Where an item actually ends up: its own choice if it has one, otherwise its day's.
     private func destination(
-        for media: StagedMedia, in group: MediaDayGrouping.Group
+        for item: ImportSession.Item, in group: MediaDayGrouping.Group
     ) -> ImportDestination {
-        itemDestinations[media.id] ?? binding(for: group).wrappedValue
+        session?.destination(
+            for: item, in: group, existingDrafts: existingDrafts(for: group.day).map(\.id)
+        ) ?? .skip
     }
 
     @ViewBuilder
@@ -344,15 +344,10 @@ struct PhotoImportView: View {
 
     // MARK: - Grouping
 
-    private var groups: [MediaDayGrouping.Group] {
-        MediaDayGrouping.group(
-            staged.map { MediaDayGrouping.Item(id: $0.id, capturedAt: $0.capturedAt) }
-        )
-    }
+    private var groups: [MediaDayGrouping.Group] { session?.groups ?? [] }
 
-    private func items(in group: MediaDayGrouping.Group) -> [StagedMedia] {
-        let ids = Set(group.items.map(\.id))
-        return staged.filter { ids.contains($0.id) }
+    private func items(in group: MediaDayGrouping.Group) -> [ImportSession.Item] {
+        session?.items(in: group) ?? []
     }
 
     private func header(for group: MediaDayGrouping.Group) -> String {
@@ -388,156 +383,79 @@ struct PhotoImportView: View {
 
     private func titleBinding(for group: MediaDayGrouping.Group) -> Binding<String> {
         Binding(
-            get: { newEntryTitles[group.id] ?? "" },
-            set: { newEntryTitles[group.id] = $0 }
+            get: { session?.newEntryTitles[group.id] ?? "" },
+            set: { imports.setTitle($0, forGroup: group.id) }
         )
     }
 
     private func binding(for group: MediaDayGrouping.Group) -> Binding<ImportDestination> {
         Binding(
-            get: { destinations[group.id] ?? defaultDestination(for: group) },
-            set: { destinations[group.id] = $0 }
+            get: {
+                session?.groupDestination(
+                    for: group, existingDrafts: existingDrafts(for: group.day).map(\.id)
+                ) ?? .newDraft
+            },
+            set: { imports.setDestination($0, forGroup: group.id) }
         )
-    }
-
-    /// One existing entry for that day is almost certainly the one you meant. Several is
-    /// ambiguous, so default to a new one rather than picking arbitrarily.
-    private func defaultDestination(for group: MediaDayGrouping.Group) -> ImportDestination {
-        let existing = existingDrafts(for: group.day)
-        return existing.count == 1 ? .existingDraft(existing[0].id) : .newDraft
-    }
-
-    // MARK: - Work
-
-    /// - Parameter appending: true when this is a second trip to the picker, so what is
-    ///   already staged is kept. Replacing it was why forgetting one photo meant starting
-    ///   the whole import again.
-    private func load(_ items: [PhotosPickerItem], appending: Bool = false) async {
-        // Appending reports progress in place. See `addingMore` for why this must not touch
-        // `phase`.
-        if appending { addingMore = (0, items.count) } else { phase = .loading(done: 0, total: items.count) }
-        var loaded: [StagedMedia] = []
-
-        for (index, item) in items.enumerated() {
-            if appending { addingMore = (index, items.count) } else { phase = .loading(done: index, total: items.count) }
-            if let media = await stage(item) { loaded.append(media) }
-        }
-
-        staged = appending ? staged + loaded : loaded
-        let days = MediaDayGrouping.group(
-            staged.map { MediaDayGrouping.Item(id: $0.id, capturedAt: $0.capturedAt) }
-        ).count
-        summary = staged.isEmpty
-            ? "Nothing could be read from those items."
-            : "\(staged.count) items across \(days) days."
-        addingMore = nil
-        if !appending { phase = .review }
-    }
-
-    /// Copies the item somewhere stable and reads its capture date.
-    ///
-    /// Written to a temp file rather than held in memory: importing a week of photos at once
-    /// would otherwise hold tens of megabytes of image data while the user reviews.
-    private func stage(_ item: PhotosPickerItem) async -> StagedMedia? {
-        let isVideo = item.supportedContentTypes.contains { $0.conforms(to: .movie) }
-        let id = UUID()
-
-        if isVideo {
-            guard let movie = try? await item.loadTransferable(type: PickedMovie.self) else {
-                return nil
-            }
-            let capturedAt = await CaptureDateReader.captureDate(ofVideoAt: movie.url)
-            return StagedMedia(id: id, url: movie.url, kind: .video, capturedAt: capturedAt,
-                               thumbnail: nil)
-        }
-
-        guard let data = try? await item.loadTransferable(type: Data.self) else { return nil }
-        let capturedAt = CaptureDateReader.captureDate(ofImageData: data)
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("import-\(id.uuidString).jpg")
-        guard (try? data.write(to: url, options: .atomic)) != nil else { return nil }
-
-        return StagedMedia(
-            id: id, url: url, kind: .photo, capturedAt: capturedAt,
-            thumbnail: UIImage(data: data)?.preparingThumbnail(of: CGSize(width: 112, height: 112))
-        )
-    }
-
-    private func apply() async {
-        phase = .applying
-        var added = 0
-        var entries = 0
-
-        // One new entry per day, not per photo. Several items in a day can all resolve to
-        // "new entry" — because the day says so, or because they were each pinned to it —
-        // and they belong together in one entry rather than in four entries for one Tuesday.
-        var madeForGroup: [String: EntryDraft] = [:]
-
-        for group in groups {
-            for media in items(in: group) {
-                let target = destination(for: media, in: group)
-                guard target != .skip else { continue }
-
-                let draft: EntryDraft?
-                switch target {
-                case .existingDraft(let id):
-                    draft = try? store.draft(id: id)
-                case .newDraft:
-                    if let already = madeForGroup[group.id] {
-                        draft = already
-                    } else {
-                        // An undated group has no day to file under, so it becomes today's
-                        // entry — the user can move it with the date picker.
-                        let created = try? store.createDraft(entryDate: group.day)
-                        if let created {
-                            let title = (newEntryTitles[group.id] ?? "")
-                                .trimmingCharacters(in: .whitespacesAndNewlines)
-                            if !title.isEmpty {
-                                try? store.updateTitle(title, for: created)
-                            }
-                            madeForGroup[group.id] = created
-                            entries += 1
-                        }
-                        draft = created
-                    }
-                case .skip:
-                    draft = nil
-                }
-                guard let draft else { continue }
-
-                if (try? store.attachMedia(
-                    from: media.url, kind: media.kind, to: draft, fileStore: fileStore
-                )) != nil {
-                    added += 1
-                }
-            }
-        }
-
-        cleanUp()
-        onFinish()
-        dismiss()
-        _ = (added, entries)
-    }
-
-    private func cleanUp() {
-        for media in staged {
-            try? FileManager.default.removeItem(at: media.url)
-        }
-        staged = []
-    }
-
-    private func cleanUpAndDismiss() {
-        cleanUp()
-        dismiss()
     }
 }
 
-struct StagedMedia: Identifiable {
-    let id: UUID
-    let url: URL
-    let kind: MediaKind
-    let capturedAt: Date?
-    var thumbnail: UIImage?
+/// A staged photo, drawn from its file at the size it is shown.
+///
+/// Made on demand rather than held. The old import kept a decoded thumbnail for every photo
+/// in memory for the whole review — five hundred of them is a quarter of a gigabyte, which
+/// is precisely the kind of footprint that gets a backgrounded app reclaimed first.
+private struct StagedThumbnail: View {
+    let item: ImportSession.Item
+    let url: URL?
+    let pinned: Bool
+
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                Color.secondary.opacity(0.15)
+            }
+        }
+        .frame(width: 56, height: 56)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .task(id: item.id) {
+            guard let url else { return }
+            image = await ThumbnailCache.shared.thumbnail(
+                id: item.id, url: url, isVideo: item.kind == .video, maxPixel: 168
+            )
+        }
+        // Says which photos have been pulled out of the day's choice. Without it the list
+        // looks identical whether one item is going somewhere else or not, and the only way
+        // to find out is to open every thumbnail in turn.
+        .overlay {
+            if pinned {
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Brand.violet, lineWidth: 2)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if pinned {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(3)
+                    .background(Brand.violet, in: Circle())
+                    .offset(x: 4, y: -4)
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if item.kind == .video {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(.white)
+                    .padding(3)
+            }
+        }
+    }
 }
 
 /// What is currently picking an entry: a whole day, or one photo out of it.

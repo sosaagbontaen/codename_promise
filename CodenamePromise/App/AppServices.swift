@@ -20,6 +20,8 @@ final class AppServices {
         let transcriptions: TranscriptionCoordinator
         let organising: OrganisingCoordinator
         let sync: SyncCoordinator
+        /// Lives as long as the app, not as long as the import sheet. See `ImportCoordinator`.
+        let imports: ImportCoordinator
         let connection: any NotionConnectionService
         /// Kept so Settings can test the connection without rebuilding one.
         let client: APIClient
@@ -117,6 +119,11 @@ final class AppServices {
                         notion: NotionHTTPClient(client: client),
                         connection: HTTPNotionConnectionService(client: client)
                     ),
+                    imports: ImportCoordinator(
+                        store: store,
+                        fileStore: files,
+                        sessions: try ImportSessionStore.makeDefault()
+                    ),
                     connection: HTTPNotionConnectionService(client: client),
                     client: client
                 )
@@ -124,6 +131,11 @@ final class AppServices {
         } catch {
             state = .failed(error.localizedDescription)
         }
+
+        // An import the app was in the middle of when it last stopped — whether it was
+        // reclaimed in the background or force-quit. Brought back rather than silently
+        // abandoned with its photos still on disk.
+        ready?.imports.restore()
     }
 
     private var ready: Ready? {
@@ -136,6 +148,7 @@ final class AppServices {
     var transcriptions: TranscriptionCoordinator? { ready?.transcriptions }
     var organising: OrganisingCoordinator? { ready?.organising }
     var sync: SyncCoordinator? { ready?.sync }
+    var imports: ImportCoordinator? { ready?.imports }
     var apiClient: APIClient? { ready?.client }
 
     /// `nil` when there is no backend at all, which the settings screen presents as

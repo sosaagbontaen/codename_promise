@@ -76,6 +76,26 @@ struct HomeView: View {
             }
         }
         .task { if !hasOnboarded { showingOnboarding = true } }
+        // Here, at the root, and not on the Entries tab.
+        //
+        // It started out on Entries, where the button that opens it lives. But the app
+        // launches on Record, so an import brought back after the app was reclaimed was
+        // restored in full and then sat on a tab nobody was looking at — which from the
+        // outside is indistinguishable from the import having vanished. Hosting it above
+        // the tabs means it comes up over whichever one is showing.
+        .sheet(
+            isPresented: Binding(
+                get: { services.imports?.isPresented ?? false },
+                set: { services.imports?.isPresented = $0 }
+            ),
+        ) {
+            if let imports = services.imports, let store = services.store {
+                PhotoImportView(imports: imports, store: store)
+                    // Given explicitly: the TabView's tint reaches its own bar, not a sheet
+                    // presented from above it, and the import turned system blue.
+                    .tint(Brand.violet)
+            }
+        }
     }
 }
 

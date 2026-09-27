@@ -74,7 +74,7 @@ public enum MediaDayGrouping {
 }
 
 /// What the user chose to do with one day's worth of photos.
-public enum ImportDestination: Sendable, Hashable {
+public enum ImportDestination: Sendable, Hashable, Codable {
     /// Add to a draft that already exists for that day.
     case existingDraft(UUID)
     /// Start a new draft, dated to the day the photos were taken.

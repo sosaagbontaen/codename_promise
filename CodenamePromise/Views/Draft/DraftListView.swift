@@ -12,7 +12,6 @@ struct DraftListView: View {
     @Environment(AppServices.self) private var services
     @State private var drafts: [DraftSummary] = []
     @State private var loadError: String?
-    @State private var showingImport = false
     @State private var showingOpenDays = false
     /// Which half of the gap finder to open on.
     @State private var openDaysMode: OpenDaysView.Mode = .missingDays
@@ -123,7 +122,7 @@ struct DraftListView: View {
                                 Label("Finish an unfinished entry", systemImage: "square.dashed")
                             }
                             Button {
-                                showingImport = true
+                                services.imports?.isPresented = true
                             } label: {
                                 Label("Import photos by date", systemImage: "photo.stack")
                             }
@@ -177,10 +176,10 @@ struct DraftListView: View {
                     )
                 }
             }
-            .sheet(isPresented: $showingImport) {
-                if let store = services.store, let files = services.files {
-                    PhotoImportView(store: store, fileStore: files) { reload() }
-                }
+            // The import sheet itself is hosted in `HomeView`, above the tabs. Refresh when
+            // it closes so what it added shows up here.
+            .onChange(of: services.imports?.isPresented ?? false) { _, showing in
+                if !showing { reload() }
             }
             .task {
                 reload()

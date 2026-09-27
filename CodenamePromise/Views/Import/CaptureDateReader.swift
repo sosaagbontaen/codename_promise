@@ -17,8 +17,19 @@ import ImageIO
 enum CaptureDateReader {
 
     static func captureDate(ofImageData data: Data) -> Date? {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil)
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        return captureDate(of: source)
+    }
+
+    /// Reads the date from a file without decoding a single pixel of it.
+    static func captureDate(ofImageAt url: URL) -> Date? {
+        let options = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, options) else { return nil }
+        return captureDate(of: source)
+    }
+
+    private static func captureDate(of source: CGImageSource) -> Date? {
+        guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil)
                 as? [CFString: Any]
         else { return nil }
 

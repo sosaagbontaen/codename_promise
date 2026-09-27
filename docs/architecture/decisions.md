@@ -286,6 +286,43 @@ failed and the walk continues, and the entry syncs with whatever media did make 
 photo is annoying; losing the reflection because of a photo is the bug the project exists to
 fix. Covered by `mediaFailureDoesNotFailTheEntry`.
 
+### ADR-026 · A bulk import is a job on disk, not a screen
+**Status:** Accepted · `ImportSession`, `ImportSessionStore`, `ImportApplier`, `ImportCoordinator`
+
+Importing five hundred photos failed two ways, and they were the same bug. The import lived
+entirely in its sheet's `@State`, with its staged files in `temporaryDirectory`. A long import
+outlasts auto-lock, a locked phone is a backgrounded app, and a backgrounded app holding five
+hundred decoded thumbnails is the first thing iOS reclaims. Reopening it landed on the entry
+list with no import and no trace of one.
+
+**Decided:** the import is a job, written down as it happens.
+
+- **`ImportSession` is the whole plan**, saved to Application Support after every photo is
+  read and every choice is made. The sheet is a view onto it, owned by `ImportCoordinator` for
+  the life of the app and hosted above the tabs, so it comes back over whichever one the app
+  relaunches on — it first lived on Entries while the app opens on Record, and a restored
+  import nobody could see was indistinguishable from a lost one.
+- **The plan is frozen when Import is pressed.** A day's default destination depends on how
+  many entries it has, and a half-finished import may have made one, so re-deriving the plan
+  on resume could send photos somewhere other than where the person was shown.
+- **Applying is idempotent.** Every staged photo carries its id into the journal as its
+  `MediaItem` id, and the applier asks whether that id exists before attaching. A resume after
+  any interruption — before a save, after it, or between — attaches each photo once. An entry
+  the import creates is recorded before anything goes into it, so a resume adds to that
+  Tuesday instead of starting a second.
+- **The screen stays on while work is in flight**, and only then. Auto-lock was what ended
+  nearly every large import. A background task covers leaving the app anyway.
+- **Nothing is decoded.** Photos arrive as files rather than `Data`, dates come from metadata,
+  and thumbnails are downsampled on demand rather than held — the old path decoded every
+  12-megapixel photo in full to draw 56 points of it. Four are read at a time rather than one,
+  and applying yields after each photo so the progress bar moves instead of freezing.
+
+**The limit that remains:** a photo the picker handed over but the app had not yet read when
+it was killed cannot be fetched again. The picker's handles do not outlive the process, and
+getting round that needs full photo-library access, which this app deliberately does not ask
+for. What was read is kept, and the review says how many were not, with Add more photos one
+tap away.
+
 ### ADR-002c · Name corrections are the one thing allowed to rewrite a transcript
 **Status:** Accepted · `NameCorrections`, `NameCorrectionStore`, `TranscriptionCoordinator`
 
