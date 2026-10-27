@@ -213,6 +213,14 @@ struct InboxTests {
         #expect(plan.groups.last?.text == "New year walk")
     }
 
+    @Test func latestShowsAsThatDaysNewestEntryOrNew() {
+        let newest = EntryIndex.Entry(id: UUID(), day: day, title: "Idea", updatedAt: Date())
+        let older = EntryIndex.Entry(id: UUID(), day: day, title: "Morning", updatedAt: .distantPast)
+        #expect(CapturePlan.EntryChoice.latest.shown(among: [newest, older]) == .existing(newest.id))
+        #expect(CapturePlan.EntryChoice.latest.shown(among: []) == .new)
+        #expect(CapturePlan.EntryChoice.new.shown(among: [newest]) == .new)
+    }
+
     @Test func aCaptureArrangedByDayFilesEachDaySeparately() async throws {
         let h = try makeHarness()
         let monday = CalendarDay(rawValue: "2026-03-09")!

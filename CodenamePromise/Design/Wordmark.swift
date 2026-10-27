@@ -20,7 +20,6 @@ struct Wordmark: View {
             Text(tail).foregroundStyle(Brand.violet)
         }
         .font(Type.display(size, .bold))
-        .tracking(-0.3)
         .lineLimit(1)
         // Scales rather than truncating, and deliberately does *not* take a fixed size.
         //

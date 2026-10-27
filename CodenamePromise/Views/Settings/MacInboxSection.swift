@@ -36,12 +36,10 @@ struct MacInboxSection: View {
             if let problem {
                 Text(problem).font(.footnote).foregroundStyle(Brand.failed)
             }
-        } header: {
-            Text("Capture from your Mac")
         } footer: {
             Text(connectedName == nil
-                 ? "Install DumpNotes Capture on your Mac and open it once. It makes a folder called \u{201C}DumpNotes Inbox\u{201D} in iCloud Drive. Choose that folder here. Anything you drop in on your Mac is added to your journal the next time you open DumpNotes."
-                 : "Notes, photos and videos from your Mac are added when you open DumpNotes. Files you save straight into the folder, like screenshots, are added too.")
+                 ? "Open DumpNotes Capture on your Mac once, then choose its \u{201C}DumpNotes Inbox\u{201D} folder in iCloud Drive."
+                 : "Anything you dump on your Mac shows up here the next time you open DumpNotes.")
         }
         .fileImporter(isPresented: $picking, allowedContentTypes: [.folder]) { result in
             switch result {

@@ -17,6 +17,8 @@ struct OrganisedEntryView: View {
     var isStale: Bool = false
 
     @State private var revealed: Set<String> = []
+    /// Sections folded shut, the way a Markdown heading folds in a notes app.
+    @State private var collapsed: Set<String> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -26,11 +28,35 @@ struct OrganisedEntryView: View {
 
             ForEach(organised.sections) { section in
                 VStack(alignment: .leading, spacing: 7) {
-                    Text(section.heading)
-                        .font(Type.label(15, .semibold))
-                        .foregroundStyle(Brand.violet)
+                    // A heading, set like one, that folds its section away.
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            if collapsed.contains(section.id) {
+                                collapsed.remove(section.id)
+                            } else {
+                                collapsed.insert(section.id)
+                            }
+                        }
+                        Haptics.picked()
+                    } label: {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(Brand.muted)
+                                .rotationEffect(.degrees(collapsed.contains(section.id) ? -90 : 0))
+                            Text(Typography.withoutEmDashes(section.heading))
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundStyle(Brand.ink)
+                                .multilineTextAlignment(.leading)
+                            Spacer(minLength: 0)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint(collapsed.contains(section.id) ? "Shows this section" : "Hides this section")
 
-                    SectionBody(text: section.body)
+                    if !collapsed.contains(section.id) {
+                    SectionBody(text: Typography.withoutEmDashes(section.body))
 
                     Button {
                         withAnimation(.easeInOut(duration: 0.2)) {
@@ -57,6 +83,7 @@ struct OrganisedEntryView: View {
 
                     if revealed.contains(section.id) {
                         spokenLines(for: section)
+                    }
                     }
                 }
             }
@@ -202,5 +229,17 @@ struct DroppedLinesNotice: View {
                 .foregroundStyle(Brand.muted)
         }
         .tint(Brand.muted)
+    }
+}
+
+/// Text the model wrote, minus the em-dash: a tell of generated prose that nobody writing
+/// their own journal reaches for. Applied to what's displayed, so entries arranged before
+/// the server started removing them read the same as new ones.
+enum Typography {
+    static func withoutEmDashes(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: " \u{2014} ", with: ", ")
+            .replacingOccurrences(of: "\u{2014}", with: ", ")
+            .replacingOccurrences(of: " ,", with: ",")
     }
 }

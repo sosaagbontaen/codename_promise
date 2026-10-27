@@ -146,16 +146,18 @@ private struct DayCard: View {
                     .labelsHidden()
                     .fixedSize()
 
+                    let existing = model.entries(on: day.day)
                     Picker("Entry", selection: Binding(
-                        get: { day.entry },
+                        get: { day.entry.shown(among: existing) },
                         set: { model.plan[dayId]?.entry = $0 }
                     )) {
-                        Text("Latest entry that day").tag(CapturePlan.EntryChoice.latest)
                         Text("New entry").tag(CapturePlan.EntryChoice.new)
-                        let entries = model.entries(on: day.day)
-                        if !entries.isEmpty { Divider() }
-                        ForEach(entries) { entry in
-                            Text(entry.title).tag(CapturePlan.EntryChoice.existing(entry.id))
+                        if !existing.isEmpty {
+                            Section("Existing entries") {
+                                ForEach(existing) { entry in
+                                    Text(entry.title).tag(CapturePlan.EntryChoice.existing(entry.id))
+                                }
+                            }
                         }
                     }
                     .labelsHidden()

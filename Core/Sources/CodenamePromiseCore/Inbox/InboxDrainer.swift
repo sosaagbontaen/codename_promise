@@ -31,7 +31,10 @@ public final class InboxDrainer {
 
     public func drain(_ inbox: URL) async -> Report {
         var report = Report()
-        let scan = scanner.scan(inbox)
+        // Listing the folder is file system work, possibly against iCloud Drive, so it runs
+        // off the main thread. Only filing, which touches the journal, comes back to it.
+        let scanner = self.scanner
+        let scan = await Task.detached(priority: .utility) { scanner.scan(inbox) }.value
         report.waiting = scan.arriving.count + scan.notDownloaded.count
 
         // Asking is harmless for a folder that isn't in iCloud Drive; it just fails.

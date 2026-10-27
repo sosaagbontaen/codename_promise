@@ -61,6 +61,22 @@ public final class EntryDraft {
     /// without decoding, which is what a list of two hundred entries needs.
     public var organiserVersion: String?
 
+    /// The photo chosen to stand for this entry in the journal. Nil means "show the first
+    /// few". A plain id rather than a relationship, so a deleted photo leaves nothing to
+    /// cascade; `cover` ignores one that's gone. Added in SchemaV6.
+    public var coverMediaId: UUID?
+
+    /// The photos chosen to stand for this entry, in the order they were picked. Empty means
+    /// "show the first few". Added in SchemaV7; supersedes `coverMediaId`, which is kept so a
+    /// cover chosen before is still honoured.
+    public var coverMediaIds: [UUID] = []
+
+    /// When this entry was moved to Recently Deleted, or nil if it hasn't been. A trashed
+    /// entry is kept for thirty days and left out of everything else. Added in SchemaV8.
+    public var deletedAt: Date?
+
+    public var isTrashed: Bool { deletedAt != nil }
+
     @Relationship(deleteRule: .cascade, inverse: \MediaItem.draft)
     public var media: [MediaItem] = []
 
@@ -145,12 +161,36 @@ public final class EntryDraft {
         organiserVersion = entry.version
     }
 
+    /// The chosen covers that are still attached, in the order they were picked.
+    public var covers: [MediaItem] {
+        let ids = coverMediaIds.isEmpty ? (coverMediaId.map { [$0] } ?? []) : coverMediaIds
+        return ids.compactMap { id in media.first { $0.id == id } }
+    }
+
     public var orderedMedia: [MediaItem] {
-        media.sorted { ($0.sortIndex, $0.id.uuidString) < ($1.sortIndex, $1.id.uuidString) }
+        Self.ordered(media, by: { ($0.sortIndex, $0.id) })
     }
 
     public var orderedAudioCaptures: [AudioCapture] {
-        audioCaptures.sorted { ($0.chunkIndex, $0.id.uuidString) < ($1.chunkIndex, $1.id.uuidString) }
+        Self.ordered(audioCaptures, by: { ($0.chunkIndex, $0.id) })
+    }
+
+    /// Sorts by position, then id, reading each model's properties once.
+    ///
+    /// The obvious `sorted { ($0.sortIndex, $0.id.uuidString) < ... }` reads two persisted
+    /// properties and builds two strings on *every comparison*, and a SwiftData property read
+    /// is far from free. On a thousand-entry journal that one line was 400ms of every list
+    /// refresh. Reading the keys once first takes it to a few milliseconds. The order is
+    /// unchanged: same position first, then the same uuidString tiebreak.
+    private static func ordered<T>(_ items: [T], by key: (T) -> (Int, UUID)) -> [T] {
+        guard items.count > 1 else { return items }
+        return items
+            .map { item -> (Int, String, T) in
+                let (position, id) = key(item)
+                return (position, id.uuidString, item)
+            }
+            .sorted { ($0.0, $0.1) < ($1.0, $1.1) }
+            .map(\.2)
     }
 
     // MARK: - Content mutations

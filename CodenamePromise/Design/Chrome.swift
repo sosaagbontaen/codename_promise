@@ -12,19 +12,7 @@ import UIKit
 /// and the variable weight axis has to be selected explicitly here too — asking for "Sora"
 /// alone yields its default instance.
 enum Chrome {
-    static func apply() {
-        let appearance = UINavigationBarAppearance()
-        appearance.configureWithDefaultBackground()
-        appearance.largeTitleTextAttributes = [
-            .font: UIFont(name: "Poppins-Bold", size: 32) ?? .systemFont(ofSize: 32, weight: .bold),
-            .kern: -0.6,
-        ]
-        appearance.titleTextAttributes = [
-            .font: UIFont(name: "Poppins-SemiBold", size: 17) ?? .systemFont(ofSize: 17, weight: .semibold)
-        ]
-
-        UINavigationBar.appearance().standardAppearance = appearance
-        UINavigationBar.appearance().compactAppearance = appearance
-        UINavigationBar.appearance().scrollEdgeAppearance = appearance
-    }
+    /// The system navigation bar, as is. It used to be dressed in Poppins, which was most of
+    /// why the app looked like a template; the stock bar is what makes it look native.
+    static func apply() {}
 }

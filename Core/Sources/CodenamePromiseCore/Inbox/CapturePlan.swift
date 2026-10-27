@@ -15,6 +15,16 @@ public struct CapturePlan: Sendable, Equatable {
         case latest
         case new
         case existing(UUID)
+
+        /// What a menu should show as chosen. "Latest" is never offered as its own option:
+        /// it's the same as picking that day's newest entry, which the menu already lists,
+        /// so it shows as that entry, or as "New entry" when the day has none.
+        ///
+        /// - Parameter entries: the day's entries, newest first.
+        public func shown(among entries: [EntryIndex.Entry]) -> EntryChoice {
+            guard self == .latest else { return self }
+            return entries.first.map { .existing($0.id) } ?? .new
+        }
     }
 
     public struct Day: Identifiable, Sendable, Equatable {

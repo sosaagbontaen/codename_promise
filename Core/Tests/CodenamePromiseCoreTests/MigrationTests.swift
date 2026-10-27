@@ -418,6 +418,19 @@ struct MigrationTests {
             DraftStore(container: try ModelContainerFactory.makeAppContainer(url: url))
         }
 
+        @Test("an entry from before covers has none, and can be given several")
+        func coversArriveEmpty() throws {
+            let url = try makeV4Store()
+            defer { try? FileManager.default.removeItem(at: url) }
+
+            let store = try openThroughApp(url)
+            let draft = try #require(try store.allDrafts().first)
+            #expect(draft.covers.isEmpty)
+            let video = try #require(draft.orderedMedia.first)
+            try store.setCovers([video.id, video.id], for: draft)
+            #expect(try openThroughApp(url).allDrafts().first?.covers.map(\.id) == [video.id])
+        }
+
         @Test("a store from the build before split videos still opens")
         func v4StoreOpens() throws {
             let url = try makeV4Store()
@@ -486,4 +499,39 @@ struct MigrationTests {
         }
     }
 
+}
+
+/// The build with a single cover photo. v7 lists several; the one already chosen has to
+/// survive as the first of them rather than vanish.
+@Suite("Migration from a v6 store")
+@MainActor
+struct MigrationFromV6Tests {
+    @Test("a cover chosen under v6 is still the cover")
+    func singleCoverCarriesOver() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("v6-\(UUID().uuidString).store")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let schema = Schema(versionedSchema: SchemaV6.self)
+        let container = try ModelContainer(
+            for: schema, configurations: [ModelConfiguration(schema: schema, url: url)]
+        )
+        let context = ModelContext(container)
+        let draft = SchemaV6.EntryDraft(entryDateKey: "2026-10-25")
+        context.insert(draft)
+        let photo = SchemaV6.MediaItem(relativePath: "media/x/original.jpg")
+        context.insert(photo)
+        draft.media.append(photo)
+        draft.coverMediaId = photo.id
+        try context.save()
+
+        let store = DraftStore(container: try ModelContainerFactory.makeAppContainer(url: url))
+        let migrated = try #require(try store.allDrafts().first)
+        #expect(migrated.coverMediaIds.isEmpty)
+        #expect(migrated.covers.map(\.id) == [photo.id])
+
+        // Changing the covers replaces the old one rather than adding to it.
+        try store.setCovers([], for: migrated)
+        #expect(migrated.covers.isEmpty)
+    }
 }

@@ -85,13 +85,29 @@ public final class DraftStore {
         return try context.fetch(descriptor).first
     }
 
+    /// Every entry that isn't in Recently Deleted, newest day first.
     public func allDrafts() throws -> [EntryDraft] {
         // entryDateKey is `yyyy-MM-dd`, so string ordering is chronological ordering.
         try context.fetch(
-            FetchDescriptor<EntryDraft>(sortBy: [
+            FetchDescriptor<EntryDraft>(predicate: #Predicate { $0.deletedAt == nil }, sortBy: [
                 SortDescriptor(\.entryDateKey, order: .reverse),
                 SortDescriptor(\.createdAt, order: .reverse),
             ])
+        )
+    }
+
+    /// Entries in a range of days, newest day first. For callers that only need recent ones,
+    /// so they don't read the whole journal to throw most of it away.
+    public func drafts(from: CalendarDay, through: CalendarDay) throws -> [EntryDraft] {
+        let lower = from.rawValue
+        let upper = through.rawValue
+        return try context.fetch(
+            FetchDescriptor<EntryDraft>(
+                predicate: #Predicate {
+                    $0.entryDateKey >= lower && $0.entryDateKey <= upper && $0.deletedAt == nil
+                },
+                sortBy: [SortDescriptor(\.entryDateKey, order: .reverse)]
+            )
         )
     }
 
@@ -99,7 +115,7 @@ public final class DraftStore {
         let key = day.rawValue
         return try context.fetch(
             FetchDescriptor<EntryDraft>(
-                predicate: #Predicate { $0.entryDateKey == key },
+                predicate: #Predicate { $0.entryDateKey == key && $0.deletedAt == nil },
                 sortBy: [SortDescriptor(\.createdAt)]
             )
         )
@@ -114,7 +130,9 @@ public final class DraftStore {
         let upper = through.rawValue
         let drafts = try context.fetch(
             FetchDescriptor<EntryDraft>(
-                predicate: #Predicate { $0.entryDateKey >= lower && $0.entryDateKey <= upper }
+                predicate: #Predicate {
+                    $0.entryDateKey >= lower && $0.entryDateKey <= upper && $0.deletedAt == nil
+                }
             )
         )
         return Set(drafts.compactMap { CalendarDay(rawValue: $0.entryDateKey) })
@@ -136,7 +154,9 @@ public final class DraftStore {
         let upper = through.rawValue
         let drafts = try context.fetch(
             FetchDescriptor<EntryDraft>(
-                predicate: #Predicate { $0.entryDateKey >= lower && $0.entryDateKey <= upper }
+                predicate: #Predicate {
+                    $0.entryDateKey >= lower && $0.entryDateKey <= upper && $0.deletedAt == nil
+                }
             )
         )
         return drafts.compactMap { draft in
@@ -172,10 +192,53 @@ public final class DraftStore {
     /// See `JournalGaps`.
     public func earliestEntryDay() throws -> CalendarDay? {
         var descriptor = FetchDescriptor<EntryDraft>(
+            predicate: #Predicate { $0.deletedAt == nil },
             sortBy: [SortDescriptor(\.entryDateKey, order: .forward)]
         )
         descriptor.fetchLimit = 1
         return try context.fetch(descriptor).first.flatMap { CalendarDay(rawValue: $0.entryDateKey) }
+    }
+
+    // MARK: - Recently Deleted
+
+    /// How long a deleted entry is kept before it goes for good.
+    public static let trashRetention: TimeInterval = 30 * 86_400
+
+    /// Every entry, trashed or not. For the one caller that must recognise an entry wherever
+    /// it is: import, so restoring a journal doesn't duplicate something sitting in the trash.
+    public func allDraftsIncludingTrashed() throws -> [EntryDraft] {
+        try context.fetch(FetchDescriptor<EntryDraft>())
+    }
+
+    /// Entries in Recently Deleted, most recently deleted first.
+    public func trashedDrafts() throws -> [EntryDraft] {
+        try context.fetch(
+            FetchDescriptor<EntryDraft>(
+                predicate: #Predicate { $0.deletedAt != nil },
+                sortBy: [SortDescriptor(\.deletedAt, order: .reverse)]
+            )
+        )
+    }
+
+    /// Moves an entry to Recently Deleted. Nothing is removed: it can be put back for thirty
+    /// days. Leaves `updatedAt` alone, so restoring it doesn't count as an edit (ADR-016).
+    public func moveToTrash(_ draft: EntryDraft) throws {
+        draft.deletedAt = clock()
+        try flush()
+    }
+
+    public func restore(_ draft: EntryDraft) throws {
+        draft.deletedAt = nil
+        try flush()
+    }
+
+    /// Permanently deletes trashed entries older than the retention window. Returns how many.
+    @discardableResult
+    public func purgeTrash(fileStore: MediaFileStore?, now: Date? = nil) throws -> Int {
+        let cutoff = (now ?? clock()).addingTimeInterval(-Self.trashRetention)
+        let expired = try trashedDrafts().filter { ($0.deletedAt ?? .distantFuture) <= cutoff }
+        for draft in expired { try delete(draft, fileStore: fileStore) }
+        return expired.count
     }
 
     /// Deletes a draft and the bytes it owned. Cascade rules clear the rows; the file store
@@ -383,8 +446,22 @@ public final class DraftStore {
         return moving.count
     }
 
+    /// Chooses the photos that stand for the entry in the journal. Empty clears them.
+    ///
+    /// Leaves `updatedAt` alone: which photos are on the cover is presentation, not something
+    /// written, and it isn't part of what syncs. See ADR-016 on why that matters.
+    public func setCovers(_ mediaIds: [UUID], for draft: EntryDraft) throws {
+        var seen = Set<UUID>()
+        draft.coverMediaIds = mediaIds.filter { seen.insert($0).inserted }
+        // Retired in favour of the list, so an emptied list doesn't fall back to it.
+        draft.coverMediaId = nil
+        try flush()
+    }
+
     public func removeMedia(id: UUID, from draft: EntryDraft, fileStore: MediaFileStore?) throws {
         guard let removed = draft.detachMedia(id: id, now: clock()) else { return }
+        if draft.coverMediaId == id { draft.coverMediaId = nil }
+        draft.coverMediaIds.removeAll { $0 == id }
         let paths = removed.ownedRelativePaths
         context.delete(removed)
         try flush()

@@ -47,12 +47,12 @@ struct NameCorrectionsView: View {
             } header: {
                 Text("What it hears, what you meant")
             } footer: {
-                Text("Applied to new recordings as they come back. Whole words only, so a name inside a longer word is left alone.")
+                Text("Names, places, anything it spells wrong. Fixed in new recordings automatically. Whole words only.")
             }
 
             if corrections.isEmpty {
                 Section {
-                    Text("Nothing to correct yet. Add the names it keeps getting wrong.")
+                    Text("Nothing here yet. Add a word it keeps getting wrong.")
                         .font(Type.body(15))
                         .foregroundStyle(.secondary)
                 }
@@ -82,11 +82,11 @@ struct NameCorrectionsView: View {
                 } footer: {
                     // Said out loud because it edits words already written down, which
                     // nothing else in this app does without being asked twice.
-                    Text("Rewrites past entries where these names appear. Your recordings are untouched.")
+                    Text("Rewrites past entries where these words appear. Your recordings are untouched.")
                 }
             }
         }
-        .navigationTitle("Names")
+        .navigationTitle("Dictionary")
         .navigationBarTitleDisplayMode(.inline)
     }
 

@@ -371,7 +371,7 @@ final class AudioRecorder {
                     guard self.state == .recording else { continue }
                     self.pause()
                     self.interruptionNotice =
-                        "Paused \u{2014} something else needed the microphone. Everything so far is saved."
+                        "Paused. Something else needed the microphone. Everything so far is saved."
                 case .ended:
                     guard self.state == .paused, options.contains(.shouldResume) else { continue }
                     await self.resume()

@@ -32,9 +32,10 @@ struct FeedbackView: View {
     static let address = "hello@example.com"
 
     enum Kind: String, CaseIterable, Identifiable {
-        case idea = "An idea"
-        case problem = "Something's broken"
-        case hello = "Just saying hello"
+        // One word each: three longer labels didn't fit a segmented control on a phone.
+        case idea = "Idea"
+        case problem = "Problem"
+        case hello = "Hello"
 
         var id: String { rawValue }
         var subjectTag: String {

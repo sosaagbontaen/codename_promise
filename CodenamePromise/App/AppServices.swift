@@ -82,6 +82,9 @@ final class AppServices {
 
             // Before any UI reads state: demote operations abandoned by a dead process, so
             // nothing is stuck claiming to be in flight. See ADR-004.
+            // Recently Deleted keeps an entry thirty days; anything older goes now.
+            try? store.purgeTrash(fileStore: files)
+
             let report = try store.reconcileAbandonedOperations()
             if !report.isEmpty {
                 recoveryNotice = Self.describe(report)
@@ -235,6 +238,9 @@ final class AppServices {
     /// to perform — see ADR-001.
     func flushOnBackground() {
         store?.flushQuietly()
+        // The "when I've been away" reminder depends on when the journal was last written,
+        // so it's worked out as the app leaves rather than on every refresh of the list.
+        if let store { reminders.reschedule(using: store) }
     }
 
     func dismissRecoveryNotice() {

@@ -44,13 +44,14 @@ FIX THESE:
 - Capitalisation and punctuation.
 
 NEVER DO THESE:
-- Never swap in a different word. "ran" stays "ran" — not "jogged". Fixing a misspelling is
+- Never swap in a different word. "ran" stays "ran", not "jogged". Fixing a misspelling is
   allowed; choosing a nicer word is not.
 - Never add words of your own. No summary, no title, no commentary, no transitions.
 - Never leave anything out. Every idea the author wrote must still appear, including
   greetings ("Howdy"), one-word lines and throwaway asides. You are not the judge of what
   matters in someone's journal.
 - Never change tone, register or slang. Informal stays informal. "gonna" stays "gonna".
+- Never add an em dash. Use a comma or a full stop instead.
 - Never "correct" anything in the PROTECTED list below. Those are names, slang or
   deliberate spellings, and they are already right.
 
@@ -188,6 +189,9 @@ class GroqFormatter:
     CHUNK_THRESHOLD = 1200
 
     async def format(self, raw_text: str, protected: Sequence[str] = ()) -> str:
+        return without_new_em_dashes(raw_text, await self._format_unguarded(raw_text, protected))
+
+    async def _format_unguarded(self, raw_text: str, protected: Sequence[str]) -> str:
         chunks = _split_for_formatting(raw_text, self.CHUNK_THRESHOLD)
         if len(chunks) == 1:
             return await self._format_chunk(raw_text, protected)
@@ -218,7 +222,7 @@ class GroqFormatter:
     async def _format_chunk(self, raw_text: str, protected: Sequence[str]) -> str:
         system = SYSTEM_PROMPT
         if protected:
-            system += "\n\nPROTECTED — reproduce these exactly, never 'correct' them:\n"
+            system += "\n\nPROTECTED: reproduce these exactly, never 'correct' them:\n"
             system += "\n".join(f"- {term}" for term in protected)
 
         messages = [
@@ -357,6 +361,7 @@ said, not rewriting it.
 - Never add a fact, a feeling or a conclusion they did not say.
 - Never soften an uncomfortable thought. If they said something bleak about themselves, it stays.
 - Do not add a heading inside the body, a preamble, or a closing summary.
+- Never use an em dash, in the heading or the body. Use a comma or a full stop instead.
 
 Reply with JSON only: {"heading": "a short heading in their voice", "body": "the prose"}"""
 
@@ -556,10 +561,28 @@ class GroqOrganiser:
             payload = await self._json_call(
                 WRITE_PROMPT, "\n".join(lines), min(16_000, budget * 2), "low"
             )
+        spoken = "\n".join(lines)
         return {
-            "heading": str(payload.get("heading", thread)),
-            "body": str(payload.get("body", "")),
+            # A heading is always the model's words, so it never keeps one.
+            "heading": without_new_em_dashes("", str(payload.get("heading", thread))),
+            "body": without_new_em_dashes(spoken, str(payload.get("body", ""))),
         }
+
+
+_EM_DASH = "\u2014"
+
+
+def without_new_em_dashes(source: str, written: str) -> str:
+    """Removes em dashes the model introduced, keeping any the author typed themselves.
+
+    The em dash is the most recognisable tell of generated prose, and nobody writing their
+    own journal wants it appearing in their entries. The prompts ask the model not to use
+    one; this makes sure. If the author's own text has one, it's theirs and stays.
+    """
+    if _EM_DASH in source or _EM_DASH not in written:
+        return written
+    cleaned = written.replace(" " + _EM_DASH + " ", ", ").replace(_EM_DASH, ", ")
+    return cleaned.replace(" ,", ",").replace(",,", ",")
 
 
 def _seconds(retry_after: Optional[str], default: float) -> float:

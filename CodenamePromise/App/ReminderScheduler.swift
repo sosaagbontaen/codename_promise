@@ -25,6 +25,44 @@ final class ReminderScheduler {
     private(set) var isEnabled = false
     private(set) var authorization: UNAuthorizationStatus = .notDetermined
 
+    /// How often to remind.
+    enum Frequency: String, CaseIterable, Identifiable {
+        /// One nudge after a few quiet days, at the hour they usually write.
+        case whenAway
+        case daily
+        case weekly
+
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .whenAway: "When I\u{2019}ve been away"
+            case .daily: "Every day"
+            case .weekly: "Every week"
+            }
+        }
+    }
+
+    // Stored as plain defaults: it's a preference about this phone, not journal data.
+    var frequency: Frequency {
+        didSet { defaults.set(frequency.rawValue, forKey: "reminder.frequency") }
+    }
+    /// Minutes past midnight, for daily and weekly.
+    var minuteOfDay: Int {
+        didSet { defaults.set(minuteOfDay, forKey: "reminder.minuteOfDay") }
+    }
+    /// 1 is Sunday, as `Calendar` counts. For weekly.
+    var weekday: Int {
+        didSet { defaults.set(weekday, forKey: "reminder.weekday") }
+    }
+
+    private let defaults = UserDefaults.standard
+
+    init() {
+        frequency = defaults.string(forKey: "reminder.frequency").flatMap(Frequency.init(rawValue:)) ?? .whenAway
+        minuteOfDay = defaults.object(forKey: "reminder.minuteOfDay") as? Int ?? 20 * 60
+        weekday = defaults.object(forKey: "reminder.weekday") as? Int ?? 1
+    }
+
     func refreshAuthorization() async {
         authorization = await center.notificationSettings().authorizationStatus
         isEnabled = authorization == .authorized || authorization == .provisional
@@ -54,6 +92,24 @@ final class ReminderScheduler {
     func reschedule(using store: DraftStore) {
         center.removePendingNotificationRequests(withIdentifiers: [Self.identifier])
         guard isEnabled else { return }
+
+        // A fixed time repeats on its own; only "when I've been away" depends on the journal.
+        if frequency != .whenAway {
+            let content = UNMutableNotificationContent()
+            content.title = frequency == .daily ? "Anything from today?" : "Anything from this week?"
+            content.body = "Thirty seconds is enough. Dump it and arrange it later."
+            content.sound = .default
+            var components = DateComponents()
+            components.hour = minuteOfDay / 60
+            components.minute = minuteOfDay % 60
+            if frequency == .weekly { components.weekday = weekday }
+            center.add(UNNotificationRequest(
+                identifier: Self.identifier,
+                content: content,
+                trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+            ))
+            return
+        }
 
         guard let drafts = try? store.allDrafts(), !drafts.isEmpty else { return }
         let written = drafts.filter { !$0.content.isEmpty }

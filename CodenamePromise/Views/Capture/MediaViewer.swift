@@ -2,25 +2,22 @@ import AVKit
 import CodenamePromiseCore
 import SwiftUI
 
-/// Full-size media, swipeable, presented so the editor stays usable underneath.
-///
-/// This exists because of how the entry actually gets written: attach the day's photos first,
-/// then look through them and let them remind you what happened. Thumbnails are too small to
-/// jog a memory, but a viewer that takes over the screen is worse — you'd be closing and
-/// reopening it after every sentence.
-///
-/// So it's a sheet at the medium detent with background interaction enabled: the photo is
-/// large, the editor is still right there, and typing doesn't dismiss it. Drag it up for a
-/// proper look, drag it down and keep writing.
+/// Full-size media on black: swipe sideways through the entry's photos and videos, pull
+/// down or tap the X to close.
 struct MediaViewer: View {
     let items: [MediaItem]
     let fileStore: MediaFileStore
     @State var selection: UUID
 
     @Environment(\.dismiss) private var dismiss
+    /// How far the photo has been pulled down, to follow the finger before it closes.
+    @State private var pull: CGFloat = 0
 
     var body: some View {
-        NavigationStack {
+        ZStack(alignment: .top) {
+            Color.black.ignoresSafeArea()
+                .opacity(1 - min(pull / 400, 0.6))
+
             TabView(selection: $selection) {
                 ForEach(items, id: \.id) { item in
                     MediaPage(item: item, fileStore: fileStore)
@@ -28,15 +25,48 @@ struct MediaViewer: View {
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: items.count > 1 ? .automatic : .never))
-            .ignoresSafeArea(edges: .bottom)
-            .navigationTitle(positionLabel)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+            .ignoresSafeArea()
+            .offset(y: pull)
+            .gesture(
+                DragGesture(minimumDistance: 20)
+                    .onChanged { value in
+                        // Only a downward pull, so swiping sideways still pages.
+                        if value.translation.height > abs(value.translation.width) {
+                            pull = value.translation.height
+                        }
+                    }
+                    .onEnded { value in
+                        if value.translation.height > 120 {
+                            dismiss()
+                        } else {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { pull = 0 }
+                        }
+                    }
+            )
+
+            HStack {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 40, height: 40)
+                        .background(.white.opacity(0.15), in: Circle())
                 }
+                .accessibilityLabel("Close")
+                Spacer()
+                Text(positionLabel)
+                    .font(Type.label(15, .semibold))
+                    .foregroundStyle(.white)
+                Spacer()
+                Color.clear.frame(width: 40, height: 40)
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .opacity(pull > 0 ? 0 : 1)
         }
+        .statusBarHidden()
     }
 
     private var positionLabel: String {

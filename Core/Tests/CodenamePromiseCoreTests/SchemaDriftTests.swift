@@ -35,6 +35,12 @@ struct SchemaDriftTests {
             "id", "createdAt", "updatedAt", "entryDateKey", "content",
             "formattedTextEditedByUser",
             "organisedJSON", "organiserVersion", "media", "audioCaptures", "syncStates",
+            // v6: the photo chosen as the entry's cover.
+            "coverMediaId",
+            // v7: several cover photos, superseding the one.
+            "coverMediaIds",
+            // v8: when it went to Recently Deleted.
+            "deletedAt",
         ],
         "MediaItem": [
             "id", "createdAt", "relativePath", "originalSizeBytes",
@@ -69,7 +75,7 @@ struct SchemaDriftTests {
         return out
     }
 
-    @Test("the live models still match the shape SchemaV5 describes")
+    @Test("the live models still match the shape SchemaV8 describes")
     func noUndeclaredDrift() {
         let actual = shape(of: CodenamePromiseSchema.current)
 
@@ -84,7 +90,7 @@ struct SchemaDriftTests {
             if !added.isEmpty {
                 Issue.record("""
                     \(entity) gained \(added.sorted()) without a schema version bump.
-                    Freeze the current models into SchemaV5Models.swift, add SchemaV6 \
+                    Freeze the current models into SchemaV8Models.swift, add SchemaV9 \
                     pointing at the live types plus a migration stage, and only then update \
                     the expectation in this file. See ADR-008a.
                     """)

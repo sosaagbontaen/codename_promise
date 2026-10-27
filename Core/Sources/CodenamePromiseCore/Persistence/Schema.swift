@@ -105,9 +105,58 @@ public enum SchemaV4: VersionedSchema {
 /// opens an existing store instead of failing on a mandatory attribute. Empty is the honest
 /// value for every video that was never split.
 ///
-/// Its models are the live types, which is the privilege of being newest.
+/// Its models are frozen in `SchemaV5Models.swift`, because v6 exists.
 public enum SchemaV5: VersionedSchema {
     public static var versionIdentifier: Schema.Version { Schema.Version(5, 0, 0) }
+
+    public static var models: [any PersistentModel.Type] {
+        [SchemaV5.EntryDraft.self, SchemaV5.MediaItem.self,
+         SchemaV5.AudioCapture.self, SchemaV5.SyncState.self]
+    }
+}
+
+/// Adds `EntryDraft.coverMediaId`: the photo chosen to stand for the entry in the journal.
+///
+/// Optional, and nil for every existing entry, which then shows a grid of its first photos as
+/// before. A plain UUID rather than a relationship, so deleting the photo can't cascade into
+/// anything; a cover that no longer exists is simply ignored.
+///
+/// Its models are frozen in `SchemaV6Models.swift`, because v7 exists.
+public enum SchemaV6: VersionedSchema {
+    public static var versionIdentifier: Schema.Version { Schema.Version(6, 0, 0) }
+
+    public static var models: [any PersistentModel.Type] {
+        [SchemaV6.EntryDraft.self, SchemaV6.MediaItem.self,
+         SchemaV6.AudioCapture.self, SchemaV6.SyncState.self]
+    }
+}
+
+/// Adds `EntryDraft.coverMediaIds`: several photos chosen to stand for the entry.
+///
+/// One cover was too few. A day with thirty photos usually has two or three that are the
+/// day, and those are what the journal should show. An array with an empty default keeps
+/// this lightweight; `coverMediaId` stays, and a cover chosen under v6 is still honoured by
+/// `EntryDraft.covers` until the covers are next changed.
+///
+/// Its models are frozen in `SchemaV7Models.swift`, because v8 exists.
+public enum SchemaV7: VersionedSchema {
+    public static var versionIdentifier: Schema.Version { Schema.Version(7, 0, 0) }
+
+    public static var models: [any PersistentModel.Type] {
+        [SchemaV7.EntryDraft.self, SchemaV7.MediaItem.self,
+         SchemaV7.AudioCapture.self, SchemaV7.SyncState.self]
+    }
+}
+
+/// Adds `EntryDraft.deletedAt`: when an entry was moved to Recently Deleted.
+///
+/// Deleting used to be immediate and final, which for a journal is the wrong default: a
+/// mis-swipe cost someone a day of their life. Now a deleted entry waits thirty days, out of
+/// every list and every sync, and can be put back. Optional and nil for every existing entry.
+///
+/// Its models are the live types, which is the privilege of being newest.
+public enum SchemaV8: VersionedSchema {
+    public static var versionIdentifier: Schema.Version { Schema.Version(8, 0, 0) }
 
     public static var models: [any PersistentModel.Type] {
         [EntryDraft.self, MediaItem.self, AudioCapture.self, SyncState.self]
@@ -116,7 +165,7 @@ public enum SchemaV5: VersionedSchema {
 
 public enum CodenamePromiseMigrationPlan: SchemaMigrationPlan {
     public static var schemas: [any VersionedSchema.Type] {
-        [SchemaV1.self, SchemaV2.self, SchemaV3.self, SchemaV4.self, SchemaV5.self]
+        [SchemaV1.self, SchemaV2.self, SchemaV3.self, SchemaV4.self, SchemaV5.self, SchemaV6.self, SchemaV7.self, SchemaV8.self]
     }
 
     public static var stages: [MigrationStage] {
@@ -128,6 +177,9 @@ public enum CodenamePromiseMigrationPlan: SchemaMigrationPlan {
             .lightweight(fromVersion: SchemaV2.self, toVersion: SchemaV3.self),
             .lightweight(fromVersion: SchemaV3.self, toVersion: SchemaV4.self),
             .lightweight(fromVersion: SchemaV4.self, toVersion: SchemaV5.self),
+            .lightweight(fromVersion: SchemaV5.self, toVersion: SchemaV6.self),
+            .lightweight(fromVersion: SchemaV6.self, toVersion: SchemaV7.self),
+            .lightweight(fromVersion: SchemaV7.self, toVersion: SchemaV8.self),
         ]
     }
 }
@@ -135,5 +187,5 @@ public enum CodenamePromiseMigrationPlan: SchemaMigrationPlan {
 public enum CodenamePromiseSchema {
     /// Always build containers from this, never from an ad-hoc `Schema([...])` — an
     /// unversioned container is how you end up unable to migrate.
-    public static var current: Schema { Schema(versionedSchema: SchemaV5.self) }
+    public static var current: Schema { Schema(versionedSchema: SchemaV8.self) }
 }

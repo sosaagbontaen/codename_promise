@@ -21,7 +21,6 @@ struct CaptureView: View {
     @State private var photoSelections: [PhotosPickerItem] = []
     @State private var attachProgress: (done: Int, total: Int)?
     @State private var viewingMedia: ViewingMedia?
-    @State private var viewerDetent: PresentationDetent = .medium
     @State private var showingDatePicker = false
     @State private var showingEntryPicker = false
     @State private var showingSendSheet = false
@@ -58,7 +57,7 @@ struct CaptureView: View {
     /// Deleting the field itself would be a schema change that destroyed existing entries to
     /// tidy an enum, which is not a trade worth making.
     enum Mode: String, CaseIterable {
-        case raw = "Yours", organised = "Arranged"
+        case raw = "Raw", organised = "Formatted"
     }
 
     private let fileStore: MediaFileStore
@@ -80,11 +79,14 @@ struct CaptureView: View {
         editor
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 VStack(spacing: 0) {
-                    pinnedDetails
                     syncProgressBar
-                    actionPanel
+                    // Hidden on request and while typing, but never mid-recording: the stop
+                    // button lives here. While typing it rode up on the keyboard with a gap
+                    // under it, which is why Done moved to the top bar instead.
+                    if (!chromeHidden && !isEditingText) || recorder.isActive {
+                        actionPanel
+                    }
                 }
-                .animation(.easeOut(duration: 0.2), value: isEditingText)
                 .animation(.easeInOut(duration: 0.22), value: chromeHidden)
             }
         // One date, not two.
@@ -110,32 +112,61 @@ struct CaptureView: View {
         // editing surface reached by pushing from a list, and switching tabs from inside one
         // is not something anyone does mid-sentence. Going back brings it straight back.
         .toolbar(.hidden, for: .tabBar)
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { hideKeyboard() }
-                    .font(Type.label(15, .semibold))
-            }
-        }
+        // One menu rather than a row of glyphs. Everything in it is occasional, and a labelled
+        // list is easier to find things in than icons you have to learn.
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.22)) { chromeHidden.toggle() }
-                    Haptics.picked()
+                if isEditingText {
+                    // Where Notes puts it: up here, not on a bar over the keyboard.
+                    Button("Done") { hideKeyboard() }
+                        .fontWeight(.semibold)
+                        .tint(Brand.violet)
+                } else {
+                Menu {
+                    Button {
+                        showingDatePicker = true
+                    } label: {
+                        Label("Change day", systemImage: "calendar")
+                    }
+                    if !controller.orderedMedia.isEmpty {
+                        Button {
+                            showingAttachments = true
+                        } label: {
+                            Label("All photos and videos", systemImage: "square.grid.2x2")
+                        }
+                        Button {
+                            selectingMedia = true
+                        } label: {
+                            Label("Select photos", systemImage: "checkmark.circle")
+                        }
+                        Button {
+                            selectingMedia = true
+                            selectedMedia = Set(controller.coverIds)
+                        } label: {
+                            Label("Choose cover photos", systemImage: "photo.stack")
+                        }
+                        if !controller.coverIds.isEmpty {
+                            Button {
+                                controller.setCovers([])
+                            } label: {
+                                Label("Clear cover photos", systemImage: "photo.badge.minus")
+                            }
+                        }
+                    }
+                    Divider()
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.22)) { chromeHidden.toggle() }
+                        Haptics.picked()
+                    } label: {
+                        Label(
+                            chromeHidden ? "Show the toolbar" : "Hide the toolbar",
+                            systemImage: chromeHidden ? "rectangle.bottomhalf.inset.filled" : "rectangle"
+                        )
+                    }
                 } label: {
-                    Label(
-                        chromeHidden ? "Show the details" : "Just the entry",
-                        systemImage: chromeHidden
-                            ? "arrow.up.left.and.arrow.down.right"
-                            : "arrow.down.right.and.arrow.up.left"
-                    )
+                    Label("More", systemImage: "ellipsis")
                 }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showingDatePicker = true
-                } label: {
-                    Label("Change day", systemImage: "calendar")
+                .tint(Brand.ink)
                 }
             }
         }
@@ -149,18 +180,15 @@ struct CaptureView: View {
                 performMove(to: destination)
             }
         }
-        .sheet(item: $viewingMedia) { viewing in
+        // Full screen, the way Photos opens a picture: tap one, it fills the screen, swipe
+        // through the rest, pull down to close. The half-height sheet it replaced read as a
+        // drawer of thumbnails rather than a look at the photo.
+        .fullScreenCover(item: $viewingMedia) { viewing in
             MediaViewer(
                 items: controller.orderedMedia,
                 fileStore: fileStore,
                 selection: viewing.id
             )
-            // Medium detent plus background interaction is the whole point: the photo is
-            // large enough to jog a memory while the editor stays live behind it, so you can
-            // keep writing without dismissing anything.
-            .presentationDetents([.medium, .large], selection: $viewerDetent)
-            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
-            .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showingSendSheet) { sendSheet }
         .sheet(isPresented: $showingAttachments) {
@@ -175,8 +203,6 @@ struct CaptureView: View {
                     // viewer in the same runloop pass drops it on the floor.
                     Task { @MainActor in
                         try? await Task.sleep(for: .milliseconds(350))
-                        viewerDetent = controller.orderedMedia
-                            .first { $0.id == id }?.kind == .video ? .large : .medium
                         viewingMedia = ViewingMedia(id: id)
                     }
                 }
@@ -200,6 +226,7 @@ struct CaptureView: View {
                 controller.setEntryDate(day)
             }
         }
+        .task { learnTitlePrefix() }
         // Leaving the view is exactly the moment a debounce must not be trusted.
         .onDisappear { controller.commitNow() }
         .onChange(of: scenePhase) { _, phase in
@@ -243,52 +270,224 @@ struct CaptureView: View {
     /// move.
     private var editor: some View {
         ScrollView {
-            Group {
-                if mode == .organised, let organised = controller.organised {
-                    OrganisedEntryView(organised: organised, isStale: controller.organisedIsStale)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    TextEditor(text: $controller.text)
-                        .writingSurface()
-                        .focused($writing)
-                        .overlay(alignment: .topLeading) {
-                            if controller.text.isEmpty {
-                                Text("What went well today?")
-                                    .font(Type.journal(17))
-                                    .foregroundStyle(.tertiary)
-                                    .padding(.top, 8)
-                                    .padding(.leading, 5)
-                                    .allowsHitTesting(false)
-                            }
+            VStack(alignment: .leading, spacing: 0) {
+                coverBanner
+
+                header
+                    .padding(.horizontal, 20)
+                    .padding(.top, coverThumbs.isEmpty ? 6 : 16)
+
+                Group {
+                    if mode == .organised, let organised = controller.organised {
+                        OrganisedEntryView(organised: organised, isStale: controller.organisedIsStale)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        // Grows with the writing instead of scrolling inside itself.
+                        //
+                        // A TextEditor keeps a fixed height and scrolls its own contents, so
+                        // once it sat inside the page's scroll view, anything past that
+                        // height was cut off at its bottom edge, slicing a line in half, with
+                        // the photos below. An invisible copy of the text sets the height,
+                        // the editor fills it, and the page does all the scrolling.
+                        ZStack(alignment: .topLeading) {
+                            Text(controller.text + "\n ")
+                                .writingSurface(minHeight: controller.orderedMedia.isEmpty ? 320 : 120)
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 5)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .hidden()
+                                .accessibilityHidden(true)
+                            TextEditor(text: $controller.text)
+                                .writingSurface(minHeight: 0)
+                                .scrollDisabled(true)
+                                .focused($writing)
                         }
+                            .overlay(alignment: .topLeading) {
+                                if controller.text.isEmpty {
+                                    Text("What went well today?")
+                                        .font(Type.journal(17))
+                                        .foregroundStyle(.tertiary)
+                                        .padding(.top, 8)
+                                        .padding(.leading, 5)
+                                        .allowsHitTesting(false)
+                                }
+                            }
+                    }
+                }
+                .animation(.easeInOut(duration: 0.18), value: mode)
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+
+                // The photos live in the cover. The grid comes back only while picking covers
+                // or choosing photos to move, which is the one time every photo is needed.
+                if selectingMedia {
+                    photoGrid
+                        .padding(.horizontal, 20)
+                        .padding(.top, 12)
+                } else if let moveNotice {
+                    Text(moveNotice)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 12)
+                }
+
+                entryFooter
+                    .padding(.horizontal, 20)
+                    .padding(.top, 14)
+
+                if hasFooterNotes {
+                    footerNotes
+                        .padding(.horizontal, 20)
+                        .padding(.top, 14)
+                }
+                if mode == .organised, let organised = controller.organised,
+                   !organised.dropped.isEmpty {
+                    DroppedLinesNotice(organised: organised)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 12)
                 }
             }
-            .animation(.easeInOut(duration: 0.18), value: mode)
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
+            .padding(.bottom, 24)
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if !chromeHidden { pinnedHeader }
-        }
-        .background(Brand.ground)
+        .scrollDismissesKeyboard(.interactively)
+        // With a cover, the photo runs up under the status bar, the way a photo-led page does.
+        .ignoresSafeArea(.container, edges: coverThumbs.isEmpty ? [] : .top)
+        // Plain paper, the way Notes writes, rather than the grouped grey lists sit on.
+        .background(Color(uiColor: .systemBackground))
     }
 
-    /// The entry's filing details: what day it is, what it is called, which version you are
-    /// looking at. None of it should disappear when you scroll the words.
-    @ViewBuilder
-    private var pinnedHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(controller.entryDate.representativeDate()
-                .formatted(.dateTime.weekday(.wide).month(.wide).day().year()))
-                .font(Type.caption(11.5, .bold))
-                .foregroundStyle(Brand.azure)
-                .textCase(.uppercase)
-                .tracking(1.1)
+    private var isEditingText: Bool { writing || titling }
 
-            TextField("Title (optional)", text: $controller.title)
-                .font(Type.title(25))
+    /// "WWWT 10/27/26": the prefix most often used in titles like "<word> <date>", or WWWT,
+    /// followed by this entry's day.
+    private var suggestedTitle: String {
+        let day = controller.entryDate.representativeDate()
+            .formatted(.dateTime.month(.defaultDigits).day(.defaultDigits).year(.twoDigits))
+        return "\(titlePrefix) \(day)"
+    }
+
+    @State private var titlePrefix = CaptureView.learnedTitlePrefix ?? "WWWT"
+    /// Learned once per launch, not on every entry opened: it reads every title.
+    @MainActor private static var learnedTitlePrefix: String?
+
+    /// Learns the prefix from titles already written, such as "WWWT 8/14/26".
+    private func learnTitlePrefix() {
+        guard Self.learnedTitlePrefix == nil, let drafts = try? store.allDrafts() else { return }
+        var counts: [String: Int] = [:]
+        for draft in drafts {
+            guard let title = draft.content.title,
+                  let match = title.firstMatch(of: /^(.+?)\s+\d{1,2}\/\d{1,2}\/\d{2,4}$/)
+            else { continue }
+            counts[String(match.1), default: 0] += 1
+        }
+        let best = counts.max(by: { $0.value < $1.value })?.key ?? "WWWT"
+        Self.learnedTitlePrefix = best
+        titlePrefix = best
+    }
+
+    /// The chosen covers, the same way the journal card shows them. With none chosen, the
+    /// first photo stands in, so an entry with photos always opens on one.
+    private var coverThumbs: [DraftSummary.Thumb] {
+        var ids = controller.coverIds
+        if ids.isEmpty, let first = controller.orderedMedia.first { ids = [first.id] }
+        return ids.compactMap { id in
+            controller.orderedMedia.first { $0.id == id }.map {
+                DraftSummary.Thumb(id: $0.id, relativePath: $0.relativePath, isVideo: $0.kind == .video)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var coverBanner: some View {
+        let covers = coverThumbs
+        if !covers.isEmpty {
+            Button {
+                let first = covers[0]
+                viewingMedia = ViewingMedia(id: first.id)
+            } label: {
+                PhotoMosaic(thumbs: covers, overflow: max(0, covers.count - 4), fileStore: fileStore)
+                    .frame(height: 300)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+                    // The way to every photo, now that they don't sit in a grid below.
+                    .overlay(alignment: .bottomTrailing) {
+                        if controller.orderedMedia.count > covers.count {
+                            Button {
+                                showingAttachments = true
+                            } label: {
+                                Label("\(controller.orderedMedia.count) photos", systemImage: "square.grid.2x2")
+                                    .font(Type.label(13, .semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 7)
+                                    .background(.black.opacity(0.55), in: Capsule())
+                            }
+                            .buttonStyle(.pressable)
+                            .padding(12)
+                        }
+                    }
+            }
+            .buttonStyle(.plain)
+            .contextMenu {
+                Button {
+                    selectingMedia = true
+                    selectedMedia = Set(controller.coverIds)
+                } label: {
+                    Label("Choose cover photos", systemImage: "photo.stack")
+                }
+                Button {
+                    controller.setCovers([])
+                } label: {
+                    Label("Clear cover photos", systemImage: "photo.badge.minus")
+                }
+            }
+        }
+    }
+
+    /// The day, whether it's saved, and the title. Quiet, because the writing is the page.
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Button {
+                    showingDatePicker = true
+                } label: {
+                    Text(controller.entryDate.representativeDate()
+                        .formatted(.dateTime.weekday(.wide).month(.wide).day().year()).uppercased())
+                        .tracking(0.8)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Changes the day this entry is filed under")
+                saveStateLabel
+            }
+            .font(Type.caption(11.5, .semibold))
+            .foregroundStyle(Brand.muted)
+
+            // A serif for the entry's name: it's the one place the page reads like a journal
+            // rather than an app.
+            TextField("Title", text: $controller.title, axis: .vertical)
+                .font(.system(size: 28, weight: .semibold, design: .serif))
                 .textInputAutocapitalization(.sentences)
                 .focused($titling)
+
+            // The title most entries end up with anyway, offered rather than typed.
+            if controller.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Button {
+                    controller.title = suggestedTitle
+                    Haptics.picked()
+                } label: {
+                    Label(suggestedTitle, systemImage: "plus")
+                        .font(Type.label(14, .medium))
+                        .foregroundStyle(Brand.muted)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .overlay(
+                            Capsule().strokeBorder(Brand.muted.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                        )
+                }
+                .buttonStyle(.pressable)
+                .accessibilityLabel("Use \(suggestedTitle) as the title")
+            }
 
             if controller.organised != nil {
                 Picker("View", selection: $mode) {
@@ -296,70 +495,105 @@ struct CaptureView: View {
                 }
                 .pickerStyle(.segmented)
                 .onChange(of: mode) { Haptics.picked() }
+                .padding(.top, 4)
             }
         }
-        // Aligned to the same 16pt margin the words below use, so the title and the first
-        // line of the entry start on one edge.
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16)
-        .padding(.top, 9)
-        .padding(.bottom, 10)
-        .background(Brand.ground)
-        .overlay(alignment: .bottom) {
-            // Only once there is something scrolling underneath to divide it from.
-            Rectangle().fill(Brand.edge).frame(height: 0.5)
-        }
     }
 
-    /// The photos and the small print, pinned above the action panel.
-    ///
-    /// Hidden while the keyboard is up. Everything here is pinned to the bottom, which is
-    /// also where the keyboard is, and keeping it visible while somebody types would leave
-    /// them writing into a two-line slot. You are not checking which photos are attached in
-    /// the middle of a sentence.
-    @ViewBuilder
-    private var pinnedDetails: some View {
-        if !chromeHidden, !isEditingText, hasPinnedDetails {
-            VStack(alignment: .leading, spacing: 10) {
-                if !controller.orderedMedia.isEmpty {
-                    mediaStrip
-                }
-                if hasFooterNotes {
-                    // Bounded, because these stack up: a queued recording, an append target,
-                    // a sync message and a link is four lines before the photos get a look in.
-                    ScrollView {
-                        footerNotes
+    /// One row of photos under the writing; the last tile counts the rest and opens them all.
+    /// While selecting, every photo is shown, since anything might be the one being picked.
+    private var photoGrid: some View {
+        let media = controller.orderedMedia
+        let limit = selectingMedia ? media.count : 4
+        let shown = Array(media.prefix(limit))
+        let overflow = media.count - shown.count
+        return VStack(alignment: .leading, spacing: 8) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 4), spacing: 4) {
+                ForEach(Array(shown.enumerated()), id: \.element.id) { index, item in
+                    let countsRest = overflow > 0 && index == shown.count - 1
+                    Button {
+                        if countsRest {
+                            showingAttachments = true
+                        } else if selectingMedia {
+                            toggleSelection(item.id)
+                        } else {
+                            viewingMedia = ViewingMedia(id: item.id)
+                        }
+                    } label: {
+                        EntryPhotoTile(item: item, fileStore: fileStore)
+                            .aspectRatio(1, contentMode: .fill)
+                            .overlay {
+                                if countsRest {
+                                    Rectangle().fill(.black.opacity(0.5))
+                                    Text("+\(overflow + 1)")
+                                        .font(Type.label(16, .bold))
+                                        .foregroundStyle(.white)
+                                }
+                            }
+                            .overlay {
+                                if selectingMedia, selectedMedia.contains(item.id) {
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .strokeBorder(Brand.violet, lineWidth: 3)
+                                }
+                            }
+                            .overlay(alignment: .topLeading) {
+                                if controller.coverIds.contains(item.id) {
+                                    Image(systemName: "pin.fill")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .padding(4)
+                                        .background(Brand.violet, in: Circle())
+                                        .padding(4)
+                                }
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
-                    .frame(maxHeight: 118)
-                    .fixedSize(horizontal: false, vertical: true)
-                }
-                if mode == .organised, let organised = controller.organised,
-                   !organised.dropped.isEmpty {
-                    DroppedLinesNotice(organised: organised)
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        if controller.coverIds.contains(item.id) {
+                            Button {
+                                controller.toggleCover(item.id)
+                            } label: {
+                                Label("Remove from cover", systemImage: "photo.badge.minus")
+                            }
+                        } else {
+                            Button {
+                                controller.toggleCover(item.id)
+                                Haptics.picked()
+                            } label: {
+                                Label("Add to cover", systemImage: "photo.badge.plus")
+                            }
+                        }
+                        Button(role: .destructive) {
+                            controller.removeMedia(id: item.id, fileStore: fileStore)
+                        } label: {
+                            Label("Remove from entry", systemImage: "trash")
+                        }
+                    }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 10)
-            .padding(.bottom, 4)
-            // Only as tall as it needs to be. A `maxHeight` here reserves the whole ceiling
-            // whether or not there is anything to put in it, which left a hand's width of
-            // empty ground between the entry and the photos. The one part that can grow
-            // without limit is the notes, so that is the part that is bounded.
-            .fixedSize(horizontal: false, vertical: true)
-            .background(Brand.ground)
-            .overlay(alignment: .top) {
-                Rectangle().fill(Brand.edge).frame(height: 0.5)
-            }
+            mediaSelectionBar
         }
     }
 
-    private var hasPinnedDetails: Bool {
-        !controller.orderedMedia.isEmpty
-            || hasFooterNotes
-            || (mode == .organised && controller.organised?.dropped.isEmpty == false)
+    /// When the entry was started, and how many photos it holds.
+    private var entryFooter: some View {
+        HStack(spacing: 14) {
+            Label(controller.createdAt.formatted(date: .omitted, time: .shortened), systemImage: "clock")
+            if !controller.orderedMedia.isEmpty {
+                Button {
+                    showingAttachments = true
+                } label: {
+                    Label("\(controller.orderedMedia.count)", systemImage: "photo")
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("See all \(controller.orderedMedia.count) photos and videos")
+            }
+        }
+        .font(Type.caption(12))
+        .foregroundStyle(Brand.muted)
     }
-
-    private var isEditingText: Bool { writing || titling }
 
     /// Everything below is *about* the entry rather than part of it, so it sits together on
     /// its own ground instead of trailing off as loose grey text.
@@ -413,41 +647,6 @@ struct CaptureView: View {
         .background(.quaternary.opacity(0.28), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private var mediaStrip: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(controller.orderedMedia, id: \.id) { item in
-                        MediaThumbnail(
-                            item: item,
-                            fileStore: fileStore,
-                            selecting: selectingMedia,
-                            isSelected: selectedMedia.contains(item.id)
-                        ) {
-                            controller.removeMedia(id: item.id, fileStore: fileStore)
-                        } onOpen: {
-                            if selectingMedia {
-                                toggleSelection(item.id)
-                            } else {
-                                // Video opens tall. AVPlayerViewController draws its
-                                // controls on translucent glass, and on a half-height sheet
-                                // that glass sits directly on top of the picture, where a
-                                // bright frame washes the buttons out until they read as
-                                // disabled. At full height they land on the letterbox black
-                                // above and below instead.
-                                viewerDetent = item.kind == .video ? .large : .medium
-                                viewingMedia = ViewingMedia(id: item.id)
-                            }
-                        }
-                    }
-                }
-            }
-            .frame(height: 88)
-
-            mediaSelectionBar
-        }
-    }
-
     /// Selection lives under the strip rather than in the toolbar: the toolbar belongs to the
     /// entry, and this acts on the photos.
     @ViewBuilder
@@ -466,6 +665,18 @@ struct CaptureView: View {
 
                 Spacer()
 
+                // Covers in the order the photos sit in the entry, so picking several in one go
+                // gives a predictable grid.
+                Button {
+                    let chosen = controller.orderedMedia.map(\.id).filter { selectedMedia.contains($0) }
+                    controller.setCovers(chosen)
+                    Haptics.picked()
+                    endSelection()
+                } label: {
+                    Label("Cover", systemImage: "photo.badge.checkmark")
+                }
+                .disabled(selectedMedia.isEmpty)
+
                 Button {
                     showingMoveSheet = true
                 } label: {
@@ -474,30 +685,13 @@ struct CaptureView: View {
                 .disabled(selectedMedia.isEmpty)
             }
             .font(.footnote)
-        } else {
-            HStack(spacing: 14) {
-                Button {
-                    selectingMedia = true
-                } label: {
-                    Label("Select", systemImage: "checkmark.circle")
-                }
-
-                // The strip is a glance, not a workspace. This is where you go to see
-                // them at a usable size, put them in an order, and find the one that
-                // failed to upload.
-                Button {
-                    showingAttachments = true
-                } label: {
-                    Label("See all \(controller.orderedMedia.count)", systemImage: "square.grid.2x2")
-                }
-                if let moveNotice {
-                    Text(moveNotice)
-                        .foregroundStyle(.secondary)
-                        .transition(.opacity)
-                }
-                Spacer()
-            }
-            .font(.footnote)
+        } else if let moveNotice {
+            // Selecting and seeing them all live in the "…" menu and on the last tile, so the
+            // only thing left to say here is what a move just did.
+            Text(moveNotice)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .transition(.opacity)
         }
     }
 
@@ -567,32 +761,27 @@ struct CaptureView: View {
     /// on the next. Two lines rather than two bars, and nothing important is ever a scroll
     /// away.
     private var actionPanel: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                saveStateLabel
-                Spacer(minLength: 8)
-            }
-
-            HStack(spacing: 10) {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
                 PhotosPicker(
                     selection: $photoSelections, maxSelectionCount: nil,
                     matching: .any(of: [.images, .videos])
                 ) {
-                    CompactAction(symbol: "photo.on.rectangle.angled", title: "Photos", tint: Brand.Mode.photo)
+                    CompactAction(symbol: "photo.on.rectangle.angled", title: "Photos", tint: Brand.muted, accent: Brand.Mode.photo)
                 }
                 // The only control in this row that is not a Button, so it was the only one
                 // with no press treatment: no shrink, no dim, no tap back. That is most of
                 // what "it feels like a picture rather than a button" is.
-                .buttonStyle(.pressable)
+                .buttonStyle(.toolbarAction)
                 .disabled(recorder.isRecording)
 
                 Button {
                     Haptics.committed()
                     beginRecording()
                 } label: {
-                    CompactAction(symbol: "mic.fill", title: "Record", tint: Brand.Mode.voice)
+                    CompactAction(symbol: "mic", title: "Record", tint: Brand.muted, accent: Color(uiColor: .systemRed))
                 }
-                .buttonStyle(.pressable)
+                .buttonStyle(.toolbarAction)
                 .disabled(recorder.isRecording)
 
                 // Organising sits beside formatting rather than replacing it. Formatting may
@@ -602,13 +791,14 @@ struct CaptureView: View {
                     Task { await organise() }
                 } label: {
                     CompactAction(
-                        symbol: "list.bullet.rectangle",
+                        symbol: "sparkles",
                         title: "Arrange",
-                        tint: Brand.ai,
+                        // The one coloured control: it's the thing only this app does.
+                        tint: Brand.violet,
                         busy: isOrganising
                     )
                 }
-                .buttonStyle(.pressable)
+                .buttonStyle(.toolbarAction)
                 // Disabled while it runs, not just visually busy. The coordinator already
                 // refuses a second run for the same draft, so extra taps were harmless — but
                 // a button that accepts a press and does nothing is how somebody learns the
@@ -618,18 +808,21 @@ struct CaptureView: View {
                 Button {
                     showingSendSheet = true
                 } label: {
-                    CompactAction(symbol: "square.and.arrow.up", title: "Send", tint: Brand.muted)
+                    CompactAction(symbol: "square.and.arrow.up", title: "Send", tint: Brand.muted, accent: Brand.Mode.text)
                 }
-                .buttonStyle(.pressable)
+                .buttonStyle(.toolbarAction)
                 .disabled(controller.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .overlay { if recorder.isActive { recordingCapsule } }
             .animation(.easeOut(duration: 0.18), value: recorder.isActive)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 10)
-        .padding(.bottom, 8)
-        .background(.bar)
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+        .background(Color(uiColor: .systemBackground))
+        .overlay(alignment: .top) {
+            Rectangle().fill(Brand.edge).frame(height: 0.5)
+        }
     }
 
     /// The bar that replaces the action row while a recording is going.
@@ -764,11 +957,11 @@ struct CaptureView: View {
                 .foregroundStyle(Brand.waiting)
                 .lineLimit(1)
             case .saved:
-                Label("Saved", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(Brand.reached)
+                Text("\u{00B7} Saved")
+                    .foregroundStyle(Brand.muted)
             }
         }
-        .font(Type.caption(12, .semibold))
+        .font(Type.caption(12.5, .medium))
         .transition(.opacity)
         .animation(.easeOut(duration: 0.2), value: controller.pendingTranscriptionCount)
     }
@@ -1040,8 +1233,10 @@ struct CaptureView: View {
 ///
 /// A view rather than a method on `CaptureView`: `PhotosPicker`'s label closure is
 /// nonisolated and cannot call a main-actor member.
-/// A compact action for the pinned panel: icon only, because the panel has to carry three
-/// of them plus the primary on one line.
+/// One action in the entry's toolbar: an icon and its name, no tile behind it.
+///
+/// They used to sit on four differently coloured tiles, which read as four separate features
+/// rather than one toolbar. Plain and grey now, so the one coloured action stands out.
 struct CompactAction: View {
     let symbol: String
     /// Said out loud, under the icon.
@@ -1057,6 +1252,13 @@ struct CompactAction: View {
     /// against a server that has to wake up first. A static icon swap was not enough to read
     /// as "working" — it looked like nothing had happened, so people pressed it again.
     var busy: Bool = false
+    /// The colour it lights up in while pressed. Defaults to its resting tint.
+    var accent: Color? = nil
+
+    @Environment(\.actionPressed) private var pressed
+    @Environment(\.isEnabled) private var isEnabled
+
+    private var color: Color { pressed ? (accent ?? tint) : tint }
 
     var body: some View {
         VStack(spacing: 4) {
@@ -1067,124 +1269,27 @@ struct CompactAction: View {
                         .tint(tint)
                 } else {
                     Image(systemName: symbol)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(tint)
+                        .font(.system(size: 19, weight: pressed ? .semibold : .regular))
+                        .foregroundStyle(color)
+                        .symbolEffect(.bounce, value: pressed)
                 }
             }
-            .frame(width: 46, height: 40)
+            .frame(width: 52, height: 32)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill((accent ?? tint).opacity(pressed ? 0.2 : 0))
+            )
             .frame(maxWidth: .infinity)
-            .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
 
             Text(title)
-                .font(Type.caption(10.5, .medium))
-                .foregroundStyle(tint.opacity(0.85))
+                .font(Type.caption(10.5, pressed ? .semibold : .medium))
+                .foregroundStyle(color)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity)
-    }
-}
-
-struct ActionCircle: View {
-    let title: String
-    let symbol: String
-    let tint: Color
-
-    var body: some View {
-        VStack(spacing: 7) {
-            Image(systemName: symbol)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(tint)
-                .frame(width: 52, height: 52)
-                .background(tint.opacity(0.13), in: Circle())
-            Text(title).font(Type.caption(11.5, .medium)).foregroundStyle(Brand.muted)
-        }
-        .frame(maxWidth: .infinity)
-    }
-}
-
-struct MediaThumbnail: View {
-    let item: MediaItem
-    let fileStore: MediaFileStore
-    var selecting: Bool = false
-    var isSelected: Bool = false
-    let onRemove: () -> Void
-    var onOpen: () -> Void = {}
-
-    var body: some View {
-        ZStack(alignment: .topTrailing) {
-            Button(action: onOpen) {
-                thumbnail
-                    .frame(width: 80, height: 80)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay {
-                        if selecting && isSelected {
-                            RoundedRectangle(cornerRadius: 8)
-                                .strokeBorder(Color.accentColor, lineWidth: 3)
-                        }
-                    }
-                    .opacity(selecting && !isSelected ? 0.55 : 1)
-                    .overlay {
-                        if !selecting, item.uploadStatus == .failed, !item.isTooLargeToSend {
-                            RoundedRectangle(cornerRadius: 8)
-                                .strokeBorder(Brand.failed, lineWidth: 2)
-                        }
-                    }
-            }
-            .buttonStyle(.plain)
-
-            // Which one did not make it.
-            //
-            // The failure was recorded on the item all along and shown nowhere, so a video
-            // that never uploaded looked exactly like one that did. "Something failed" is
-            // not useful when there are nine attachments; this marks the one.
-            if !selecting, item.uploadStatus == .failed, !item.isTooLargeToSend {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.white, Brand.failed)
-                    .padding(2)
-            }
-
-            // While selecting, the corner control is the tick — offering delete in the same
-            // spot would put "remove for good" one slip away from "choose".
-            if selecting {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isSelected ? Color.accentColor : .white, .black.opacity(0.6))
-                    .padding(2)
-            } else {
-                Button(action: onRemove) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.white, .black.opacity(0.6))
-                }
-                .padding(2)
-            }
-        }
-    }
-
-    @State private var image: UIImage?
-
-    @ViewBuilder
-    private var thumbnail: some View {
-        if let image {
-            ZStack {
-                Image(uiImage: image).resizable().scaledToFill()
-                if item.kind == .video {
-                    // So a still frame reads as a video at a glance.
-                    Image(systemName: "play.circle.fill")
-                        .foregroundStyle(.white)
-                        .shadow(radius: 2)
-                }
-            }
-        } else {
-            ZStack {
-                Color.secondary.opacity(0.2)
-                Image(systemName: item.kind == .video ? "video.fill" : "photo")
-                    .foregroundStyle(.secondary)
-            }
-            .task {
-                image = await ThumbnailCache.shared.thumbnail(for: item, fileStore: fileStore)
-            }
-        }
+        .opacity(isEnabled ? 1 : 0.4)
+        .animation(.easeOut(duration: 0.12), value: pressed)
     }
 }
 
@@ -1234,5 +1339,36 @@ struct EntryDayPicker: View {
                 }
             }
         }
+    }
+}
+
+/// A photo in the entry, cropped to whatever space it's given. The image is an overlay on a
+/// flexible colour so a wide photo can't widen the grid it sits in.
+struct EntryPhotoTile: View {
+    let item: MediaItem
+    let fileStore: MediaFileStore
+    var maxPixel: CGFloat = 300
+    @State private var image: UIImage?
+
+    var body: some View {
+        Brand.surface
+            .overlay {
+                if let image {
+                    Image(uiImage: image).resizable().scaledToFill()
+                }
+            }
+            .clipped()
+            .overlay(alignment: .bottomLeading) {
+                if item.kind == .video {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .shadow(radius: 3)
+                        .padding(6)
+                }
+            }
+            .task(id: item.id) {
+                image = await ThumbnailCache.shared.thumbnail(for: item, fileStore: fileStore, maxPixel: maxPixel)
+            }
     }
 }

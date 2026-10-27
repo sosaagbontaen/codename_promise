@@ -340,14 +340,18 @@ private struct DaySection: View {
                     displayedComponents: .date
                 )
 
+                let existing = model.entries(on: day.day)
                 Picker("Entry", selection: Binding(
-                    get: { day.entry },
+                    get: { day.entry.shown(among: existing) },
                     set: { model.plan[dayId]?.entry = $0 }
                 )) {
-                    Text("Latest that day").tag(CapturePlan.EntryChoice.latest)
-                    Text("A new entry").tag(CapturePlan.EntryChoice.new)
-                    ForEach(model.entries(on: day.day)) { entry in
-                        Text(entry.title).tag(CapturePlan.EntryChoice.existing(entry.id))
+                    Text("New entry").tag(CapturePlan.EntryChoice.new)
+                    if !existing.isEmpty {
+                        Section("Existing entries") {
+                            ForEach(existing) { entry in
+                                Text(entry.title).tag(CapturePlan.EntryChoice.existing(entry.id))
+                            }
+                        }
                     }
                 }
 

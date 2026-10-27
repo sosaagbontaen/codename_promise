@@ -1,14 +1,19 @@
 import CodenamePromiseCore
 import SwiftUI
 
-/// Connect a Notion workspace and choose where entries go.
+/// Settings, as a home screen of topics rather than one long page.
 ///
-/// The two states are deliberately distinct on screen: signing in and picking a database are
-/// separate steps, and stopping halfway is a normal place to be rather than a broken one.
-/// Nothing here is required — an entry that never syncs is complete (tenet 4), so this screen
+/// It used to be every control the app has in one scrolling list, footnotes and all, which
+/// read like a spec rather than a place you'd want to be. Now each topic is a tile that says
+/// how it's set at a glance, and opens a short page with just its own controls.
+///
+/// Nothing here is required. An entry that never syncs is complete (tenet 4), so the screen
 /// never nags.
 struct SettingsView: View {
     @Environment(AppServices.self) private var services
+    @Environment(\.dismiss) private var dismiss
+    /// False when this is a tab rather than a sheet: a tab has nothing to dismiss.
+    var showsDone = true
 
     @State private var coordinator: ConnectionCoordinator?
     @State private var authenticator = WebAuthenticator()
@@ -32,28 +37,65 @@ struct SettingsView: View {
     @State private var showingExport = false
     @State private var showingImport = false
     @State private var showingFeedback = false
+    @State private var showingServer = false
+    @State private var corrections = NameCorrectionStore().load().corrections
+    @State private var trashCount = 0
+
+    /// One page per setting.
+    enum Page: Hashable {
+        case look, backup, mac, names, sync, reminders, export, help, trash
+    }
 
     var body: some View {
         NavigationStack {
-            Group {
-                if let coordinator {
-                    content(coordinator)
-                } else {
-                    List {
-                        serverSection
-                        Section {
-                            Text("Point this app at a running backend to enable dictation and arranging. Your entries are saved on this device either way.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                        localSections
+            List {
+                Section("App") {
+                    row(.look, "Appearance", "circle.lefthalf.filled", Brand.violet,
+                        "\(appearance.label) mode \u{00B7} \(journalFont.label)")
+                }
+                Section("Data") {
+                    row(.backup, "Backup", services.isBackedUp ? "On, to iCloud" : "This iPhone only") {
+                        SettingsIcon.iCloud
                     }
+                    row(.export, "Export journal", "square.and.arrow.up.fill", Brand.Mode.extra, nil)
+                    row(.trash, "Recently Deleted", "trash.fill", Color(uiColor: .systemGray), trashStatus)
+                }
+                Section("Connections") {
+                    row(.mac, "Your Mac", "laptopcomputer", Brand.violet,
+                        CaptureInbox.isMacFolderConnected ? "Connected" : "Not connected")
+                    row(.sync, "Notion", syncStatus.text, alert: syncStatus.alert) {
+                        SettingsIcon.notion
+                    }
+                }
+                Section("Personalization") {
+                    row(.names, "Dictionary", "character.book.closed.fill", Brand.Mode.photo, dictionaryStatus)
+                    row(.reminders, "Reminders", "bell.fill", Brand.waiting,
+                        reminderStatus)
+                }
+                Section {
+                    row(.help, "Help and feedback", "questionmark.circle.fill", Brand.violet, nil)
+                } header: {
+                    Text("Support")
+                } footer: {
+                    Text(versionLine)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 12)
                 }
             }
             .scrollContentBackground(.hidden)
             .background(Brand.ground)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: Page.self) { page in
+                pageView(page)
+            }
+            .toolbar {
+                if showsDone {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { dismiss() }
+                    }
+                }
+            }
             .sheet(isPresented: $showingExport) {
                 if let store = services.store, let files = services.files {
                     ExportView(store: store, fileStore: files)
@@ -65,13 +107,10 @@ struct SettingsView: View {
                 }
             }
             .sheet(isPresented: $showingFeedback) { FeedbackView() }
-            // No "Done". This screen was a sheet before the tab bar existed, and the button
-            // came along with it - but a tab root has nothing to dismiss, so `dismiss()` was
-            // a no-op and the button did visibly nothing when pressed. You leave Settings by
-            // tapping another tab.
         }
         .task {
             await services.reminders.refreshAuthorization()
+            trashCount = (try? services.store?.trashedDrafts().count) ?? 0
             serverURL = AppServices.backendSettings.overrideValue
                 ?? AppServices.backendSettings.bundled ?? ""
             if coordinator == nil, let service = services.connectionService {
@@ -81,115 +120,142 @@ struct SettingsView: View {
         }
     }
 
-    @ViewBuilder
-    private func content(_ coordinator: ConnectionCoordinator) -> some View {
-        List {
-            if case .failed(let message) = coordinator.phase {
-                Section {
-                    Label(message, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(Brand.failed)
-                    Button("Dismiss") { coordinator.dismissError() }
-                }
-            }
+    // MARK: - Home
 
-            // Always, and above everything else.
-            //
-            // This used to live inside the `else` below, so the address and API key fields —
-            // the only controls that can repair a connection — were hidden exactly when the
-            // connection was broken. An unreachable server produced a red banner and no way
-            // to change the address it was failing to reach, and rebuilding could not help,
-            // because a stored override outranks whatever the build was given. A dead end
-            // that looked like the app being broken.
-            serverSection
+    private var trashStatus: String? {
+        trashCount == 0 ? nil : "\(trashCount) \(trashCount == 1 ? "entry" : "entries"), kept for 30 days"
+    }
 
-            if coordinator.isUnavailable {
-                Section {
-                    // Notion specifically. Nothing here is the user's to fix.
-                    Label(
-                        "This server doesn't have Notion set up. Nothing to do here yet.",
-                        systemImage: "info.circle"
-                    )
-                    .foregroundStyle(.secondary)
-                }
-            } else {
-                statusSection(coordinator)
-                if coordinator.status.connected {
-                    databaseSection(coordinator)
-                    disconnectSection(coordinator)
-                }
-            }
-
-            Section {
-                Text("Syncing is optional. Entries live on this device whether or not Notion is connected.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-
-            localSections
-        }
-        .overlay {
-            if coordinator.phase == .loading && coordinator.databases.isEmpty {
-                ProgressView()
-            }
-        }
-        .confirmationDialog(
-            "Disconnect Notion?",
-            isPresented: $confirmingDisconnect,
-            titleVisibility: .visible
-        ) {
-            Button("Disconnect", role: .destructive) {
-                Task { await coordinator.disconnect() }
-            }
-        } message: {
-            Text("Your entries stay on this device. Nothing is deleted from Notion.")
+    /// "Daily at 8:00 PM", "Sundays at 9:00 AM", or "Off".
+    private var reminderStatus: String {
+        let reminders = services.reminders
+        guard reminders.isEnabled else { return "Off" }
+        let time = (Calendar.current.date(
+            bySettingHour: reminders.minuteOfDay / 60, minute: reminders.minuteOfDay % 60, second: 0, of: Date()
+        ) ?? Date()).formatted(date: .omitted, time: .shortened)
+        switch reminders.frequency {
+        case .whenAway: return "When you\u{2019}ve been away"
+        case .daily: return "Daily at \(time)"
+        case .weekly: return "\(Calendar.current.weekdaySymbols[reminders.weekday - 1])s at \(time)"
         }
     }
 
-    /// Backup, said in terms of where the journal is rather than which technology moves it.
-    ///
-    /// Two things here are deliberate. The switch reports what actually happened rather than
-    /// what was asked for, because a control reading iCloud while nothing syncs is worse than
-    /// no control at all. And the footer says the switch takes effect next launch instead of
-    /// quietly doing nothing until then: the store and the media root are both chosen when
-    /// they are opened.
+    /// "3 words: Lizzy, Aidan, …", so the row says what's in it.
+    private var dictionaryStatus: String {
+        guard !corrections.isEmpty else { return "Words to always spell your way" }
+        let shown = corrections.prefix(3).map(\.meant).joined(separator: ", ")
+        let more = corrections.count > 3 ? ", \u{2026}" : ""
+        return "\(corrections.count) \(corrections.count == 1 ? "word" : "words"): \(shown)\(more)"
+    }
+
+    /// One setting: a small coloured icon, its name, and how it's set.
+    private func row(
+        _ page: Page, _ title: String, _ symbol: String, _ tint: Color, _ status: String?,
+        alert: Bool = false
+    ) -> some View {
+        row(page, title, status, alert: alert) {
+            Image(systemName: symbol)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 30, height: 30)
+                .background(tint, in: RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    /// The same row with an icon of its own, for services with a recognisable mark.
+    private func row<Icon: View>(
+        _ page: Page, _ title: String, _ status: String?, alert: Bool = false,
+        @ViewBuilder icon: () -> Icon
+    ) -> some View {
+        NavigationLink(value: page) {
+            HStack(spacing: 12) {
+                icon()
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .foregroundStyle(Brand.ink)
+                    if let status {
+                        Text(status)
+                            .font(.footnote)
+                            .foregroundStyle(alert ? Brand.failed : Brand.muted)
+                    }
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    private var syncStatus: (text: String, alert: Bool) {
+        guard let coordinator else { return ("Not set up", false) }
+        if case .failed = coordinator.phase { return ("Can\u{2019}t reach it", true) }
+        if coordinator.isUnavailable { return ("Not available", false) }
+        if coordinator.status.ready { return (coordinator.status.workspaceName ?? "Connected", false) }
+        if coordinator.status.connected { return ("Pick a database", true) }
+        return ("Not connected", false)
+    }
+
+    private var versionLine: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = info?["CFBundleVersion"] as? String ?? ""
+        return "DumpNotes \(version) (\(build))"
+    }
+
+    // MARK: - Pages
+
     @ViewBuilder
-    private var backupSection: some View {
+    private func pageView(_ page: Page) -> some View {
+        switch page {
+        case .trash:
+            if let store = services.store, let files = services.files {
+                RecentlyDeletedView(store: store, fileStore: files)
+                    .onDisappear { trashCount = (try? store.trashedDrafts().count) ?? 0 }
+            }
+        case .names:
+            if let store = services.store {
+                NameCorrectionsView(store: store)
+                    .onDisappear { corrections = NameCorrectionStore().load().corrections }
+            }
+        default:
+            List {
+                pageContent(page)
+            }
+            .scrollContentBackground(.hidden)
+            .background(Brand.ground)
+            .navigationTitle(title(of: page))
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    private func title(of page: Page) -> String {
+        switch page {
+        case .look: "Appearance"
+        case .backup: "Backup"
+        case .mac: "Your Mac"
+        case .names: "Dictionary"
+        case .sync: "Notion"
+        case .reminders: "Reminders"
+        case .export: "Export journal"
+        case .help: "Help and feedback"
+        case .trash: "Recently Deleted"
+        }
+    }
+
+    @ViewBuilder
+    private func pageContent(_ page: Page) -> some View {
+        switch page {
+        case .look:
         Section {
-            Toggle(isOn: Binding(
-                get: { backupModeRaw == BackupMode.iCloud.rawValue },
-                set: { backupModeRaw = ($0 ? BackupMode.iCloud : .thisPhoneOnly).rawValue }
-            )) {
-                Label("Back up to iCloud", systemImage: "icloud")
+            Picker(selection: $appearance) {
+                ForEach(Appearance.allCases) { Text($0.label).tag($0) }
+            } label: {
+                Label("Appearance", systemImage: "circle.lefthalf.filled")
             }
-
-            if let why = services.backupUnavailable {
-                Label(why, systemImage: "exclamationmark.circle")
-                    .font(.footnote)
-                    .foregroundStyle(Brand.waiting)
-            } else if backupModeRaw == BackupMode.iCloud.rawValue, !services.isBackedUp {
-                Label(
-                    "Restart the app to start backing up.",
-                    systemImage: "arrow.clockwise"
-                )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            }
-        } header: {
-            Text("Backup")
+            .pickerStyle(.menu)
         } footer: {
-            // Says whose iCloud, because "backed up" in a journalling app raises exactly the
-            // question this sentence answers.
-            Text("Your own iCloud, not our servers. We never hold a copy and could not read one.\n\nPhotos and recordings saved before you turn this on stay where they are and are not moved, so they travel in your iPhone backup rather than in iCloud. Anything added afterwards is backed up.")
+            Text("Dark by default. Most journaling happens at the end of a day.")
         }
-    }
 
-    /// Export and feedback sit here regardless of whether a backend is configured, because
-    /// neither needs one. Getting your journal out must never depend on a server being up
-    /// -- that would make the backup fail in exactly the circumstances you need it.
-    @ViewBuilder
-    private var localSections: some View {
-        AppIconPicker()
-
+            AppIconPicker()
         // Set in the face itself, because nobody can pick a reading font from its name.
         Section {
             ForEach(JournalFont.allCases) { choice in
@@ -230,78 +296,166 @@ struct SettingsView: View {
             // about what it does, so it read as a heading for settings *about* entries.
             Text("Journal font")
         } footer: {
-            Text("Sets the type your entries are shown in: titles, text and previews. Buttons and labels keep the system font.")
+            Text("The type your entries are written and shown in.")
         }
 
-        Section {
-            Picker(selection: $appearance) {
-                ForEach(Appearance.allCases) { Text($0.label).tag($0) }
-            } label: {
-                Label("Appearance", systemImage: "circle.lefthalf.filled")
+
+        case .backup:
+            backupSection
+
+        case .mac:
+            MacInboxSection()
+
+        case .names, .trash:
+            EmptyView()
+
+        case .sync:
+            syncContent
+
+        case .reminders:
+            Section {
+                Toggle(isOn: reminderBinding) {
+                    Label("Remind me to write", systemImage: "bell")
+                }
+            } footer: {
+                if !services.reminders.isEnabled { Text(reminderFooter) }
             }
-            .pickerStyle(.menu)
-        } footer: {
-            Text("Dark by default. The brand was drawn that way, and most dumping happens at the end of a day.")
-        }
 
-        backupSection
-
-        MacInboxSection()
-
-        Section {
-            if let store = services.store {
-                NavigationLink {
-                    NameCorrectionsView(store: store)
-                } label: {
-                    Label("Names it gets wrong", systemImage: "character.cursor.ibeam")
+            if services.reminders.isEnabled {
+                Section {
+                    Picker("How often", selection: reminderSetting(\.frequency)) {
+                        ForEach(ReminderScheduler.Frequency.allCases) { Text($0.label).tag($0) }
+                    }
+                    if services.reminders.frequency == .weekly {
+                        Picker("Day", selection: reminderSetting(\.weekday)) {
+                            ForEach(1...7, id: \.self) { day in
+                                Text(Calendar.current.weekdaySymbols[day - 1]).tag(day)
+                            }
+                        }
+                    }
+                    if services.reminders.frequency != .whenAway {
+                        DatePicker("Time", selection: reminderTime, displayedComponents: .hourAndMinute)
+                    }
+                } footer: {
+                    Text(services.reminders.frequency == .whenAway
+                         ? "One nudge after \(ReminderScheduler.idleDays) days without an entry, at the hour you usually write."
+                         : "Scheduled on this iPhone. Nothing about your habits leaves it.")
                 }
             }
-        } footer: {
-            Text("Teach it how to spell the people in your life, once.")
+
+        case .export:
+            Section {
+                Button {
+                    showingExport = true
+                } label: {
+                    Label("Export your journal", systemImage: "square.and.arrow.up.on.square")
+                }
+                Button {
+                    showingImport = true
+                } label: {
+                    Label("Import a journal", systemImage: "square.and.arrow.down.on.square")
+                }
+            } footer: {
+                Text("Markdown and media, readable without this app. Importing only ever adds, so doing it twice is safe.")
+            }
+
+        case .help:
+            Section {
+                Button {
+                    showingFeedback = true
+                } label: {
+                    Label("Send feedback", systemImage: "envelope")
+                }
+                Button {
+                    UserDefaults.standard.set(false, forKey: HomeView.onboardedKey)
+                    Haptics.picked()
+                } label: {
+                    Label("Show the welcome again", systemImage: "sparkles.rectangle.stack")
+                }
+            } footer: {
+                Text("Feedback never includes your entries. The welcome comes back next time you open the app.")
+            }
+        }
+    }
+
+    /// Notion first, the server behind it folded away. The address and key are what make
+    /// everything else work, so they're always reachable, including when the connection is
+    /// broken, but they're plumbing, not what anyone comes here to see.
+    @ViewBuilder
+    private var syncContent: some View {
+        if let coordinator {
+            if case .failed(let message) = coordinator.phase {
+                Section {
+                    Label(message, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(Brand.failed)
+                    Button("Dismiss") { coordinator.dismissError() }
+                }
+            }
+            if coordinator.isUnavailable {
+                Section {
+                    Label("This server doesn\u{2019}t have Notion set up.", systemImage: "info.circle")
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                statusSection(coordinator)
+                if coordinator.status.connected {
+                    databaseSection(coordinator)
+                    disconnectSection(coordinator)
+                }
+            }
+        } else {
+            Section {
+                Text("Connect a server to send entries to Notion and to turn recordings into text. Your entries are saved on this iPhone either way.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
 
         Section {
-            Button {
-                showingExport = true
-            } label: {
-                Label("Export your journal", systemImage: "square.and.arrow.up.on.square")
-            }
-            Button {
-                showingImport = true
-            } label: {
-                Label("Import a journal", systemImage: "square.and.arrow.down.on.square")
+            DisclosureGroup("Server", isExpanded: Binding(
+                get: { showingServer || coordinator == nil },
+                set: { showingServer = $0 }
+            )) {
+                serverRows
             }
         } footer: {
-            Text("Markdown and media, saved wherever you like. Works offline and needs nothing else to read it.\n\nImport takes a folder an export produced, so a journal can come back after a new phone or a reinstall. It only ever adds: nothing already here is changed, and importing the same folder twice is safe.\n\nYour journal is part of your iPhone backup too, so it comes across to a new phone on its own. An export is the copy that doesn\u{2019}t need this app at all.")
+            Text("Syncing is optional. Entries live on this iPhone whether or not Notion is connected.")
         }
+    }
 
+    /// Backup, said in terms of where the journal is rather than which technology moves it.
+    ///
+    /// Two things here are deliberate. The switch reports what actually happened rather than
+    /// what was asked for, because a control reading iCloud while nothing syncs is worse than
+    /// no control at all. And the footer says the switch takes effect next launch instead of
+    /// quietly doing nothing until then: the store and the media root are both chosen when
+    /// they are opened.
+    @ViewBuilder
+    private var backupSection: some View {
         Section {
-            Button {
-                UserDefaults.standard.set(false, forKey: HomeView.onboardedKey)
-                Haptics.picked()
-            } label: {
-                Label("Show the welcome again", systemImage: "sparkles.rectangle.stack")
+            Toggle(isOn: Binding(
+                get: { backupModeRaw == BackupMode.iCloud.rawValue },
+                set: { backupModeRaw = ($0 ? BackupMode.iCloud : .thisPhoneOnly).rawValue }
+            )) {
+                Label("Back up to iCloud", systemImage: "icloud")
+            }
+
+            if let why = services.backupUnavailable {
+                Label(why, systemImage: "exclamationmark.circle")
+                    .font(.footnote)
+                    .foregroundStyle(Brand.waiting)
+            } else if backupModeRaw == BackupMode.iCloud.rawValue, !services.isBackedUp {
+                Label(
+                    "Restart the app to start backing up.",
+                    systemImage: "arrow.clockwise"
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
             }
         } footer: {
-            Text("Reappears next time you open the app. Useful for showing somebody what this is.")
-        }
-
-        Section {
-            Button {
-                showingFeedback = true
-            } label: {
-                Label("Send feedback", systemImage: "envelope")
-            }
-        } footer: {
-            Text("Ideas, problems, or just hello. Nothing from your entries is ever attached.")
-        }
-
-        Section {
-            Toggle(isOn: reminderBinding) {
-                Label("Remind me to write", systemImage: "bell")
-            }
-        } footer: {
-            Text(reminderFooter)
+            // Says whose iCloud, because "backed up" in a journalling app raises exactly the
+            // question this sentence answers.
+            Text("Your own iCloud, not our servers. Photos added before you turn this on stay in your iPhone backup.")
         }
     }
 
@@ -317,6 +471,31 @@ struct SettingsView: View {
                 } else {
                     services.reminders.disable()
                 }
+            }
+        )
+    }
+
+    /// A reminder preference that reschedules as soon as it changes.
+    private func reminderSetting<Value>(_ keyPath: ReferenceWritableKeyPath<ReminderScheduler, Value>) -> Binding<Value> {
+        Binding(
+            get: { services.reminders[keyPath: keyPath] },
+            set: { value in
+                services.reminders[keyPath: keyPath] = value
+                if let store = services.store { services.reminders.reschedule(using: store) }
+            }
+        )
+    }
+
+    private var reminderTime: Binding<Date> {
+        Binding(
+            get: {
+                let minutes = services.reminders.minuteOfDay
+                return Calendar.current.date(bySettingHour: minutes / 60, minute: minutes % 60, second: 0, of: Date()) ?? Date()
+            },
+            set: { date in
+                let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
+                services.reminders.minuteOfDay = (parts.hour ?? 20) * 60 + (parts.minute ?? 0)
+                if let store = services.store { services.reminders.reschedule(using: store) }
             }
         )
     }
@@ -339,8 +518,7 @@ struct SettingsView: View {
     /// phone. Without this field, running on a real device just says "no backend configured"
     /// with nothing the user can do about it.
     @ViewBuilder
-    private var serverSection: some View {
-        Section {
+    private var serverRows: some View {
             TextField("http://192.168.1.20:8077", text: $serverURL)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -412,21 +590,14 @@ struct SettingsView: View {
                     .font(.footnote)
                     .foregroundStyle(Self.tint(for: checkResult))
             }
-        } header: {
-            Text("Server")
-        } footer: {
-            if let bundled = AppServices.backendSettings.bundled,
-               AppServices.backendSettings.isUsingOverride {
-                Text("Overriding the built-in address (\(bundled)). Leave blank to go back to it. On a physical device use your Mac's IP on the local network, not localhost.")
-            } else {
-                Text("A hosted address like https://your-app.onrender.com, or your Mac's IP on the local network. Localhost points at the phone itself. Leave blank to use the built-in address.")
-            }
-        }
+            Text("A hosted address, or your Mac\u{2019}s IP on the local network. Leave blank for the built-in one.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
     }
 
     @ViewBuilder
     private func statusSection(_ coordinator: ConnectionCoordinator) -> some View {
-        Section("Workspace") {
+        Section {
             if coordinator.status.connected {
                 HStack {
                     Label(
@@ -448,7 +619,7 @@ struct SettingsView: View {
                 }
                 .disabled(coordinator.phase == .authorizing || coordinator.authorizationURL == nil)
 
-                Text("Opens Notion so you can sign in and choose what to share. Your password and access token never reach this app.")
+                Text("You sign in on Notion\u{2019}s own page. Your password never reaches this app.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -562,6 +733,48 @@ struct SettingsView: View {
             await coordinator.finishAuthorizing(cancelled: true)
         case .failed(let message):
             coordinator.authorizationFailed(message)
+        }
+    }
+}
+
+/// Icons for the services people already know by their marks.
+enum SettingsIcon {
+    /// iCloud as iOS Settings draws it: Apple's cloud, white, on a blue gradient.
+    static var iCloud: some View {
+        Image(systemName: "icloud.fill")
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: 30, height: 30)
+            .background(
+                LinearGradient(
+                    colors: [Color(red: 0.36, green: 0.73, blue: 1.0), Color(red: 0.0, green: 0.48, blue: 1.0)],
+                    startPoint: .top, endPoint: .bottom
+                ),
+                in: RoundedRectangle(cornerRadius: 8)
+            )
+    }
+
+    /// Notion's mark: a black N on a white tile with a heavy black outline. Drawn rather than
+    /// bundled; swap in the official asset if one is added to the catalogue as "NotionLogo".
+    @ViewBuilder
+    static var notion: some View {
+        if UIImage(named: "NotionLogo") != nil {
+            Image("NotionLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 30, height: 30)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+        } else {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8).fill(.white)
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(.black, lineWidth: 2)
+                    .padding(4)
+                Text("N")
+                    .font(.system(size: 15, weight: .black, design: .serif))
+                    .foregroundStyle(.black)
+            }
+            .frame(width: 30, height: 30)
         }
     }
 }

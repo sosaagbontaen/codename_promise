@@ -1,0 +1,1069 @@
+import CodenamePromiseCore
+import SwiftUI
+
+/// The journal, organised by time.
+///
+/// A calendar first: which days have something, which don't, and what happened on the one
+/// you tap. It answers "what happened that day?", where a wall of cards only answered "what
+/// have I saved?". The list is the other way in, for scanning months at a time.
+///
+/// The list holds `DraftSummary` snapshots, never models: a view kept alive to animate a
+/// deleted row away would otherwise read a detached model and trap (ADR-009a).
+struct JournalView: View {
+    @Environment(AppServices.self) private var services
+
+    enum Mode: String, CaseIterable { case calendar, list, grid
+
+        var symbol: String {
+            switch self {
+            case .calendar: "calendar"
+            case .list: "list.bullet"
+            case .grid: "square.grid.2x2"
+            }
+        }
+        var label: String {
+            switch self {
+            case .calendar: "Calendar"
+            case .list: "List"
+            case .grid: "Grid"
+            }
+        }
+    }
+
+    @AppStorage("journalMode") private var mode: Mode = .calendar
+    @State private var drafts: [DraftSummary] = []
+    /// Derived from `drafts` once per refresh rather than on every redraw. The calendar used
+    /// to rebuild the per-day table inside each of its ~35 cells, every render.
+    @State private var kinds: [CalendarDay: DayKind] = [:]
+    @State private var months: [(key: String, label: String, entries: [DraftSummary])] = []
+    @State private var artCache = EntryArtCache()
+    @State private var loadError: String?
+    @State private var month = Self.startOfMonth(Date())
+    @State private var selectedDay = CalendarDay.today()
+    @State private var path: [OpeningDraft] = []
+
+    @State private var showingQuickDump = false
+    /// The day the dump sheet opens on, when it was opened for one.
+    @State private var dumpDay: CalendarDay?
+    @State private var showingInboxDigest = false
+
+    // Select mode: entered by holding an entry, which arrives already selected.
+    @State private var selecting = false
+    @State private var selection: Set<UUID> = []
+    /// Set by a long press so the tap that ends it doesn't also open or toggle the entry.
+    @State private var swallowNextTap = false
+    /// What the last delete moved to Recently Deleted, so it can be undone from the notice.
+    @State private var lastTrashed: [UUID] = []
+    @State private var movingSelection = false
+    @State private var moveTo = Date()
+    @State private var exportingSelection = false
+    @State private var notice: String?
+    @AppStorage("calendarFilter") private var filter: DayFilter = .all
+
+    /// Which days the calendar circles.
+    enum DayFilter: String, CaseIterable, Identifiable {
+        case all, both, wordsOnly, mediaOnly, missing
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .all: "All entries"
+            case .both: "Words and media"
+            case .wordsOnly: "Words only"
+            case .mediaOnly: "Media only"
+            case .missing: "No entry"
+            }
+        }
+        var symbol: String {
+            switch self {
+            case .all: "circle.grid.2x2"
+            case .both: "text.below.photo"
+            case .wordsOnly: "text.alignleft"
+            case .mediaOnly: "photo"
+            case .missing: "circle.dashed"
+            }
+        }
+    }
+
+    /// What a day holds, across all its entries.
+    private struct DayKind { var words = false; var media = false }
+
+    var body: some View {
+        NavigationStack(path: $path) {
+            Group {
+                if mode == .list {
+                    // A real List here, for the one thing only it does well: swiping a row.
+                    listMode
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 18) {
+                            if selecting { selectionHeader } else { header }
+                            notices
+
+                            if mode == .calendar {
+                                calendar
+                                dayEntries
+                            } else {
+                                gridByMonth
+                            }
+                        }
+                        .padding(.horizontal, 18)
+                        .padding(.bottom, 96)
+                    }
+                }
+            }
+            .background(Brand.ground)
+            .toolbar(.hidden, for: .navigationBar)
+            .overlay(alignment: .bottomTrailing) { if !selecting { addButton } }
+            .safeAreaInset(edge: .bottom, spacing: 0) { if selecting { selectionBar } }
+            // .automatic, not .visible, outside select mode: .visible overrode the entry
+            // screen's own request to hide the tabs, stacking them on its toolbar.
+            .toolbar(selecting ? .hidden : .automatic, for: .tabBar)
+            .animation(.easeInOut(duration: 0.2), value: selecting)
+            .sheet(isPresented: $movingSelection) {
+                NavigationStack {
+                    DatePicker("Day", selection: $moveTo, in: ...Date(), displayedComponents: .date)
+                        .datePickerStyle(.graphical)
+                        .padding()
+                        .navigationTitle("Move to which day?")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Cancel") { movingSelection = false }
+                            }
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Move") { moveSelection(to: CalendarDay(date: moveTo)) }
+                                    .fontWeight(.semibold)
+                            }
+                        }
+                }
+                .presentationDetents([.medium, .large])
+            }
+            .sheet(isPresented: $exportingSelection) {
+                if let store = services.store, let files = services.files {
+                    ExportView(store: store, fileStore: files,
+                               selection: drafts.map(\.id).filter { selection.contains($0) })
+                }
+            }
+            .navigationDestination(for: OpeningDraft.self) { opening in
+                EntryScreen(id: opening.id)
+                    .onDisappear { reload() }
+            }
+            .sheet(isPresented: $showingQuickDump, onDismiss: { dumpDay = nil }) {
+                QuickDumpView(
+                    initialDay: dumpDay,
+                    onWriteFullEntry: {
+                        showingQuickDump = false
+                        createDraft(on: dumpDay)
+                    },
+                    onImportPhotos: {
+                        showingQuickDump = false
+                        // The import sheet is hosted above the tabs; let this one finish
+                        // leaving first, or the second presentation is dropped.
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(450))
+                            services.imports?.isPresented = true
+                        }
+                    }
+                )
+            }
+            .sheet(isPresented: $showingInboxDigest) {
+                if let store = services.store, let files = services.files {
+                    InboxDigestView(digest: services.inboxDigest, store: store, fileStore: files) { id in
+                        showingInboxDigest = false
+                        path.append(OpeningDraft(id: id))
+                    }
+                }
+            }
+            .onChange(of: services.imports?.isPresented ?? false) { _, showing in
+                if !showing { reload() }
+            }
+            .onChange(of: services.backgroundWrites) { _, _ in reload() }
+            // Once on appear covers launch and switching back from More, where something may
+            // have been restored. (It also ran in a .task, which made launch load it twice.)
+            .onAppear { reload() }
+        }
+    }
+
+    // MARK: - Header
+
+    private var header: some View {
+        HStack {
+            Wordmark(size: 26)
+            Spacer()
+            modeSwitcher
+        }
+        .padding(.top, 8)
+    }
+
+    /// Three pictures rather than three words: what each view looks like is the label.
+    private var modeSwitcher: some View {
+        HStack(spacing: 2) {
+            ForEach(Mode.allCases, id: \.self) { option in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { mode = option }
+                } label: {
+                    Image(systemName: option.symbol)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(mode == option ? .white : Brand.muted)
+                        .frame(width: 38, height: 32)
+                        .background {
+                            if mode == option { Capsule().fill(Brand.violet) }
+                        }
+                }
+                .buttonStyle(.pressable)
+                .accessibilityLabel(option.label)
+                .accessibilityAddTraits(mode == option ? .isSelected : [])
+            }
+        }
+        .padding(3)
+        .background(Brand.surface, in: Capsule())
+    }
+
+    // MARK: - Select mode
+
+    private var selectionHeader: some View {
+        HStack {
+            Button("Cancel") { endSelecting() }
+                .tint(Brand.ink)
+            Spacer()
+            Text(selection.isEmpty ? "Select entries" : "\(selection.count) selected")
+                .font(Type.label(17, .semibold))
+                .foregroundStyle(Brand.ink)
+            Spacer()
+            Button(allVisibleSelected ? "None" : "All") {
+                selection = allVisibleSelected ? [] : Set(visibleEntries.map(\.id))
+            }
+            .tint(Brand.violet)
+        }
+        .frame(height: 44)
+        .padding(.top, 4)
+    }
+
+    /// What can be done to everything selected at once.
+    private var selectionBar: some View {
+        HStack(spacing: 0) {
+            Button { duplicateSelection() } label: {
+                CompactAction(symbol: "plus.square.on.square", title: "Duplicate", tint: Brand.muted, accent: Brand.Mode.text)
+            }
+            Button {
+                moveTo = selectedDay.representativeDate()
+                movingSelection = true
+            } label: {
+                CompactAction(symbol: "calendar.badge.clock", title: "Change day", tint: Brand.muted, accent: Brand.Mode.extra)
+            }
+            Button { exportingSelection = true } label: {
+                CompactAction(symbol: "square.and.arrow.up", title: "Export", tint: Brand.muted, accent: Brand.Mode.photo)
+            }
+            Button { arrangeSelection() } label: {
+                CompactAction(symbol: "sparkles", title: "Arrange", tint: Brand.violet)
+            }
+            Button { trashSelection() } label: {
+                CompactAction(symbol: "trash", title: "Delete", tint: Brand.failed, accent: Brand.failed)
+            }
+        }
+        .buttonStyle(.toolbarAction)
+        .disabled(selection.isEmpty)
+        .padding(.horizontal, 10)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
+        .background(.bar)
+        .overlay(alignment: .top) { Divider() }
+    }
+
+    /// The entries the current view is showing, which is what "All" selects.
+    private var visibleEntries: [DraftSummary] {
+        mode == .calendar ? drafts.filter { $0.entryDateKey == selectedDay.rawValue } : drafts
+    }
+
+    private var allVisibleSelected: Bool {
+        !visibleEntries.isEmpty && visibleEntries.allSatisfy { selection.contains($0.id) }
+    }
+
+    private func beginSelecting(with id: UUID) {
+        swallowNextTap = true
+        Haptics.committed()
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selecting = true
+            selection = [id]
+        }
+    }
+
+    private func endSelecting() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selecting = false
+            selection = []
+        }
+    }
+
+    /// One handler for every entry in every view: open it, or toggle it while selecting.
+    private func tapped(_ id: UUID) {
+        if swallowNextTap { swallowNextTap = false; return }
+        if selecting {
+            if selection.contains(id) { selection.remove(id) } else { selection.insert(id) }
+            Haptics.picked()
+        } else {
+            path.append(OpeningDraft(id: id))
+        }
+    }
+
+    /// Wraps an entry's look in the gestures every view shares.
+    private func entryButton<Label: View>(_ entry: DraftSummary, @ViewBuilder label: () -> Label) -> some View {
+        Button { tapped(entry.id) } label: {
+            label()
+                .overlay(alignment: .topTrailing) {
+                    if selecting {
+                        Image(systemName: selection.contains(entry.id) ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 22))
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, selection.contains(entry.id) ? Brand.violet : .black.opacity(0.35))
+                            // So an empty circle still shows up on a white photo.
+                            .shadow(color: .black.opacity(0.5), radius: 2)
+                            .padding(8)
+                    }
+                }
+        }
+        .buttonStyle(.row)
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                if selecting {
+                    selection.insert(entry.id)
+                } else {
+                    beginSelecting(with: entry.id)
+                }
+            }
+        )
+    }
+
+    private func duplicateSelection() {
+        let ids = selection
+        endSelecting()
+        for id in ids { duplicate(id) }
+        notice = "Duplicated \(ids.count) \(ids.count == 1 ? "entry" : "entries")."
+    }
+
+    private func moveSelection(to day: CalendarDay) {
+        guard let store = services.store else { return }
+        for id in selection {
+            if let draft = try? store.draft(id: id) { try? store.setEntryDate(day, for: draft) }
+        }
+        let count = selection.count
+        movingSelection = false
+        endSelecting()
+        selectedDay = day
+        month = Self.startOfMonth(day.representativeDate())
+        reload()
+        notice = "Moved \(count) \(count == 1 ? "entry" : "entries") to \(day.representativeDate().formatted(.dateTime.month(.abbreviated).day()))."
+    }
+
+    /// Arranges each selected entry in turn, in the background, the way a single one is.
+    private func arrangeSelection() {
+        let ids = Array(selection)
+        endSelecting()
+        guard let organising = services.organising else { return }
+        let ready = ids.filter { organising.canOrganise(draftId: $0) }
+        notice = ready.isEmpty
+            ? "Nothing to arrange yet. Arrange needs some writing or a recording."
+            : "Arranging \(ready.count) \(ready.count == 1 ? "entry" : "entries")\u{2026}"
+        Task {
+            for id in ready { _ = await organising.organise(draftId: id) }
+            reload()
+            if !ready.isEmpty { notice = "Arranged \(ready.count) \(ready.count == 1 ? "entry" : "entries")." }
+        }
+    }
+
+    @ViewBuilder
+    private var notices: some View {
+        if let notice = services.recoveryNotice {
+            RecoveryNotice(message: notice) { services.dismissRecoveryNotice() }
+                .padding(12)
+                .background(Brand.surface, in: RoundedRectangle(cornerRadius: 12))
+        }
+        if let notice = services.inboxNotice {
+            InboxNotice(message: notice) {
+                showingInboxDigest = true
+            } onDismiss: {
+                services.dismissInboxNotice()
+            }
+            .padding(12)
+            .background(Brand.surface, in: RoundedRectangle(cornerRadius: 12))
+        }
+        if let notice {
+            HStack {
+                Text(notice).font(.footnote)
+                Spacer()
+                if !lastTrashed.isEmpty {
+                    Button("Undo") { undoTrash() }
+                        .font(.footnote.weight(.semibold))
+                        .tint(Brand.violet)
+                }
+                Button("OK") {
+                    self.notice = nil
+                    lastTrashed = []
+                }
+                .font(.footnote)
+            }
+            .buttonStyle(.borderless)
+            .padding(12)
+            .background(Brand.surface, in: RoundedRectangle(cornerRadius: 12))
+        }
+        if let loadError {
+            Label(loadError, systemImage: "exclamationmark.triangle.fill")
+                .font(.footnote)
+                .foregroundStyle(Brand.failed)
+        }
+    }
+
+    private var addButton: some View {
+        Button {
+            dumpDay = mode == .calendar ? selectedDay : nil
+            showingQuickDump = true
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 54, height: 54)
+                .background(Brand.violet, in: Circle())
+        }
+        .accessibilityLabel("Dump something")
+        .padding(.trailing, 20)
+        .padding(.bottom, 16)
+    }
+
+    // MARK: - Calendar
+
+    private var calendar: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Text(month.formatted(.dateTime.month(.wide).year()))
+                    .font(Type.label(19, .semibold))
+                    .foregroundStyle(Brand.ink)
+                Spacer()
+                Menu {
+                    Picker("Show", selection: $filter) {
+                        ForEach(DayFilter.allCases) { option in
+                            Label(option.label, systemImage: option.symbol).tag(option)
+                        }
+                    }
+                } label: {
+                    Image(systemName: filter == .all
+                          ? "line.3.horizontal.decrease.circle"
+                          : "line.3.horizontal.decrease.circle.fill")
+                        .foregroundStyle(filter == .all ? Brand.ink : Brand.violet)
+                }
+                .accessibilityLabel("Filter days")
+                .padding(.trailing, 14)
+                Button { shiftMonth(-1) } label: { Image(systemName: "chevron.left") }
+                    .accessibilityLabel("Previous month")
+                    .padding(.trailing, 14)
+                Button { shiftMonth(1) } label: { Image(systemName: "chevron.right") }
+                    .accessibilityLabel("Next month")
+            }
+            .font(.system(size: 16, weight: .semibold))
+            .tint(Brand.ink)
+
+            Text(filterSummary)
+                .font(Type.caption(12.5))
+                .foregroundStyle(filter == .all ? Brand.muted : Brand.violet)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
+            LazyVGrid(columns: columns, spacing: 6) {
+                ForEach(Self.weekdaySymbols, id: \.self) { symbol in
+                    Text(symbol)
+                        .font(Type.caption(11.5, .medium))
+                        .foregroundStyle(Brand.muted)
+                        .frame(height: 20)
+                }
+                ForEach(Array(monthCells.enumerated()), id: \.offset) { _, day in
+                    if let day {
+                        dayCell(day)
+                    } else {
+                        Color.clear.frame(height: 42)
+                    }
+                }
+            }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 30).onEnded { value in
+                if value.translation.width < -40 { shiftMonth(1) }
+                if value.translation.width > 40 { shiftMonth(-1) }
+            }
+        )
+    }
+
+    /// A day, circled when it matches the filter: a filled circle for days with entries, a
+    /// dashed one for days without. A whole circle can't be misread as belonging to the day
+    /// above or below, the way a small dot could.
+    private func dayCell(_ day: CalendarDay) -> some View {
+        let isSelected = day == selectedDay
+        let isToday = day == CalendarDay.today()
+        let isFuture = day > CalendarDay.today()
+        let kind = dayKinds[day]
+        let marked = matches(day, kind: kind)
+        let showsMissing = filter == .missing
+        return Button {
+            selectedDay = day
+            Haptics.picked()
+        } label: {
+            Text(day.representativeDate().formatted(.dateTime.day()))
+                .font(Type.label(16, marked || isSelected || isToday ? .semibold : .regular))
+                .foregroundStyle(
+                    isSelected ? .white
+                        : marked && !showsMissing ? Brand.ink
+                        : isToday ? Brand.violet
+                        : isFuture ? Brand.muted.opacity(0.45)
+                        : Brand.muted
+                )
+                .frame(width: 38, height: 38)
+                .background {
+                    if isSelected {
+                        Circle().fill(Brand.violet)
+                    } else if marked && showsMissing {
+                        Circle().strokeBorder(Brand.muted, style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+                    } else if marked {
+                        Circle().fill(Brand.violet.opacity(0.28))
+                    } else if isToday {
+                        Circle().strokeBorder(Brand.violet, lineWidth: 1.5)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 42)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            "\(day.representativeDate().formatted(.dateTime.weekday(.wide).month(.wide).day())), \(describe(kind))"
+        )
+    }
+
+    private func matches(_ day: CalendarDay, kind: DayKind?) -> Bool {
+        switch filter {
+        case .all: return kind != nil
+        case .both: return kind.map { $0.words && $0.media } ?? false
+        case .wordsOnly: return kind.map { $0.words && !$0.media } ?? false
+        case .mediaOnly: return kind.map { !$0.words && $0.media } ?? false
+        case .missing: return kind == nil && day <= CalendarDay.today()
+        }
+    }
+
+    private func describe(_ kind: DayKind?) -> String {
+        guard let kind else { return "no entry" }
+        switch (kind.words, kind.media) {
+        case (true, true): return "words and media"
+        case (true, false): return "words only"
+        case (false, true): return "media only"
+        default: return "an empty entry"
+        }
+    }
+
+    /// "9 days with entries", or what the filter found this month.
+    private var filterSummary: String {
+        let days = monthCells.compactMap { $0 }.filter { matches($0, kind: dayKinds[$0]) }
+        let n = days.count
+        let plural = n == 1 ? "day" : "days"
+        switch filter {
+        case .all: return "\(n) \(plural) with entries"
+        case .both: return "\(n) \(plural) with words and media"
+        case .wordsOnly: return "\(n) \(plural) with words only"
+        case .mediaOnly: return "\(n) \(plural) with media only"
+        case .missing: return "\(n) \(plural) without an entry"
+        }
+    }
+
+    /// The selected day: its entries, or a quiet way to start one.
+    @ViewBuilder
+    private var dayEntries: some View {
+        let entries = drafts.filter { $0.entryDateKey == selectedDay.rawValue }
+        VStack(alignment: .leading, spacing: 10) {
+            Text(selectedDay.representativeDate().formatted(.dateTime.weekday(.wide).month(.wide).day()).uppercased())
+                .font(Type.caption(12, .semibold))
+                .tracking(0.6)
+                .foregroundStyle(Brand.muted)
+
+            if entries.isEmpty {
+                emptyDay
+            } else {
+                ForEach(entries) { entry in
+                    entryButton(entry) {
+                        DayEntryRow(summary: entry, art: art(entry), fileStore: services.files)
+                    }
+                }
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    private var emptyDay: some View {
+        VStack(spacing: 10) {
+            Text("No entries yet")
+                .font(Type.label(16, .semibold))
+                .foregroundStyle(Brand.ink)
+            if selectedDay <= CalendarDay.today() {
+                Text("Add a note, photo, or memory from this day.")
+                    .font(Type.body(14))
+                    .foregroundStyle(Brand.muted)
+                    .multilineTextAlignment(.center)
+                Button {
+                    dumpDay = selectedDay
+                    showingQuickDump = true
+                } label: {
+                    Label("Add note", systemImage: "plus")
+                        .font(Type.label(15, .semibold))
+                        .padding(.horizontal, 22)
+                        .frame(height: 40)
+                        .foregroundStyle(.white)
+                        .background(Brand.violet, in: Capsule())
+                }
+                .padding(.top, 4)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 26)
+    }
+
+    // MARK: - List
+
+    private var listMode: some View {
+        // The header sits above the List rather than in it, so it lands exactly where it
+        // does in the other two views and doesn't jump when switching between them.
+        return VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 18) {
+                if selecting { selectionHeader } else { header }
+                notices
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 4)
+        List {
+            ForEach(months, id: \.key) { month in
+                Section {
+                    ForEach(month.entries) { entry in
+                        entryButton(entry) {
+                            ListEntryRow(summary: entry, art: art(entry), fileStore: services.files)
+                        }
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Brand.surface)
+                        // Swipe right to delete, as asked, and left too, as iOS has taught.
+                        // Either way it goes to Recently Deleted, so a slip costs nothing.
+                        .swipeActions(edge: .leading, allowsFullSwipe: true) { trashAction(entry.id) }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) { trashAction(entry.id) }
+                    }
+                } header: {
+                    Text(month.label)
+                        .font(Type.label(17, .semibold))
+                        .foregroundStyle(Brand.ink)
+                        .textCase(nil)
+                }
+                .modifier(MonthIndexLabel(key: month.key))
+            }
+            Color.clear.frame(height: 70).listRowBackground(Color.clear)
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .listSectionSpacing(14)
+        .contentMargins(.top, 0, for: .scrollContent)
+        .modifier(MonthIndex())
+        }
+    }
+
+    private func trashAction(_ id: UUID) -> some View {
+        Button(role: .destructive) {
+            trash([id])
+        } label: {
+            Label("Delete", systemImage: "trash")
+        }
+        // Red, not the app's violet: it's a delete, even one that can be undone.
+        .tint(.red)
+    }
+
+    // MARK: - Grid
+
+    private var gridByMonth: some View {
+        let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+        return ForEach(months, id: \.key) { month in
+            VStack(alignment: .leading, spacing: 8) {
+                Text(month.label)
+                    .font(Type.label(17, .semibold))
+                    .foregroundStyle(Brand.ink)
+                LazyVGrid(columns: columns, spacing: 10) {
+                    ForEach(month.entries) { entry in
+                        entryButton(entry) {
+                            GridEntryCard(summary: entry, art: art(entry), fileStore: services.files)
+                        }
+                    }
+                }
+            }
+            .padding(.top, 6)
+        }
+    }
+
+    /// An entry's photos, read only once its row is actually drawn.
+    private func art(_ entry: DraftSummary) -> EntryArtCache.Art {
+        artCache.art(for: entry, store: services.store)
+    }
+
+    // MARK: - Calendar maths
+
+    private static func startOfMonth(_ date: Date) -> Date {
+        Calendar.current.dateInterval(of: .month, for: date)?.start ?? date
+    }
+
+    private func shiftMonth(_ by: Int) {
+        if let next = Calendar.current.date(byAdding: .month, value: by, to: month) {
+            withAnimation(.easeInOut(duration: 0.2)) { month = Self.startOfMonth(next) }
+        }
+    }
+
+    /// Short weekday names, starting wherever this locale's week starts.
+    private static var weekdaySymbols: [String] {
+        let calendar = Calendar.current
+        let symbols = calendar.shortWeekdaySymbols
+        let first = calendar.firstWeekday - 1
+        return Array(symbols[first...] + symbols[..<first])
+    }
+
+    /// The month as calendar cells: blanks before the 1st, then each day.
+    private var monthCells: [CalendarDay?] {
+        let calendar = Calendar.current
+        guard let range = calendar.range(of: .day, in: .month, for: month) else { return [] }
+        let weekday = calendar.component(.weekday, from: month)
+        let leading = (weekday - calendar.firstWeekday + 7) % 7
+        let days = range.compactMap { offset -> CalendarDay? in
+            calendar.date(byAdding: .day, value: offset - 1, to: month).map { CalendarDay(date: $0) }
+        }
+        return Array(repeating: nil, count: leading) + days.map { Optional($0) }
+    }
+
+    private var dayKinds: [CalendarDay: DayKind] { kinds }
+
+    /// Per day, whether its entries hold words, media, or both.
+    private static func kinds(of drafts: [DraftSummary]) -> [CalendarDay: DayKind] {
+        var kinds: [CalendarDay: DayKind] = [:]
+        for draft in drafts {
+            guard let day = draft.day else { continue }
+            var kind = kinds[day] ?? DayKind()
+            kind.words = kind.words || draft.hasWords
+            kind.media = kind.media || draft.mediaCount > 0
+            kinds[day] = kind
+        }
+        return kinds
+    }
+
+    /// Entries by month, newest first, for the list and the grid.
+    private static func months(of drafts: [DraftSummary]) -> [(key: String, label: String, entries: [DraftSummary])] {
+        let buckets = Dictionary(grouping: drafts) { String($0.entryDateKey.prefix(7)) }
+        return buckets.keys.sorted(by: >).map { key in
+            let label = CalendarDay(rawValue: key + "-01")?.representativeDate()
+                .formatted(.dateTime.month(.wide).year()) ?? key
+            return (key, label, (buckets[key] ?? []).sorted { $0.entryDateKey > $1.entryDateKey })
+        }
+    }
+
+    // MARK: - Actions
+
+    private func reload() {
+        guard let store = services.store else { return }
+        do {
+            let fresh = try store.allDrafts().map(DraftSummary.init)
+            artCache.clear()
+            drafts = fresh
+            kinds = Self.kinds(of: fresh)
+            months = Self.months(of: fresh)
+            loadError = nil
+        } catch {
+            loadError = error.localizedDescription
+        }
+    }
+
+    private func createDraft(on day: CalendarDay? = nil) {
+        guard let store = services.store else { return }
+        do {
+            let draft = try store.createDraft(entryDate: day)
+            reload()
+            path.append(OpeningDraft(id: draft.id))
+        } catch {
+            loadError = error.localizedDescription
+        }
+    }
+
+    private func duplicate(_ id: UUID) {
+        guard let store = services.store, let files = services.files,
+              let draft = try? store.draft(id: id) else { return }
+        do {
+            try store.duplicate(draft, fileStore: files)
+            reload()
+        } catch {
+            loadError = error.localizedDescription
+        }
+    }
+
+    /// Moves entries to Recently Deleted, with a way to change your mind straight away.
+    private func trash(_ ids: [UUID]) {
+        guard let store = services.store else { return }
+        for id in ids {
+            if let draft = try? store.draft(id: id) { try? store.moveToTrash(draft) }
+        }
+        drafts.removeAll { ids.contains($0.id) }
+        path.removeAll { ids.contains($0.id) }
+        lastTrashed = ids
+        notice = ids.count == 1
+            ? "Moved to Recently Deleted."
+            : "Moved \(ids.count) entries to Recently Deleted."
+        reload()
+    }
+
+    private func undoTrash() {
+        guard let store = services.store else { return }
+        for id in lastTrashed {
+            if let draft = try? store.draft(id: id) { try? store.restore(draft) }
+        }
+        lastTrashed = []
+        notice = nil
+        reload()
+    }
+
+    private func trashSelection() {
+        let ids = Array(selection)
+        endSelecting()
+        trash(ids)
+    }
+}
+
+// MARK: - Rows
+
+/// An entry on the selected day: a photo, its name, the start of what was written, and when.
+private struct DayEntryRow: View {
+    let summary: DraftSummary
+    let art: EntryArtCache.Art
+    let fileStore: MediaFileStore?
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            EntryThumb(art: art, fileStore: fileStore, size: 84)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(summary.title)
+                    .font(Type.label(15.5, .semibold))
+                    .foregroundStyle(Brand.ink)
+                    .lineLimit(1)
+                if !summary.preview.isEmpty {
+                    Text(summary.preview)
+                        .font(Type.body(13.5))
+                        .foregroundStyle(Brand.muted)
+                        .lineLimit(3)
+                }
+                HStack(spacing: 10) {
+                    Text(summary.time)
+                    if summary.mediaCount > 0 {
+                        Label("\(summary.mediaCount)", systemImage: "photo")
+                            .labelStyle(.titleAndIcon)
+                    }
+                }
+                .font(Type.caption(11.5))
+                .foregroundStyle(Brand.muted)
+                .padding(.top, 2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Brand.surface, in: RoundedRectangle(cornerRadius: 14))
+        .contentShape(RoundedRectangle(cornerRadius: 14))
+    }
+}
+
+/// An entry in the month list: photo, name, and the day with what's attached.
+private struct ListEntryRow: View {
+    let summary: DraftSummary
+    let art: EntryArtCache.Art
+    let fileStore: MediaFileStore?
+
+    var body: some View {
+        HStack(spacing: 12) {
+            EntryThumb(art: art, fileStore: fileStore, size: 54)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(summary.title)
+                    .font(Type.label(15, .medium))
+                    .foregroundStyle(Brand.ink)
+                    .lineLimit(1)
+                Text(detail)
+                    .font(Type.caption(12.5, .regular))
+                    .foregroundStyle(Brand.muted)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Brand.muted.opacity(0.6))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
+    }
+
+    private var detail: String {
+        let count = summary.mediaCount
+        guard count > 0 else { return summary.monthDay }
+        return "\(summary.monthDay) \u{00B7} \(count) \(count == 1 ? "photo" : "photos")"
+    }
+}
+
+/// An entry in the grid: its covers, or first few photos, or the start of its writing, with
+/// its name and day underneath.
+private struct GridEntryCard: View {
+    let summary: DraftSummary
+    let art: EntryArtCache.Art
+    let fileStore: MediaFileStore?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Group {
+                if let fileStore, !art.covers.isEmpty {
+                    PhotoMosaic(thumbs: art.covers, overflow: max(0, art.covers.count - 4), fileStore: fileStore)
+                } else if let fileStore, !art.thumbs.isEmpty {
+                    PhotoMosaic(thumbs: art.thumbs, overflow: art.hidden, fileStore: fileStore)
+                } else {
+                    Text(summary.preview.isEmpty ? " " : summary.preview)
+                        .font(Type.journal(13))
+                        .foregroundStyle(Brand.muted)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .padding(10)
+                        .background(Brand.panel)
+                }
+            }
+            .frame(height: 130)
+            .frame(maxWidth: .infinity)
+            .clipped()
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(summary.title)
+                    .font(Type.label(14, .semibold))
+                    .foregroundStyle(Brand.ink)
+                    .lineLimit(1)
+                Text(summary.shortDate)
+                    .font(Type.caption(12, .regular))
+                    .foregroundStyle(Brand.muted)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+        }
+        .background(Brand.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+}
+
+/// The entry's first cover, or first photo, or a quiet stand-in when it has neither.
+private struct EntryThumb: View {
+    let art: EntryArtCache.Art
+    let fileStore: MediaFileStore?
+    let size: CGFloat
+
+    var body: some View {
+        Group {
+            if let thumb = art.covers.first ?? art.thumbs.first, let fileStore {
+                // Decoded at the size it's drawn, three pixels per point, not gallery size.
+                PhotoTile(thumb: thumb, fileStore: fileStore, maxPixel: size * 3)
+            } else {
+                Brand.panel.overlay {
+                    Image(systemName: "text.alignleft")
+                        .font(.system(size: size * 0.26))
+                        .foregroundStyle(Brand.muted)
+                }
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+// MARK: - Shared
+
+/// One entry, resolved by id at the moment it's shown, so a draft deleted underneath it
+/// resolves to nothing instead of trapping (ADR-009a).
+struct EntryScreen: View {
+    @Environment(AppServices.self) private var services
+    let id: UUID
+
+    var body: some View {
+        if let store = services.store, let files = services.files,
+           let draft = try? store.draft(id: id) {
+            CaptureView(draft: draft, store: store, fileStore: files)
+        } else {
+            ContentUnavailableView("Entry no longer exists", systemImage: "tray")
+        }
+    }
+}
+
+/// Wrapper so a `UUID` can drive navigation without a retroactive conformance.
+struct OpeningDraft: Identifiable, Hashable {
+    let id: UUID
+}
+
+/// Says what the inbox just filed, so something shared from another app is seen to arrive.
+/// Tapping it shows exactly what went where.
+struct InboxNotice: View {
+    let message: String
+    let onOpen: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "tray.and.arrow.down.fill")
+                .foregroundStyle(Brand.violet)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(message).font(.footnote)
+                Button("See what was added", action: onOpen)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Brand.violet)
+            }
+            Spacer()
+            Button("OK", action: onDismiss).font(.footnote)
+        }
+        .buttonStyle(.borderless)
+    }
+}
+
+struct RecoveryNotice: View {
+    let message: String
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "arrow.counterclockwise.circle.fill")
+                .foregroundStyle(.blue)
+            Text(message).font(.footnote)
+            Spacer()
+            Button("OK", action: onDismiss).font(.footnote)
+        }
+    }
+}
+
+/// A column of months down the right edge, like the letters in Contacts: tap or drag along it
+/// to jump. Far easier to catch than the scroll bar on a long journal. iOS 26 and later.
+private struct MonthIndex: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.listSectionIndexVisibility(.visible)
+        } else {
+            content
+        }
+    }
+}
+
+/// This month's place in the side index.
+private struct MonthIndexLabel: ViewModifier {
+    let key: String
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.sectionIndexLabel(Text(label))
+        } else {
+            content
+        }
+    }
+
+    /// One letter: the index column only fits a character or two, and "Oct" was cut off at
+    /// the screen edge. Running down the edge, the letters read in order like a calendar's.
+    private var label: String {
+        guard let date = CalendarDay(rawValue: key + "-01")?.representativeDate() else { return key }
+        return date.formatted(.dateTime.month(.narrow))
+    }
+}

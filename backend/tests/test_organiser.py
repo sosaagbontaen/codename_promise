@@ -426,3 +426,16 @@ class TestLongTranscripts:
         with pytest.raises(GroqRateLimited):
             asyncio.run(both())
         assert len(sent) == 2
+
+
+def test_em_dashes_the_model_added_are_removed_but_the_authors_stay():
+    from app.providers.groq import without_new_em_dashes
+
+    assert without_new_em_dashes("we went to the lake", "We went to the lake — it was cold.") == (
+        "We went to the lake, it was cold."
+    )
+    assert without_new_em_dashes("", "Work — the long week") == "Work, the long week"
+    # Typed by the author, so it's theirs to keep.
+    assert without_new_em_dashes("tired — really tired", "Tired — really tired.") == (
+        "Tired — really tired."
+    )

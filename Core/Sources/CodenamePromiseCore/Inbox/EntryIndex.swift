@@ -39,8 +39,7 @@ public struct EntryIndex: Codable, Sendable, Equatable {
     @MainActor
     public static func make(from store: DraftStore, days: Int = 60, now: Date = Date()) throws -> EntryIndex {
         let cutoff = CalendarDay(date: now.addingTimeInterval(-Double(days) * 86_400), timeZone: .current)
-        let entries = try store.allDrafts()
-            .filter { $0.entryDate >= cutoff }
+        let entries = try store.drafts(from: cutoff, through: CalendarDay(date: now, timeZone: .current))
             .map { draft in
                 Entry(
                     id: draft.id,

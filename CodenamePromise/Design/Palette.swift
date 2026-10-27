@@ -18,79 +18,47 @@ import SwiftUI
 /// model touched. It predates the logo, users already read it that way, and provenance is
 /// not the same question as success.
 enum Brand {
-    // MARK: Identity — the exact values from the brand sheet
+    // Mostly Apple's own colours now. The custom navy ground, periwinkle ripples and
+    // gradient made the app look like it was trying hard rather than like an iPhone app,
+    // so everything except the accent defers to the system, in both light and dark.
 
-    /// The tray, the wordmark's second half, "Dump it".
+    /// The accent: what you can act on, and the app's one colour of its own.
     static let violet = Color(light: 0x6C4CFF, dark: 0x8F76FF)
     static let violetDeep = Color(light: 0x5033D6, dark: 0x6C4CFF)
-
-    /// The near-black the dark mark sits on.
     static let night = Color(light: 0x0F1115, dark: 0x0F1115)
 
-    static let gradient = LinearGradient(
-        colors: [violet, violetDeep], startPoint: .topLeading, endPoint: .bottomTrailing
-    )
+    /// Kept for the call sites that still ask for it; it is a flat accent now.
+    static let gradient = violet
 
-    /// The confetti. Each capture mode owns one, which is the whole idea of the mark:
-    /// things of different kinds, flying into the same tray.
-    ///
-    /// **These are identity, never status.** Green here means *photo*, never *it worked* —
-    /// which is why the three status colours below are kept separate and never borrow from
-    /// this set.
+    /// One colour per kind of thing, from the system palette.
     enum Mode {
-        static let text = Color(light: 0x3B82F6, dark: 0x60A5FA)   // blue
-        static let voice = Color(light: 0x6C4CFF, dark: 0x8F76FF)  // violet
-        static let photo = Color(light: 0x22C55E, dark: 0x4ADE80)  // green
-        static let video = Color(light: 0xFF4DA6, dark: 0xFF7CBF)  // pink
-        static let extra = Color(light: 0xFFB02E, dark: 0xFFC15C)  // amber
+        static let text = Color(uiColor: .systemBlue)
+        static let voice = Color(uiColor: .systemPurple)
+        static let photo = Color(uiColor: .systemGreen)
+        static let video = Color(uiColor: .systemPink)
+        static let extra = Color(uiColor: .systemOrange)
     }
 
-    /// The ground everything sits on.
-    ///
-    /// `systemGroupedBackground` is the single most recognisable signature of a stock iOS
-    /// app, so neither theme uses it. Dark is a blue-black in the Palenight family rather
-    /// than the mark's flat #0F1115: a true near-black flattens the confetti and makes the
-    /// violet look like it is floating, where a ground with blue already in it holds them.
-    static let ground = Color(light: 0xF2F4F7, dark: 0x0E1119)
-    /// Cards.
-    ///
-    /// Was #171B26, about ten points off the ground in each channel - a difference that
-    /// survives a screenshot and does not survive a real phone at evening brightness, which
-    /// is when this app gets used. Lifted, and paired with `edge` below, because at low
-    /// contrast an *outline* is what defines a shape; raising the fill far enough to do the
-    /// job on its own would wash the whole screen out.
-    static let surface = Color(light: 0xFFFFFF, dark: 0x1C2231)
+    static let ground = Color(uiColor: .systemGroupedBackground)
+    static let surface = Color(uiColor: .secondarySystemGroupedBackground)
+    static let edge = Color(uiColor: .separator).opacity(0.35)
+    static let panel = Color(uiColor: .tertiarySystemGroupedBackground)
 
-    /// The hairline around a card. Does most of the work of separating it from the ground.
-    static let edge = Color(light: 0x0F1115, dark: 0xFFFFFF).opacity(0.07)
-
-    /// The band an entry's title sits on, one step in from `surface`.
-    ///
-    /// Deliberately a small step. The panel's job is to say "this line is the entry's name,
-    /// not its first sentence" - a job a hairline and a change of ground do completely, and
-    /// which more contrast would turn into a second card inside the first.
-    static let panel = Color(light: 0xF6F7FA, dark: 0x232A3C)
-
-    static let ink = Color(light: 0x0F1115, dark: 0xEDEFF6)
-    /// The sheet's grey, for anything secondary.
-    static let muted = Color(light: 0x6B7280, dark: 0x8B93A7)
-    /// Kept as an alias so call sites meaning "the app's accent" read that way.
+    static let ink = Color(uiColor: .label)
+    static let muted = Color(uiColor: .secondaryLabel)
     static let azure = violet
-    static let ripple = Color(light: 0xDDD6FF, dark: 0x2A2350)
+    static let ripple = Color(uiColor: .separator)
 
-    // MARK: Status — exactly three, and never a confetti colour
+    // MARK: Status: exactly three
 
     /// It reached Notion.
-    static let reached = Color(light: 0x16803C, dark: 0x4ADE80)
+    static let reached = Color(uiColor: .systemGreen)
     /// It hasn't yet, and that's normal.
-    static let waiting = Color(light: 0xB45309, dark: 0xFFB02E)
+    static let waiting = Color(uiColor: .systemOrange)
     /// It tried and couldn't.
-    static let failed = Color(light: 0xDC2626, dark: 0xF87171)
+    static let failed = Color(uiColor: .systemRed)
 
-    // MARK: Provenance
-
-    /// The model touched this. After the rebrand violet means *the app*, so provenance took
-    /// the blue confetti colour rather than competing with the brand.
+    /// The model touched this.
     static let ai = Mode.text
 }
 

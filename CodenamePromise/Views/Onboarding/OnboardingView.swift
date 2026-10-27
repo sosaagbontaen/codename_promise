@@ -39,16 +39,16 @@ struct OnboardingView: View {
                     point(
                         symbol: "bolt.fill",
                         tint: Brand.Mode.voice,
-                        title: "Nothing to set up",
-                        body: "Press record and talk. It saves the moment you stop, before anything else happens."
+                        title: "Dump it from anywhere",
+                        body: "Tap +, share straight from Photos, or use DumpNotes Capture on your Mac. A thought, some photos, a recording. Thirty seconds is enough."
                     )
                     // The product, and the only one of the three that is not a promise
                     // about what the app will refrain from doing.
                     point(
                         symbol: "list.bullet.rectangle",
                         tint: Brand.Mode.text,
-                        title: "Say it however it comes out",
-                        body: "Jump between subjects and double back. Related thoughts get grouped together, and your exact words stay behind every section."
+                        title: "Arrange it later",
+                        body: "Jump around and double back. Arrange groups related thoughts by day, and your exact words always stay."
                     )
                     // The differentiator, and the one worth a raised voice.
                     //
@@ -65,7 +65,7 @@ struct OnboardingView: View {
                         symbol: "lock.fill",
                         tint: Brand.reached,
                         title: "Your journal lives on this phone",
-                        body: "No account, no analytics, nothing uploaded. Your journal is part of your iPhone backup, so it moves to a new phone with you, and you can export all of it any time.",
+                        body: "No account and no analytics. Recordings leave the phone only to become text, and entries reach Notion only if you connect it. It\u{2019}s in your iPhone backup, and you can export all of it any time.",
                         emphasised: true
                     )
                 }
@@ -77,7 +77,7 @@ struct OnboardingView: View {
                     Haptics.picked()
                     onDone()
                 } label: {
-                    Text("Record your first entry")
+                    Text("Get started")
                         .font(Type.label(16.5, .bold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)

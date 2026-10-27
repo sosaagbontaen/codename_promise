@@ -131,7 +131,8 @@ extension DraftStore {
         let reading = try JournalImporter().read(directory: directory)
         var report = ImportReport(unreadable: reading.unreadable)
 
-        let existing = Set(try allDrafts().map(\.id))
+        // Trashed entries count too, or importing would bring back a second copy of one.
+        let existing = Set(try allDraftsIncludingTrashed().map(\.id))
 
         for parsed in reading.entries {
             if let id = parsed.id, existing.contains(id) {

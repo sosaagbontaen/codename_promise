@@ -60,11 +60,13 @@ enum Type {
     ///
     /// Deliberately has no small sizes. If a call to this drops below about 18pt, the right
     /// answer is almost always `label` — Poppins does not survive being made small.
+    /// System, like the rest of the interface. Poppins made the headings read as a brand
+    /// template rather than an iPhone app.
     static func display(_ size: CGFloat, _ weight: Weight = .bold) -> Font {
-        poppins(size, weight)
+        .system(size: size, weight: weight.systemWeight)
     }
 
-    static func title(_ size: CGFloat = 22) -> Font { poppins(size, .semibold) }
+    static func title(_ size: CGFloat = 22) -> Font { .system(size: size, weight: .bold) }
 
     // MARK: The app talking — the system font
 

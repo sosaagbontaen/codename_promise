@@ -459,8 +459,14 @@ struct SchemaTests {
         #expect(SchemaV4.versionIdentifier == Schema.Version(4, 0, 0))
         #expect(SchemaV4.models.count == 4)
         #expect(SchemaV5.versionIdentifier == Schema.Version(5, 0, 0))
-        #expect(CodenamePromiseMigrationPlan.schemas.count == 5)
-        #expect(CodenamePromiseMigrationPlan.stages.count == 4,
+        #expect(SchemaV5.models.count == 4)
+        #expect(SchemaV6.versionIdentifier == Schema.Version(6, 0, 0))
+        #expect(SchemaV6.models.count == 4)
+        #expect(SchemaV7.versionIdentifier == Schema.Version(7, 0, 0))
+        #expect(SchemaV7.models.count == 4)
+        #expect(SchemaV8.versionIdentifier == Schema.Version(8, 0, 0))
+        #expect(CodenamePromiseMigrationPlan.schemas.count == 8)
+        #expect(CodenamePromiseMigrationPlan.stages.count == 7,
                 "a version bump without a stage is what refused to open the store")
         _ = try ModelContainerFactory.makeInMemoryContainer()
     }

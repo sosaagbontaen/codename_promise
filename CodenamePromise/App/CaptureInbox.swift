@@ -29,6 +29,15 @@ enum CaptureInbox {
             .appendingPathComponent("Inbox", isDirectory: true)
     }
 
+    /// Where captures made on this phone wait: the share sheet's inbox, or a folder of the
+    /// app's own if the App Group isn't available. The quick dump sheet writes here too, so
+    /// everything is filed by one path.
+    nonisolated static var appInbox: URL {
+        if let shareInbox { return shareInbox }
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return support.appendingPathComponent("Inbox", isDirectory: true)
+    }
+
     nonisolated static var sharedIndexURL: URL? {
         FileManager.default
             .containerURL(forSecurityApplicationGroupIdentifier: appGroup)?
@@ -94,10 +103,8 @@ enum CaptureInbox {
         )
         var filed = CaptureIngestor.Outcome()
 
-        if let shareInbox {
-            filed += await drainer.drain(shareInbox).filed
-            clearAbandonedStaging(in: shareInbox)
-        }
+        filed += await drainer.drain(appInbox).filed
+        clearAbandonedStaging(in: appInbox)
 
         // The scope has to stay open across the await, so this can't use `withMacFolder`.
         if let mac = resolvedMacFolder() {

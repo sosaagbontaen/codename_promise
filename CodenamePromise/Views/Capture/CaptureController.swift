@@ -379,6 +379,27 @@ final class CaptureController {
         }
     }
 
+    /// When the entry was started, shown at its foot.
+    var createdAt: Date { draft.createdAt }
+
+    /// The photos standing for this entry in the journal, in the order they were picked.
+    var coverIds: [UUID] { draft.covers.map(\.id) }
+
+    func setCovers(_ ids: [UUID]) {
+        do {
+            try store.setCovers(ids, for: draft)
+        } catch {
+            saveState = .failed(error.localizedDescription)
+        }
+    }
+
+    /// Adds a photo to the cover, or takes it off if it's already there.
+    func toggleCover(_ id: UUID) {
+        var ids = coverIds
+        if let index = ids.firstIndex(of: id) { ids.remove(at: index) } else { ids.append(id) }
+        setCovers(ids)
+    }
+
     func removeMedia(id: UUID, fileStore: MediaFileStore) {
         do {
             try store.removeMedia(id: id, from: draft, fileStore: fileStore)

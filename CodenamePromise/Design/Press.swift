@@ -54,6 +54,33 @@ struct RowPressStyle: ButtonStyle {
     }
 }
 
+/// For the actions in the entry's toolbar: a squeeze, a tap back, and the action lighting up
+/// in its own colour while the finger is down.
+///
+/// At rest they're quiet grey so the bar doesn't shout. Without a response on press they
+/// felt like pictures you could tap rather than buttons. The label reads `actionPressed`
+/// from the environment to colour itself.
+struct ToolbarActionStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .environment(\.actionPressed, configuration.isPressed)
+            .scaleEffect(configuration.isPressed ? 0.9 : 1)
+            .animation(.spring(response: 0.24, dampingFraction: 0.6), value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { _, pressed in
+                if pressed { Haptics.picked() }
+            }
+    }
+}
+
+extension EnvironmentValues {
+    /// Whether the button this view labels is being pressed.
+    @Entry var actionPressed = false
+}
+
+extension ButtonStyle where Self == ToolbarActionStyle {
+    static var toolbarAction: ToolbarActionStyle { ToolbarActionStyle() }
+}
+
 extension ButtonStyle where Self == RowPressStyle {
     static var row: RowPressStyle { RowPressStyle() }
 }
