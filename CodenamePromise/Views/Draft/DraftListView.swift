@@ -13,6 +13,7 @@ struct DraftListView: View {
     @State private var drafts: [DraftSummary] = []
     @State private var loadError: String?
     @State private var showingOpenDays = false
+    @State private var showingInboxDigest = false
     /// Which half of the gap finder to open on.
     @State private var openDaysMode: OpenDaysView.Mode = .missingDays
     /// Whether Notion is connected *and* pointed at a database.
@@ -155,6 +156,14 @@ struct DraftListView: View {
                     ContentUnavailableView("Entry no longer exists", systemImage: "tray")
                 }
             }
+            .sheet(isPresented: $showingInboxDigest) {
+                if let store = services.store, let files = services.files {
+                    InboxDigestView(digest: services.inboxDigest, store: store, fileStore: files) { id in
+                        showingInboxDigest = false
+                        path.append(OpeningDraft(id: id))
+                    }
+                }
+            }
             .sheet(isPresented: $showingOpenDays) {
                 if let store = services.store {
                     OpenDaysView(
@@ -181,6 +190,8 @@ struct DraftListView: View {
             .onChange(of: services.imports?.isPresented ?? false) { _, showing in
                 if !showing { reload() }
             }
+            // Things filed from the inbox, or a transcript landing, while this list is up.
+            .onChange(of: services.backgroundWrites) { _, _ in reload() }
             .task {
                 reload()
                 consumeOpenRequest()
@@ -223,6 +234,16 @@ struct DraftListView: View {
             if let notice = services.recoveryNotice {
                 Section {
                     RecoveryNotice(message: notice) { services.dismissRecoveryNotice() }
+                }
+            }
+
+            if let notice = services.inboxNotice {
+                Section {
+                    InboxNotice(message: notice) {
+                        showingInboxDigest = true
+                    } onDismiss: {
+                        services.dismissInboxNotice()
+                    }
                 }
             }
 
@@ -620,6 +641,30 @@ private struct DayHeader: View {
         CalendarDay(rawValue: day) == CalendarDay.today()
     }
 
+}
+
+/// Says what the inbox just filed, so something shared from another app is seen to arrive.
+/// Tapping it shows exactly what went where.
+struct InboxNotice: View {
+    let message: String
+    let onOpen: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "tray.and.arrow.down.fill")
+                .foregroundStyle(Brand.violet)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(message).font(.footnote)
+                Button("See what was added", action: onOpen)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Brand.violet)
+            }
+            Spacer()
+            Button("OK", action: onDismiss).font(.footnote)
+        }
+        .buttonStyle(.borderless)
+    }
 }
 
 struct RecoveryNotice: View {

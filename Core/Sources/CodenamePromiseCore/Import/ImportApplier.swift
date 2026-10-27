@@ -104,6 +104,26 @@ public struct ImportApplier {
             await Task.yield()
         }
 
+        // Each day's note, after its photos so it reads as their caption.
+        for groupId in session.remainingNotes {
+            guard let text = session.note(for: groupId),
+                  let planned = session.plannedNotes?[groupId] else { continue }
+            let draft: EntryDraft
+            if case .existingDraft(let id) = planned, let existing = try store.draft(id: id) {
+                draft = existing
+            } else {
+                draft = try newDraft(forGroup: groupId, in: &session, outcome: &outcome)
+            }
+            // Contains-checked, so a run that stopped after appending and before recording it
+            // doesn't write the note twice.
+            if !draft.content.rawText.contains(text) {
+                draft.appendRawText(text)
+                try store.flush()
+            }
+            session.appliedNotes = (session.appliedNotes ?? []) + [groupId]
+            try sessions.save(session)
+        }
+
         try sessions.save(session)
         return outcome
     }
@@ -135,7 +155,14 @@ public struct ImportApplier {
         in session: inout ImportSession,
         outcome: inout Outcome
     ) throws -> EntryDraft {
-        let groupId = session.groupId(of: item)
+        try newDraft(forGroup: session.groupId(of: item), in: &session, outcome: &outcome)
+    }
+
+    private func newDraft(
+        forGroup groupId: String,
+        in session: inout ImportSession,
+        outcome: inout Outcome
+    ) throws -> EntryDraft {
         if let existing = session.createdDrafts[groupId], let draft = try store.draft(id: existing) {
             return draft
         }

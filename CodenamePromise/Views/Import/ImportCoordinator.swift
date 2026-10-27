@@ -211,6 +211,10 @@ final class ImportCoordinator {
         mutate { $0.newEntryTitles[id] = title }
     }
 
+    func setNote(_ note: String, forGroup id: String) {
+        mutate { $0.groupNotes = ($0.groupNotes ?? [:]).merging([id: note]) { $1 } }
+    }
+
     // MARK: - Applying
 
     /// Fixes the plan and starts attaching.

@@ -8,6 +8,8 @@ PORT      ?= 8077
 BUNDLE_ID := com.codenamepromise.journal
 APP_PATH  := ./DerivedData/Build/Products/Debug-iphonesimulator/CodenamePromise.app
 BACKEND_URL ?= http://localhost:$(PORT)
+PROJECT_FLAG ?= -project CodenamePromise.xcodeproj
+PROVISIONING_FLAG ?= -allowProvisioningUpdates
 
 .DEFAULT_GOAL := help
 
@@ -23,6 +25,8 @@ help:
 	@echo "make boot        Boot the simulator (only needed if it's shut down)"
 	@echo "make device      Build and install on a connected iPhone (uses your Mac's LAN IP)"
 	@echo "make stop-server Kill whatever is listening on port $(PORT)"
+	@echo "make device-lite Same as device, minus the share sheet. Works without an Apple account in Xcode"
+	@echo "make mac-capture Build and install DumpNotes Capture, the Mac menu-bar panel (⌃⌥D)"
 	@echo "make preflight   Everything that must pass before a release"
 	@echo "make clean       Remove build output"
 	@echo ""
@@ -52,6 +56,20 @@ server:
 .PHONY: stop-server
 stop-server:
 	@lsof -ti:$(PORT) | xargs kill 2>/dev/null && echo "stopped" || echo "nothing on port $(PORT)"
+
+# The share extension needs a provisioning profile Xcode can only create while signed into
+# an Apple account. This builds everything else, with the profile already on disk.
+.PHONY: device-lite
+device-lite:
+	@python3 scripts/make-noshare-project.py >/dev/null
+	@$(MAKE) device PROJECT_FLAG="-project CodenamePromise-NoShare.xcodeproj" PROVISIONING_FLAG=
+
+# --- Mac capture -------------------------------------------------------------
+
+# The menu-bar panel for dumping notes, photos and videos from a Mac. See MacCapture/.
+.PHONY: mac-capture
+mac-capture:
+	@MacCapture/build-app.sh
 
 # --- Release -----------------------------------------------------------------
 
@@ -114,8 +132,8 @@ device:
 	BASE=$${HOSTED_URL:-http://$$LAN_IP:$(PORT)}; \
 	if [ -z "$$DEVICE_ID" ]; then echo "No connected device found. Plug it in and unlock it."; exit 1; fi; \
 	echo "device $$DEVICE_ID  ->  backend $$BASE"; \
-	xcodebuild -scheme CodenamePromise -destination "platform=iOS,id=$$DEVICE_ID" \
-		-derivedDataPath ./DerivedDataDevice \
+	xcodebuild $(PROJECT_FLAG) -scheme CodenamePromise -destination "platform=iOS,id=$$DEVICE_ID" \
+		-derivedDataPath ./DerivedDataDevice $(PROVISIONING_FLAG) \
 		BACKEND_BASE_URL=$$BASE build | grep -E "error:|BUILD" || true; \
 	xcrun devicectl device install app --device $$DEVICE_ID \
 		./DerivedDataDevice/Build/Products/Debug-iphoneos/CodenamePromise.app | tail -3

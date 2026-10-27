@@ -172,6 +172,13 @@ struct PhotoImportView: View {
             ForEach(groups) { group in
                 Section {
                     thumbnails(for: group)
+
+                    // In the person's own words, about this day. Goes into the same entry as
+                    // the day's photos, where arranging works it in with everything else.
+                    TextField("A note about this day (optional)", text: noteBinding(for: group), axis: .vertical)
+                        .lineLimit(2...8)
+                        .textInputAutocapitalization(.sentences)
+
                     destinationPicker(for: group)
 
                     // Only when a new entry is actually being made — otherwise this is a
@@ -338,6 +345,7 @@ struct PhotoImportView: View {
     /// enable the button even if every day around it is being skipped.
     private var nothingToImport: Bool {
         groups.allSatisfy { group in
+            session?.note(for: group.id) == nil &&
             items(in: group).allSatisfy { destination(for: $0, in: group) == .skip }
         }
     }
@@ -379,6 +387,13 @@ struct PhotoImportView: View {
         let day = draft.entryDate.representativeDate()
             .formatted(.dateTime.month(.abbreviated).day())
         return "\(name) \u{00B7} \(day)"
+    }
+
+    private func noteBinding(for group: MediaDayGrouping.Group) -> Binding<String> {
+        Binding(
+            get: { session?.groupNotes?[group.id] ?? "" },
+            set: { imports.setNote($0, forGroup: group.id) }
+        )
     }
 
     private func titleBinding(for group: MediaDayGrouping.Group) -> Binding<String> {

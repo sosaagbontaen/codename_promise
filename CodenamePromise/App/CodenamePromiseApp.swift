@@ -18,7 +18,10 @@ struct CodenamePromiseApp: App {
             RootView()
                 .environment(services)
                 .preferredColorScheme(appearance.scheme)
-                .task { await services.drainTranscriptions() }
+                .task {
+                    await services.drainInbox()
+                    await services.drainTranscriptions()
+                }
         }
         .onChange(of: scenePhase) { _, phase in
             // The other half of the save discipline. The in-view debounce keeps typing from
@@ -29,7 +32,10 @@ struct CodenamePromiseApp: App {
                 services.flushOnBackground()
             case .active:
                 // Connectivity may have returned while we were away.
-                Task { await services.drainTranscriptions() }
+                Task {
+                    await services.drainInbox()
+                    await services.drainTranscriptions()
+                }
             @unknown default:
                 services.flushOnBackground()
             }

@@ -85,6 +85,36 @@ struct ImportSessionTests {
         #expect(session.remaining.isEmpty)
     }
 
+    @Test("a day's note goes into that day's entry, once, even when its photos are skipped")
+    func appliesDayNotes() async throws {
+        let h = try makeHarness()
+        var session = ImportSession(requested: 3)
+        try h.sessions.prepare(session)
+        try stage(2, on: tuesday, into: &session, h)
+        try stage(1, on: wednesday, into: &session, h)
+        let groups = session.groups
+        let tue = try #require(groups.first { $0.day == CalendarDay(date: tuesday) })
+        let wed = try #require(groups.first { $0.day == CalendarDay(date: wednesday) })
+        session.groupNotes = [tue.id: "Lake with Aidan", wed.id: "Rained all day"]
+        session.groupDestinations[wed.id] = .skip
+
+        session.freezePlan { _ in [] }
+        let applier = ImportApplier(store: h.store, fileStore: h.files, sessions: h.sessions)
+        _ = try await applier.apply(&session)
+        // Run again as if resumed: nothing doubles.
+        session.appliedNotes = nil
+        _ = try await applier.apply(&session)
+
+        let drafts = try h.store.allDrafts()
+        let tuesdayEntry = try #require(drafts.first { $0.entryDate == CalendarDay(date: tuesday) })
+        #expect(tuesdayEntry.content.rawText == "Lake with Aidan")
+        #expect(tuesdayEntry.media.count == 2)
+        let wednesdayEntry = try #require(drafts.first { $0.entryDate == CalendarDay(date: wednesday) })
+        #expect(wednesdayEntry.content.rawText == "Rained all day")
+        #expect(wednesdayEntry.media.isEmpty)
+        #expect(session.isFinished)
+    }
+
     // MARK: - Being interrupted
 
     /// The one this whole change exists for.

@@ -184,6 +184,33 @@ final class AppServices {
         await transcriptions?.drain()
     }
 
+    /// What the inbox has filed since the notice was last dismissed: the one-line summary,
+    /// and the detail behind it for the digest.
+    private(set) var inboxNotice: String?
+    private(set) var inboxDigest = CaptureIngestor.Outcome()
+    private var drainingInbox = false
+
+    /// Files whatever the share sheet or the Mac left in the inbox. Runs on launch and every
+    /// time the app comes forward, which is when someone who just shared something looks.
+    func drainInbox() async {
+        guard let store, let files, !drainingInbox else { return }
+        drainingInbox = true
+        defer { drainingInbox = false }
+        let filed = await CaptureInbox.drain(store: store, files: files)
+        guard !filed.isEmpty else { return }
+        // Accumulates until dismissed, so two passes before anyone looks both show up.
+        inboxDigest += filed
+        inboxNotice = CaptureInbox.describe(inboxDigest)
+        backgroundWrites += 1
+        // Recordings dropped in from the Mac join the same queue as ones made here.
+        if filed.recordings > 0 { await drainTranscriptions() }
+    }
+
+    func dismissInboxNotice() {
+        inboxNotice = nil
+        inboxDigest = CaptureIngestor.Outcome()
+    }
+
     /// Resolves the backend address: a device-stored override first, then the build setting.
     ///
     /// The override exists because one build cannot serve both targets. `http://localhost:8077`

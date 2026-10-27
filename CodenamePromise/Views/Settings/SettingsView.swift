@@ -246,6 +246,8 @@ struct SettingsView: View {
 
         backupSection
 
+        MacInboxSection()
+
         Section {
             if let store = services.store {
                 NavigationLink {

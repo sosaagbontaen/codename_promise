@@ -72,6 +72,14 @@ public struct ImportSession: Codable, Sendable, Equatable, Identifiable {
     public var itemDestinations: [UUID: ImportDestination]
     public var newEntryTitles: [String: String]
 
+    /// A note per day, in the person's words, by group id. Optional (as are the two below) so
+    /// an import saved before notes existed still reads.
+    public var groupNotes: [String: String]?
+    /// Where each day's note goes, fixed with the rest of the plan.
+    public var plannedNotes: [String: ImportDestination]?
+    /// Days whose note is already in the journal.
+    public var appliedNotes: [String]?
+
     /// Entries this import has already made, by group id.
     ///
     /// Recorded the moment each is created, before anything is attached to it. Without this a
@@ -136,6 +144,11 @@ public struct ImportSession: Codable, Sendable, Equatable, Identifiable {
                 guard let index = items.firstIndex(where: { $0.id == item.id }) else { continue }
                 items[index].planned = destination(for: item, in: group, existingDrafts: existing)
             }
+            if note(for: group.id) != nil {
+                // A note is never skipped with its photos: what somebody wrote goes somewhere.
+                let chosen = groupDestination(for: group, existingDrafts: existing)
+                plannedNotes = (plannedNotes ?? [:]).merging([group.id: chosen == .skip ? .newDraft : chosen]) { $1 }
+            }
         }
         phase = .applying
     }
@@ -149,11 +162,23 @@ public struct ImportSession: Codable, Sendable, Equatable, Identifiable {
         groups.first { $0.id == groupId }?.day
     }
 
+    /// The day's note, trimmed, or nil if there isn't one.
+    public func note(for groupId: String) -> String? {
+        let text = (groupNotes?[groupId] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : text
+    }
+
+    /// Notes planned and not yet in the journal.
+    public var remainingNotes: [String] {
+        let done = Set(appliedNotes ?? [])
+        return (plannedNotes ?? [:]).keys.filter { !done.contains($0) }.sorted()
+    }
+
     public var remaining: [Item] {
         items.filter { !$0.applied && $0.planned != .skip }
     }
 
-    public var isFinished: Bool { phase == .applying && remaining.isEmpty }
+    public var isFinished: Bool { phase == .applying && remaining.isEmpty && remainingNotes.isEmpty }
 
     /// Photos the picker handed over that were never read, because the app stopped before it
     /// got to them. They cannot be recovered after the fact — the picker's handles do not

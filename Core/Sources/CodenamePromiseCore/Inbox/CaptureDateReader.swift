@@ -4,6 +4,9 @@ import ImageIO
 
 /// Reads when a photo or video was actually taken, from the file itself.
 ///
+/// In Core rather than the app because three things now need it: the bulk import, the
+/// capture inbox, and the Mac capture panel.
+///
 /// This is what makes bulk-import possible without asking for photo library access. The
 /// picker hands over the file; the file already carries its own capture date in EXIF (photos)
 /// or container metadata (video). PhotoKit would give the same answer but demands read access
@@ -14,15 +17,15 @@ import ImageIO
 /// under the file's modification date, which is when it was *saved*, not shot — would put
 /// photos in the wrong day quietly. An unknown date the user is asked about beats a wrong one
 /// they aren't.
-enum CaptureDateReader {
+public enum CaptureDateReader {
 
-    static func captureDate(ofImageData data: Data) -> Date? {
+    public static func captureDate(ofImageData data: Data) -> Date? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         return captureDate(of: source)
     }
 
     /// Reads the date from a file without decoding a single pixel of it.
-    static func captureDate(ofImageAt url: URL) -> Date? {
+    public static func captureDate(ofImageAt url: URL) -> Date? {
         let options = [kCGImageSourceShouldCache: false] as CFDictionary
         guard let source = CGImageSourceCreateWithURL(url as CFURL, options) else { return nil }
         return captureDate(of: source)
@@ -48,7 +51,7 @@ enum CaptureDateReader {
         return nil
     }
 
-    static func captureDate(ofVideoAt url: URL) async -> Date? {
+    public static func captureDate(ofVideoAt url: URL) async -> Date? {
         let asset = AVURLAsset(url: url)
         guard let creationDate = try? await asset.load(.creationDate) else { return nil }
         return try? await creationDate.load(.dateValue)
