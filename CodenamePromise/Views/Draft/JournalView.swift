@@ -50,6 +50,8 @@ struct JournalView: View {
     // Select mode: entered by holding an entry, which arrives already selected.
     @State private var selecting = false
     @State private var selection: Set<UUID> = []
+    /// The entry last touched in select mode, kept in view through the layout change.
+    @State private var anchor: UUID?
     /// Set by a long press so the tap that ends it doesn't also open or toggle the entry.
     @State private var swallowNextTap = false
     /// What the last delete moved to Recently Deleted, so it can be undone from the notice.
@@ -94,20 +96,24 @@ struct JournalView: View {
                     // A real List here, for the one thing only it does well: swiping a row.
                     listMode
                 } else {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 18) {
-                            if selecting { selectionHeader } else { header }
-                            notices
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 18) {
+                                if selecting { selectionHeader } else { header }
+                                notices
 
-                            if mode == .calendar {
-                                calendar
-                                dayEntries
-                            } else {
-                                gridByMonth
+                                if mode == .calendar {
+                                    calendar
+                                    dayEntries
+                                } else {
+                                    gridByMonth
+                                }
                             }
+                            .padding(.horizontal, 18)
+                            .padding(.bottom, 96)
                         }
-                        .padding(.horizontal, 18)
-                        .padding(.bottom, 96)
+                        .onChange(of: anchor) { _, id in keep(id, in: proxy) }
+                        .onChange(of: selecting) { _, _ in keep(anchor, in: proxy) }
                     }
                 }
             }
@@ -118,7 +124,8 @@ struct JournalView: View {
             // .automatic, not .visible, outside select mode: .visible overrode the entry
             // screen's own request to hide the tabs, stacking them on its toolbar.
             .toolbar(selecting ? .hidden : .automatic, for: .tabBar)
-            .animation(.easeInOut(duration: 0.2), value: selecting)
+            // Not animated. Animating the header, tab bar and action bar swapping in moved the
+            // grid under the finger, and on a long journal it lost its place entirely.
             .sheet(isPresented: $movingSelection) {
                 NavigationStack {
                     DatePicker("Day", selection: $moveTo, in: ...Date(), displayedComponents: .date)
@@ -282,17 +289,21 @@ struct JournalView: View {
     private func beginSelecting(with id: UUID) {
         swallowNextTap = true
         Haptics.committed()
-        withAnimation(.easeInOut(duration: 0.2)) {
-            selecting = true
-            selection = [id]
-        }
+        anchor = id
+        selecting = true
+        selection = [id]
     }
 
     private func endSelecting() {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            selecting = false
-            selection = []
-        }
+        selecting = false
+        selection = []
+    }
+
+    /// Brings the touched entry back into view after the layout settles, without moving
+    /// anything if it's already visible (a nil anchor scrolls the least it can).
+    private func keep(_ id: UUID?, in proxy: ScrollViewProxy) {
+        guard let id else { return }
+        DispatchQueue.main.async { proxy.scrollTo(id, anchor: nil) }
     }
 
     /// One handler for every entry in every view: open it, or toggle it while selecting.
@@ -300,6 +311,7 @@ struct JournalView: View {
         if swallowNextTap { swallowNextTap = false; return }
         if selecting {
             if selection.contains(id) { selection.remove(id) } else { selection.insert(id) }
+            anchor = id
             Haptics.picked()
         } else {
             path.append(OpeningDraft(id: id))
@@ -308,9 +320,13 @@ struct JournalView: View {
 
     /// Wraps an entry's look in the gestures every view shares.
     private func entryButton<Label: View>(_ entry: DraftSummary, @ViewBuilder label: () -> Label) -> some View {
+        entryButtonBody(entry, label: label).id(entry.id)
+    }
+
+    private func entryButtonBody<Label: View>(_ entry: DraftSummary, @ViewBuilder label: () -> Label) -> some View {
         Button { tapped(entry.id) } label: {
             label()
-                .overlay(alignment: .topTrailing) {
+                .overlay(alignment: mode == .list ? .trailing : .topTrailing) {
                     if selecting {
                         Image(systemName: selection.contains(entry.id) ? "checkmark.circle.fill" : "circle")
                             .font(.system(size: 22))
@@ -318,7 +334,8 @@ struct JournalView: View {
                             .foregroundStyle(.white, selection.contains(entry.id) ? Brand.violet : .black.opacity(0.35))
                             // So an empty circle still shows up on a white photo.
                             .shadow(color: .black.opacity(0.5), radius: 2)
-                            .padding(8)
+                            // In a list row it takes the chevron's place on the right.
+                            .padding(mode == .list ? 14 : 8)
                     }
                 }
         }
@@ -633,12 +650,13 @@ struct JournalView: View {
             }
             .padding(.horizontal, 18)
             .padding(.bottom, 4)
+        ScrollViewReader { proxy in
         List {
             ForEach(months, id: \.key) { month in
                 Section {
                     ForEach(month.entries) { entry in
                         entryButton(entry) {
-                            ListEntryRow(summary: entry, art: art(entry), fileStore: services.files)
+                            ListEntryRow(summary: entry, art: art(entry), fileStore: services.files, selecting: selecting)
                         }
                         .listRowInsets(EdgeInsets())
                         .listRowBackground(Brand.surface)
@@ -662,6 +680,9 @@ struct JournalView: View {
         .listSectionSpacing(14)
         .contentMargins(.top, 0, for: .scrollContent)
         .modifier(MonthIndex())
+        .onChange(of: anchor) { _, id in keep(id, in: proxy) }
+        .onChange(of: selecting) { _, _ in keep(anchor, in: proxy) }
+        }
         }
     }
 
@@ -876,6 +897,8 @@ private struct ListEntryRow: View {
     let summary: DraftSummary
     let art: EntryArtCache.Art
     let fileStore: MediaFileStore?
+    /// The chevron makes way for the selection tick.
+    var selecting = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -890,9 +913,14 @@ private struct ListEntryRow: View {
                     .foregroundStyle(Brand.muted)
             }
             Spacer(minLength: 0)
-            Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Brand.muted.opacity(0.6))
+            if selecting {
+                // Room for the tick, so a long title stops short of it instead of under it.
+                Color.clear.frame(width: 30, height: 1)
+            } else {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Brand.muted.opacity(0.6))
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
