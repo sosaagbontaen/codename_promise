@@ -285,9 +285,7 @@ private struct MediaPage: View {
                 }
             case .photo:
                 if let image {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFit()
+                    ZoomableImage(image: image)
                 } else {
                     ProgressView()
                         .task { await load() }
@@ -371,6 +369,83 @@ private struct FeedImage: View {
         }
         .task(id: item.id) {
             image = await ThumbnailCache.shared.thumbnail(for: item, fileStore: fileStore, maxPixel: 1400)
+        }
+    }
+}
+
+/// A photo you can pinch to zoom, pan around while zoomed, and double-tap to zoom in or back
+/// out, the way Photos works. A UIScrollView underneath, because it does this natively and
+/// passes sideways swipes through to the pager whenever the photo isn't zoomed.
+private struct ZoomableImage: UIViewRepresentable {
+    let image: UIImage
+
+    func makeUIView(context: Context) -> UIScrollView {
+        let scroll = FittingScrollView()
+        scroll.delegate = context.coordinator
+        scroll.minimumZoomScale = 1
+        scroll.maximumZoomScale = 5
+        scroll.showsHorizontalScrollIndicator = false
+        scroll.showsVerticalScrollIndicator = false
+        scroll.bouncesZoom = true
+        scroll.backgroundColor = .clear
+        scroll.contentInsetAdjustmentBehavior = .never
+
+        let view = UIImageView(image: image)
+        view.contentMode = .scaleAspectFit
+        view.isUserInteractionEnabled = true
+        scroll.addSubview(view)
+        scroll.imageView = view
+        context.coordinator.imageView = view
+
+        let doubleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.doubleTapped(_:)))
+        doubleTap.numberOfTapsRequired = 2
+        scroll.addGestureRecognizer(doubleTap)
+        return scroll
+    }
+
+    func updateUIView(_ scroll: UIScrollView, context: Context) {
+        guard let view = context.coordinator.imageView else { return }
+        if view.image !== image {
+            view.image = image
+            scroll.setNeedsLayout()
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    /// Fits the photo to the page whenever its size settles, at zoom 1. Done in layout
+    /// rather than on update, because the page's size isn't known until layout, and before
+    /// then the photo was drawn at its full pixel size, filling the screen with one corner.
+    final class FittingScrollView: UIScrollView {
+        weak var imageView: UIImageView?
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            guard let imageView, zoomScale == 1, bounds.size != .zero else { return }
+            if imageView.frame.size != bounds.size {
+                imageView.frame = CGRect(origin: .zero, size: bounds.size)
+                contentSize = bounds.size
+            }
+        }
+    }
+
+    final class Coordinator: NSObject, UIScrollViewDelegate {
+        weak var imageView: UIImageView?
+
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
+
+        @MainActor @objc func doubleTapped(_ gesture: UITapGestureRecognizer) {
+            guard let scroll = gesture.view as? UIScrollView, let imageView else { return }
+            if scroll.zoomScale > 1 {
+                scroll.setZoomScale(1, animated: true)
+            } else {
+                // Zoom in on the spot that was tapped.
+                let point = gesture.location(in: imageView)
+                let scale: CGFloat = 2.5
+                let size = CGSize(width: scroll.bounds.width / scale, height: scroll.bounds.height / scale)
+                scroll.zoom(to: CGRect(x: point.x - size.width / 2, y: point.y - size.height / 2,
+                                       width: size.width, height: size.height), animated: true)
+            }
         }
     }
 }
