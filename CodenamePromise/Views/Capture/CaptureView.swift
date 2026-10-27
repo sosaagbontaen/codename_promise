@@ -21,6 +21,10 @@ struct CaptureView: View {
     @State private var photoSelections: [PhotosPickerItem] = []
     @State private var attachProgress: (done: Int, total: Int)?
     @State private var viewingMedia: ViewingMedia?
+    /// For the zoom from the cover into the full-screen viewer.
+    @Namespace private var coverZoom
+    /// How far the cover is being pulled down past the top.
+    @State private var coverPull: CGFloat = 0
     @State private var showingDatePicker = false
     @State private var showingEntryPicker = false
     @State private var showingSendSheet = false
@@ -189,6 +193,9 @@ struct CaptureView: View {
                 fileStore: fileStore,
                 selection: viewing.id
             )
+            // Zooms out of the photo that was tapped, the way Photos does, rather than
+            // sliding a new screen up from the bottom.
+            .modifier(ZoomFrom(id: viewing.id, namespace: coverZoom))
         }
         .sheet(isPresented: $showingSendSheet) { sendSheet }
         .sheet(isPresented: $showingAttachments) {
@@ -351,6 +358,8 @@ struct CaptureView: View {
             .padding(.bottom, 24)
         }
         .scrollDismissesKeyboard(.interactively)
+        // How far the page is pulled down past its top, read from the scroll view itself.
+        .modifier(OverscrollReader { value in if value > 0 || coverPull > 0 { coverPulled(value) } })
         // With a cover, the photo runs up under the status bar, the way a photo-led page does.
         .ignoresSafeArea(.container, edges: coverThumbs.isEmpty ? [] : .top)
         // Plain paper, the way Notes writes, rather than the grouped grey lists sit on.
@@ -398,51 +407,92 @@ struct CaptureView: View {
         }
     }
 
+    /// The cover, full width, and stretchy: pull down and it grows with your finger; pull far
+    /// enough and it opens full screen. Tapping it zooms into the full-screen viewer.
     @ViewBuilder
     private var coverBanner: some View {
         let covers = coverThumbs
         if !covers.isEmpty {
-            Button {
-                let first = covers[0]
-                viewingMedia = ViewingMedia(id: first.id)
-            } label: {
-                PhotoMosaic(thumbs: covers, overflow: max(0, covers.count - 4), fileStore: fileStore)
-                    .frame(height: 300)
-                    .frame(maxWidth: .infinity)
+            let height: CGFloat = 300
+            GeometryReader { geometry in
+                let pull = coverPull
+                Button {
+                    viewingMedia = ViewingMedia(id: covers[0].id)
+                } label: {
+                    PhotoMosaic(
+                        thumbs: covers, overflow: max(0, covers.count - 4),
+                        // Full-screen resolution, so the cover is sharp at its full width.
+                        fileStore: fileStore, maxPixel: 1600
+                    )
+                    .frame(width: geometry.size.width, height: height + pull)
                     .clipped()
-                    // The way to every photo, now that they don't sit in a grid below.
-                    .overlay(alignment: .bottomTrailing) {
-                        if controller.orderedMedia.count > covers.count {
-                            Button {
-                                showingAttachments = true
-                            } label: {
-                                Label("\(controller.orderedMedia.count) photos", systemImage: "square.grid.2x2")
-                                    .font(Type.label(13, .semibold))
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 7)
-                                    .background(.black.opacity(0.55), in: Capsule())
-                            }
-                            .buttonStyle(.pressable)
-                            .padding(12)
+                    .overlay(alignment: .bottomTrailing) { photosBadge(covers: covers) }
+                }
+                .buttonStyle(.plain)
+                .modifier(ZoomSource(id: covers[0].id, namespace: coverZoom))
+                // Grows upward with the pull, so the photo stays pinned to the top.
+                .offset(y: -pull)
+                // Pulling down on the cover itself stretches it too, whether or not the page
+                // has room to bounce, and far enough opens it full screen.
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 8)
+                        .onChanged { value in
+                            guard value.translation.height > 0,
+                                  value.translation.height > abs(value.translation.width) else { return }
+                            coverPulled(value.translation.height * 0.6)
                         }
+                        .onEnded { _ in
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { coverPull = 0 }
+                        }
+                )
+                .contextMenu {
+                    Button {
+                        selectingMedia = true
+                        selectedMedia = Set(controller.coverIds)
+                    } label: {
+                        Label("Choose cover photos", systemImage: "photo.stack")
                     }
-            }
-            .buttonStyle(.plain)
-            .contextMenu {
-                Button {
-                    selectingMedia = true
-                    selectedMedia = Set(controller.coverIds)
-                } label: {
-                    Label("Choose cover photos", systemImage: "photo.stack")
-                }
-                Button {
-                    controller.setCovers([])
-                } label: {
-                    Label("Clear cover photos", systemImage: "photo.badge.minus")
+                    Button {
+                        controller.setCovers([])
+                    } label: {
+                        Label("Clear cover photos", systemImage: "photo.badge.minus")
+                    }
                 }
             }
+            .frame(height: height)
         }
+    }
+
+    /// The way to every photo, now that they don't sit in a grid below.
+    @ViewBuilder
+    private func photosBadge(covers: [DraftSummary.Thumb]) -> some View {
+        if controller.orderedMedia.count > covers.count {
+            Button {
+                showingAttachments = true
+            } label: {
+                Label("\(controller.orderedMedia.count) photos", systemImage: "square.grid.2x2")
+                    .font(Type.label(13, .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(.black.opacity(0.55), in: Capsule())
+            }
+            .buttonStyle(.pressable)
+            .padding(12)
+        }
+    }
+
+    /// How far past the top the cover has to be pulled to open full screen.
+    private static let pullToOpen: CGFloat = 110
+
+    /// Opens the viewer once the pull goes far enough, with a tap to say so.
+    private func coverPulled(_ pull: CGFloat) {
+        if pull > Self.pullToOpen, coverPull <= Self.pullToOpen, viewingMedia == nil,
+           let first = coverThumbs.first {
+            Haptics.committed()
+            viewingMedia = ViewingMedia(id: first.id)
+        }
+        coverPull = pull
     }
 
     /// The day, whether it's saved, and the title. Quiet, because the writing is the page.
@@ -1370,5 +1420,52 @@ struct EntryPhotoTile: View {
             .task(id: item.id) {
                 image = await ThumbnailCache.shared.thumbnail(for: item, fileStore: fileStore, maxPixel: maxPixel)
             }
+    }
+}
+
+/// Marks the view a full-screen photo zooms out of. iOS 18 and later; before that the
+/// viewer slides up as a normal full-screen cover.
+struct ZoomSource: ViewModifier {
+    let id: UUID
+    let namespace: Namespace.ID
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.matchedTransitionSource(id: id, in: namespace)
+        } else {
+            content
+        }
+    }
+}
+
+/// The other half of `ZoomSource`, on the presented viewer.
+struct ZoomFrom: ViewModifier {
+    let id: UUID
+    let namespace: Namespace.ID
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.navigationTransition(.zoom(sourceID: id, in: namespace))
+        } else {
+            content
+        }
+    }
+}
+
+/// Reports how far a scroll view is pulled down past its top, 0 when it isn't. iOS 18 and
+/// later; before that the cover simply doesn't stretch.
+struct OverscrollReader: ViewModifier {
+    let changed: (CGFloat) -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollGeometryChange(for: CGFloat.self) { geometry in
+                max(-(geometry.contentOffset.y + geometry.contentInsets.top), 0)
+            } action: { _, value in
+                changed(value)
+            }
+        } else {
+            content
+        }
     }
 }

@@ -9,6 +9,9 @@ struct PhotoMosaic: View {
     let thumbs: [DraftSummary.Thumb]
     let overflow: Int
     let fileStore: MediaFileStore
+    /// Largest edge to decode each tile at. Card size by default; a full-width cover needs
+    /// more, or it's a small picture stretched and visibly soft.
+    var maxPixel: CGFloat = 420
     private let gap: CGFloat = 2
 
     var body: some View {
@@ -34,7 +37,7 @@ struct PhotoMosaic: View {
     @ViewBuilder
     private func tile(_ shown: [DraftSummary.Thumb], _ index: Int) -> some View {
         let isLast = index == shown.count - 1
-        PhotoTile(thumb: shown[index], fileStore: fileStore)
+        PhotoTile(thumb: shown[index], fileStore: fileStore, maxPixel: maxPixel)
             .overlay {
                 if isLast, overflow > 0 {
                     Rectangle().fill(.black.opacity(0.5))
