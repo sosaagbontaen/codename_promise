@@ -37,6 +37,8 @@ struct JournalView: View {
     @State private var kinds: [CalendarDay: DayKind] = [:]
     @State private var months: [(key: String, label: String, entries: [DraftSummary])] = []
     @State private var artCache = EntryArtCache()
+    /// How far the list or grid is scrolled, 0 to 1, for the scrubber's handle.
+    @State private var scrollProgress: CGFloat?
     @State private var loadError: String?
     @State private var month = Self.startOfMonth(Date())
     @State private var selectedDay = CalendarDay.today()
@@ -99,7 +101,6 @@ struct JournalView: View {
                     ScrollViewReader { proxy in
                         ScrollView {
                             VStack(alignment: .leading, spacing: 18) {
-                                if selecting { selectionHeader } else { header }
                                 notices
 
                                 if mode == .calendar {
@@ -114,10 +115,26 @@ struct JournalView: View {
                         }
                         .onChange(of: anchor) { _, id in keep(id, in: proxy) }
                         .onChange(of: selecting) { _, _ in keep(anchor, in: proxy) }
+                        // One scroll handle, not two: the month scrubber stands in for it.
+                        .scrollIndicators(mode == .grid && showsScrubber ? .hidden : .automatic)
+                        .modifier(ScrollProgress(progress: $scrollProgress))
+                        .overlay(alignment: .trailing) {
+                            if mode == .grid { scrubber(proxy) }
+                        }
                     }
                 }
             }
             .background(Brand.ground)
+            // Pinned above whatever is scrolling, in every view: the title and view switcher,
+            // or Cancel / count / All while selecting. Neither can be scrolled away.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                Group {
+                    if selecting { selectionHeader } else { header }
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 8)
+                .background(Brand.ground)
+            }
             .toolbar(.hidden, for: .navigationBar)
             .overlay(alignment: .bottomTrailing) { if !selecting { addButton } }
             .safeAreaInset(edge: .bottom, spacing: 0) { if selecting { selectionBar } }
@@ -645,11 +662,9 @@ struct JournalView: View {
         // does in the other two views and doesn't jump when switching between them.
         return VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 18) {
-                if selecting { selectionHeader } else { header }
                 notices
             }
             .padding(.horizontal, 18)
-            .padding(.bottom, 4)
         ScrollViewReader { proxy in
         List {
             ForEach(months, id: \.key) { month in
@@ -671,7 +686,7 @@ struct JournalView: View {
                         .foregroundStyle(Brand.ink)
                         .textCase(nil)
                 }
-                .modifier(MonthIndexLabel(key: month.key))
+                .id(month.key)
             }
             Color.clear.frame(height: 70).listRowBackground(Color.clear)
         }
@@ -679,9 +694,11 @@ struct JournalView: View {
         .scrollContentBackground(.hidden)
         .listSectionSpacing(14)
         .contentMargins(.top, 0, for: .scrollContent)
-        .modifier(MonthIndex())
+        .overlay(alignment: .trailing) { scrubber(proxy) }
         .onChange(of: anchor) { _, id in keep(id, in: proxy) }
         .onChange(of: selecting) { _, _ in keep(anchor, in: proxy) }
+        .scrollIndicators(showsScrubber ? .hidden : .automatic)
+        .modifier(ScrollProgress(progress: $scrollProgress))
         }
         }
     }
@@ -714,6 +731,36 @@ struct JournalView: View {
                 }
             }
             .padding(.top, 6)
+            .id(month.key)
+        }
+    }
+
+    private var showsScrubber: Bool { months.count > 1 }
+
+    /// The month column for the list and grid, jumping to a month's section as it's touched.
+    @ViewBuilder
+    private func scrubber(_ proxy: ScrollViewProxy) -> some View {
+        if showsScrubber {
+            MonthScrubber(months: scrubberMonths, progress: scrollProgress) { key in
+                proxy.scrollTo(key, anchor: .top)
+            }
+            // Over the content, not beside it: at rest it's only a slim handle, flush with the
+            // edge like a scroll bar. Clear of the pinned header above and the + button below.
+            .frame(maxWidth: 280, alignment: .trailing)
+            .padding(.top, 12)
+            .padding(.bottom, 96)
+        }
+    }
+
+    private var scrubberMonths: [MonthScrubber.Month] {
+        months.compactMap { month in
+            guard let date = CalendarDay(rawValue: month.key + "-01")?.representativeDate() else { return nil }
+            return MonthScrubber.Month(
+                id: month.key,
+                // "Oct '26": a journal spanning years needs the year on every label.
+                short: date.formatted(.dateTime.month(.abbreviated)) + " \u{2019}" + date.formatted(.dateTime.year(.twoDigits)),
+                full: date.formatted(.dateTime.month(.wide).year())
+            )
         }
     }
 
@@ -1064,34 +1111,23 @@ struct RecoveryNotice: View {
     }
 }
 
-/// A column of months down the right edge, like the letters in Contacts: tap or drag along it
-/// to jump. Far easier to catch than the scroll bar on a long journal. iOS 26 and later.
-private struct MonthIndex: ViewModifier {
+/// Reports how far a scroll view is scrolled, 0 at the top to 1 at the bottom. iOS 18 and
+/// later; before that the progress stays unknown and the scrubber handle doesn't track.
+private struct ScrollProgress: ViewModifier {
+    @Binding var progress: CGFloat?
+
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content.listSectionIndexVisibility(.visible)
+        if #available(iOS 18.0, *) {
+            content.onScrollGeometryChange(for: CGFloat.self) { geometry in
+                let range = geometry.contentSize.height + geometry.contentInsets.top
+                    + geometry.contentInsets.bottom - geometry.containerSize.height
+                guard range > 1 else { return 0 }
+                return min(max((geometry.contentOffset.y + geometry.contentInsets.top) / range, 0), 1)
+            } action: { _, value in
+                progress = value
+            }
         } else {
             content
         }
-    }
-}
-
-/// This month's place in the side index.
-private struct MonthIndexLabel: ViewModifier {
-    let key: String
-
-    func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content.sectionIndexLabel(Text(label))
-        } else {
-            content
-        }
-    }
-
-    /// One letter: the index column only fits a character or two, and "Oct" was cut off at
-    /// the screen edge. Running down the edge, the letters read in order like a calendar's.
-    private var label: String {
-        guard let date = CalendarDay(rawValue: key + "-01")?.representativeDate() else { return key }
-        return date.formatted(.dateTime.month(.narrow))
     }
 }
