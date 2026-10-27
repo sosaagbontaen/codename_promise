@@ -2,14 +2,34 @@ import AVKit
 import CodenamePromiseCore
 import SwiftUI
 
-/// Full-size media on black: swipe sideways through the entry's photos and videos, pull
-/// down or tap the X to close.
+/// Full-size media on black, three ways: one at a time with a filmstrip, a grid of them all,
+/// or all of them stacked full width to scroll down through. Pull down or tap X to close.
 struct MediaViewer: View {
     let items: [MediaItem]
     let fileStore: MediaFileStore
     @State var selection: UUID
 
     @Environment(\.dismiss) private var dismiss
+
+    enum Layout: String, CaseIterable {
+        case single, grid, scroll
+        var symbol: String {
+            switch self {
+            case .single: "rectangle"
+            case .grid: "square.grid.3x3"
+            case .scroll: "rectangle.grid.1x2"
+            }
+        }
+        var label: String {
+            switch self {
+            case .single: "One at a time"
+            case .grid: "Grid"
+            case .scroll: "Scroll through"
+            }
+        }
+    }
+
+    @AppStorage("viewerLayout") private var layout: Layout = .single
     /// How far the photo has been pulled down, to follow the finger before it closes.
     @State private var pull: CGFloat = 0
 
@@ -18,16 +38,41 @@ struct MediaViewer: View {
             Color.black.ignoresSafeArea()
                 .opacity(1 - min(pull / 400, 0.6))
 
-            TabView(selection: $selection) {
-                ForEach(items, id: \.id) { item in
-                    MediaPage(item: item, fileStore: fileStore)
-                        .tag(item.id)
+            Group {
+                switch layout {
+                case .single:
+                    TabView(selection: $selection) {
+                        ForEach(items, id: \.id) { item in
+                            MediaPage(item: item, fileStore: fileStore)
+                                .tag(item.id)
+                        }
+                    }
+                    // The filmstrip below does what the page dots did, and more.
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .ignoresSafeArea()
+                case .grid:
+                    gridLayout
+                case .scroll:
+                    scrollLayout
                 }
             }
-            .tabViewStyle(.page(indexDisplayMode: items.count > 1 ? .automatic : .never))
-            .ignoresSafeArea()
             .offset(y: pull)
-            .gesture(
+            .gesture(layout == .single ? pullToClose : nil)
+
+            topBar
+
+            if items.count > 1, layout == .single {
+                VStack {
+                    Spacer()
+                    filmstrip
+                }
+                .opacity(pull > 0 ? 0 : 1)
+            }
+        }
+        .statusBarHidden()
+    }
+
+    private var pullToClose: some Gesture {
                 DragGesture(minimumDistance: 20)
                     .onChanged { value in
                         // Only a downward pull, so swiping sideways still pages.
@@ -42,8 +87,9 @@ struct MediaViewer: View {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { pull = 0 }
                         }
                     }
-            )
+    }
 
+    private var topBar: some View {
             HStack {
                 Button {
                     dismiss()
@@ -56,17 +102,130 @@ struct MediaViewer: View {
                 }
                 .accessibilityLabel("Close")
                 Spacer()
-                Text(positionLabel)
+                Text(layout == .single ? positionLabel : "\(items.count) \(items.count == 1 ? "item" : "items")")
                     .font(Type.label(15, .semibold))
                     .foregroundStyle(.white)
                 Spacer()
-                Color.clear.frame(width: 40, height: 40)
+                if items.count > 1 { layoutSwitcher } else { Color.clear.frame(width: 40, height: 40) }
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
+            .background {
+                // Keeps the controls readable over a photo scrolling beneath them.
+                if layout != .single {
+                    LinearGradient(colors: [.black.opacity(0.7), .clear], startPoint: .top, endPoint: .bottom)
+                        .ignoresSafeArea()
+                }
+            }
             .opacity(pull > 0 ? 0 : 1)
+    }
+
+    private var layoutSwitcher: some View {
+        HStack(spacing: 2) {
+            ForEach(Layout.allCases, id: \.self) { option in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { layout = option }
+                } label: {
+                    Image(systemName: option.symbol)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(layout == option ? .black : .white)
+                        .frame(width: 34, height: 30)
+                        .background { if layout == option { Capsule().fill(.white) } }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(option.label)
+            }
         }
-        .statusBarHidden()
+        .padding(3)
+        .background(.white.opacity(0.15), in: Capsule())
+    }
+
+    /// Every photo at once. Tap one to look at it on its own.
+    private var gridLayout: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 3), spacing: 2) {
+                    ForEach(items, id: \.id) { item in
+                        Button {
+                            selection = item.id
+                            withAnimation(.easeInOut(duration: 0.2)) { layout = .single }
+                        } label: {
+                            Color.clear
+                                .aspectRatio(1, contentMode: .fit)
+                                .overlay { FilmstripCell(item: item, fileStore: fileStore, maxPixel: 400) }
+                                .clipped()
+                                .overlay {
+                                    if item.id == selection {
+                                        Rectangle().strokeBorder(.white, lineWidth: 2)
+                                    }
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .id(item.id)
+                    }
+                }
+                .padding(.top, 64)
+            }
+            .onAppear { proxy.scrollTo(selection, anchor: .center) }
+        }
+    }
+
+    /// Every photo full width, one after another, to scroll down through like a feed.
+    private var scrollLayout: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 6) {
+                    ForEach(items, id: \.id) { item in
+                        FeedImage(item: item, fileStore: fileStore)
+                            .id(item.id)
+                            .onTapGesture {
+                                selection = item.id
+                                withAnimation(.easeInOut(duration: 0.2)) { layout = .single }
+                            }
+                    }
+                }
+                .padding(.top, 64)
+                .padding(.bottom, 30)
+            }
+            .onAppear { proxy.scrollTo(selection, anchor: .top) }
+        }
+    }
+
+    /// Every photo in the entry along the bottom, the current one lifted and outlined, the
+    /// strip following as you swipe. Tap one to go straight to it.
+    private var filmstrip: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 4) {
+                    ForEach(items, id: \.id) { item in
+                        let current = item.id == selection
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) { selection = item.id }
+                        } label: {
+                            FilmstripCell(item: item, fileStore: fileStore)
+                                .frame(width: current ? 44 : 34, height: 50)
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .overlay {
+                                    if current {
+                                        RoundedRectangle(cornerRadius: 4).strokeBorder(.white, lineWidth: 2)
+                                    }
+                                }
+                                .opacity(current ? 1 : 0.6)
+                        }
+                        .buttonStyle(.plain)
+                        .id(item.id)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .animation(.easeOut(duration: 0.15), value: selection)
+            }
+            .frame(height: 50)
+            .padding(.bottom, 24)
+            .onChange(of: selection) { _, id in
+                withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .center) }
+            }
+            .onAppear { proxy.scrollTo(selection, anchor: .center) }
+        }
     }
 
     private var positionLabel: String {
@@ -153,5 +312,65 @@ private struct MediaPage: View {
         image = await ThumbnailCache.shared.thumbnail(
             for: item, fileStore: fileStore, maxPixel: 1400
         )
+    }
+}
+
+/// A small thumbnail in the viewer's filmstrip.
+private struct FilmstripCell: View {
+    let item: MediaItem
+    let fileStore: MediaFileStore
+    var maxPixel: CGFloat = 132
+    @State private var image: UIImage?
+
+    var body: some View {
+        Color.white.opacity(0.1)
+            .overlay {
+                if let image {
+                    Image(uiImage: image).resizable().scaledToFill()
+                }
+            }
+            .clipped()
+            .overlay(alignment: .bottomLeading) {
+                if item.kind == .video {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(3)
+                }
+            }
+            .task(id: item.id) {
+                image = await ThumbnailCache.shared.thumbnail(for: item, fileStore: fileStore, maxPixel: maxPixel)
+            }
+    }
+}
+
+/// A photo at full width and its own height, for the scrolling layout. Videos show their
+/// first frame with a play mark; tapping opens them one at a time to play.
+private struct FeedImage: View {
+    let item: MediaItem
+    let fileStore: MediaFileStore
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+            } else {
+                Color.white.opacity(0.06).aspectRatio(4 / 3, contentMode: .fit)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .overlay {
+            if item.kind == .video {
+                Image(systemName: "play.circle.fill")
+                    .font(.system(size: 44))
+                    .foregroundStyle(.white.opacity(0.9))
+            }
+        }
+        .task(id: item.id) {
+            image = await ThumbnailCache.shared.thumbnail(for: item, fileStore: fileStore, maxPixel: 1400)
+        }
     }
 }
