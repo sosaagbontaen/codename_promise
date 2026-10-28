@@ -8,10 +8,18 @@ import SwiftUI
 /// the way out; the controller's debounce decides when that reaches the store, exactly as it
 /// did for the plain editor. After each edit the text is redrawn from the document, which is
 /// what keeps markers, numbering and fonts consistent however the edit was made.
+/// Where the first search match in an entry ends, for the page to scroll to.
+enum SearchHit {
+    static let id = "richEditor.searchHit"
+}
+
 @available(iOS 26.0, *)
 struct RichEditor: View {
     @Binding var markdown: String
     var focus: FocusState<Bool>.Binding
+    /// Words searched for, when the entry was opened from search. Their matches are
+    /// highlighted for a moment by a copy drawn over the text: the entry itself isn't touched.
+    var highlight: String? = nil
 
     @AppStorage(JournalFont.storageKey) private var journalFont: JournalFont = .sans
     @State private var text = AttributedString()
@@ -30,6 +38,12 @@ struct RichEditor: View {
     @State private var textJustChanged = false
     @State private var addingLink = false
     @State private var linkAddress = ""
+    /// The text with every glyph clear except the search matches, which are dark on yellow,
+    /// laid out exactly as the editor lays out the real text so they sit over the words.
+    @State private var marks: AttributedString?
+    /// The text up to the end of the first match, whose height is where that match is.
+    @State private var throughFirstMatch: AttributedString?
+    @State private var showingMarks = false
 
     private var look: RichText.Look { RichText.Look(font: journalFont) }
 
@@ -45,14 +59,41 @@ struct RichEditor: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .hidden()
                 .accessibilityHidden(true)
+            if let throughFirstMatch {
+                VStack(spacing: 0) {
+                    Text(throughFirstMatch)
+                        .lineSpacing(7)
+                        .padding(.top, 8)
+                        .padding(.horizontal, 5)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .hidden()
+                    Color.clear.frame(height: 1).id(SearchHit.id)
+                }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
             TextEditor(text: $text, selection: $selection)
                 .lineSpacing(7)
                 .scrollContentBackground(.hidden)
                 .scrollDisabled(true)
                 .focused(focus)
+            if let marks {
+                Text(marks)
+                    .lineSpacing(7)
+                    .padding(.top, 8)
+                    .padding(.bottom, 40)
+                    .padding(.horizontal, 5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .opacity(showingMarks ? 1 : 0)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
         }
         .frame(minHeight: 140)
-        .onAppear { load(markdown) }
+        .onAppear {
+            load(markdown)
+            markMatches()
+        }
         .onChange(of: markdown) { _, now in
             if now != written { load(now) }
         }
@@ -82,6 +123,51 @@ struct RichEditor: View {
             Button("Add") { applyLink() }
             Button("Remove link", role: .destructive) { setStyle { $0.link = nil } }
             Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    // MARK: - Search matches
+
+    /// Shades where the searched-for words start a word, the way search matches them, then
+    /// fades the shading out.
+    private func markMatches() {
+        guard let highlight else { return }
+        let terms = highlight.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+        let plain = String(text.characters)
+        var found: [Range<String.Index>] = []
+        for term in terms {
+            var from = plain.startIndex
+            while let match = plain.range(of: term, options: [.caseInsensitive, .diacriticInsensitive],
+                                          range: from..<plain.endIndex) {
+                let before = match.lowerBound == plain.startIndex ? nil : plain[plain.index(before: match.lowerBound)]
+                if before.map({ !$0.isLetter && !$0.isNumber }) ?? true { found.append(match) }
+                from = match.upperBound
+            }
+        }
+        guard let first = found.min(by: { $0.lowerBound < $1.lowerBound }),
+              let firstEnd = Range(first, in: text)?.upperBound else { return }
+
+        var shaded = text
+        shaded.foregroundColor = .clear
+        // A link draws in the tint whatever its colour says.
+        for (link, range) in shaded.runs[\.link] where link != nil { shaded[range].link = nil }
+        for match in found {
+            if let range = Range(match, in: shaded) {
+                // The way Notes and Safari show a found word: legible in either appearance.
+                shaded[range].backgroundColor = Color(red: 1, green: 0.84, blue: 0.2)
+                shaded[range].foregroundColor = .black
+            }
+        }
+        marks = shaded
+        throughFirstMatch = AttributedString(text[..<firstEnd])
+        showingMarks = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2.6))
+            withAnimation(.easeOut(duration: 0.9)) { showingMarks = false }
+            try? await Task.sleep(for: .seconds(1))
+            marks = nil
         }
     }
 

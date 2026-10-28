@@ -20,7 +20,10 @@ struct SearchIndexTests {
         #expect(running.entries.map(\.draftId) == [b, a], "newest first, prefix match")
         #expect(await index.search("cafe").entries.map(\.draftId) == [a])
         #expect(await index.search("driving lake").entries.isEmpty, "every word must match")
-        #expect(await index.search("run", day: "2020-07-14").entries.map(\.draftId) == [a])
+        #expect(await index.search("run", from: "2020-07-14", to: "2020-07-14").entries.map(\.draftId) == [a])
+        #expect(await index.search("run", from: "2020-08-01").entries.map(\.draftId) == [b], "open-ended range")
+        #expect(await index.search("run", to: "2020-12-31").entries.map(\.draftId) == [a])
+        #expect(await index.search("run", newestFirst: false).entries.map(\.draftId) == [a, b])
     }
 
     @Test func photoWordsAndContentsAreSeparate() async throws {
@@ -67,7 +70,7 @@ struct SearchIndexTests {
         await index.indexEntries([(first, "2022-05-01", "A", ""), (second, "2023-06-02", "B", "")])
         await index.indexMedia(id: photo, draftId: first, day: "2022-05-01", words: "", labels: ["dog"])
         await index.placeMedia([(photo, second, "2023-06-02")])
-        #expect(await index.search("dog", day: "2023-06-02").photoContents.map(\.draftId) == [second])
+        #expect(await index.search("dog", from: "2023-06-02", to: "2023-06-02").photoContents.map(\.draftId) == [second])
         #expect(await index.mediaPlacements()[photo]?.day == "2023-06-02")
     }
 

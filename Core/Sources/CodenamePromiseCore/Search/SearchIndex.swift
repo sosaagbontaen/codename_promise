@@ -171,29 +171,35 @@ public actor SearchIndex {
 
     // MARK: - Searching
 
-    /// Matches for `query`, each kind newest first. Every word must appear (prefixes count:
-    /// "run" finds "running"). `day`, as yyyy-MM-dd, keeps results to that day.
-    public func search(_ query: String, day: String? = nil, limit: Int = 200) -> Results {
+    /// Matches for `query`. Every word must appear (prefixes count: "run" finds
+    /// "running"). `from` and `to`, as yyyy-MM-dd, keep results to those days, inclusive;
+    /// either can be left open.
+    public func search(_ query: String, from: String? = nil, to: String? = nil,
+                       newestFirst: Bool = true, limit: Int = 200) -> Results {
         var results = Results()
         guard let match = Self.ftsQuery(query) else { return results }
-        let dayClause = day == nil ? "" : " AND day = ?"
-        let dayArgs = day.map { [$0] } ?? []
+        // yyyy-MM-dd compares as text in date order.
+        var dayClause = ""
+        var dayArgs: [String] = []
+        if let from { dayClause += " AND day >= ?"; dayArgs.append(from) }
+        if let to { dayClause += " AND day <= ?"; dayArgs.append(to) }
+        let order = newestFirst ? "DESC" : "ASC"
 
         results.entries = rows(
-            "SELECT draft_id, day, title, snippet(entries, 3, '', '', '…', 14) FROM entries WHERE entries MATCH ?\(dayClause) ORDER BY day DESC LIMIT \(limit)",
+            "SELECT draft_id, day, title, snippet(entries, 3, '', '', '…', 14) FROM entries WHERE entries MATCH ?\(dayClause) ORDER BY day \(order) LIMIT \(limit)",
             [match] + dayArgs
         ).compactMap { row in
             guard let id = UUID(uuidString: row[0]) else { return nil }
             return EntryHit(draftId: id, day: row[1], title: row[2], snippet: row[3])
         }
-        results.photoText = mediaRows(column: "words", index: 3, match: match, dayClause: dayClause, dayArgs: dayArgs, limit: limit)
-        results.photoContents = mediaRows(column: "labels", index: 4, match: match, dayClause: dayClause, dayArgs: dayArgs, limit: limit)
+        results.photoText = mediaRows(column: "words", index: 3, match: match, dayClause: dayClause, dayArgs: dayArgs, order: order, limit: limit)
+        results.photoContents = mediaRows(column: "labels", index: 4, match: match, dayClause: dayClause, dayArgs: dayArgs, order: order, limit: limit)
         return results
     }
 
-    private func mediaRows(column: String, index: Int, match: String, dayClause: String, dayArgs: [String], limit: Int) -> [MediaHit] {
+    private func mediaRows(column: String, index: Int, match: String, dayClause: String, dayArgs: [String], order: String, limit: Int) -> [MediaHit] {
         rows(
-            "SELECT media_id, draft_id, day, snippet(media, \(index), '', '', '…', 10) FROM media WHERE media MATCH ?\(dayClause) AND draft_id IN (SELECT draft_id FROM entries) ORDER BY day DESC LIMIT \(limit)",
+            "SELECT media_id, draft_id, day, snippet(media, \(index), '', '', '…', 10) FROM media WHERE media MATCH ?\(dayClause) AND draft_id IN (SELECT draft_id FROM entries) ORDER BY day \(order) LIMIT \(limit)",
             ["{\(column)} : (\(match))"] + dayArgs
         ).compactMap { row in
             guard let media = UUID(uuidString: row[0]), let draft = UUID(uuidString: row[1]) else { return nil }

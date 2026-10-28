@@ -53,7 +53,10 @@ struct JournalView: View {
     /// The day the dump sheet opens on, when it was opened for one.
     @State private var dumpDay: CalendarDay?
     @State private var showingInboxDigest = false
+    /// Searching replaces the header with a search bar and the journal with results.
     @State private var searching = false
+    @State private var query = ""
+    @State private var searchFilter = SearchFilter()
 
     // Select mode: entered by holding an entry, which arrives already selected.
     @State private var selecting = false
@@ -100,6 +103,12 @@ struct JournalView: View {
     var body: some View {
         NavigationStack(path: $path) {
             Group {
+                if searching, let search = services.search, let store = services.store, let files = services.files {
+                    SearchResultsView(search: search, store: store, fileStore: files,
+                                      query: query, filter: searchFilter) { id, words in
+                        path.append(OpeningDraft(id: id, highlight: words))
+                    }
+                } else {
                     ScrollViewReader { proxy in
                         ScrollView {
                             Group {
@@ -135,20 +144,32 @@ struct JournalView: View {
                         }
 
                     }
+                }
             }
             .background(Brand.ground)
             // Pinned above whatever is scrolling, in every view: the title and view switcher,
             // or Cancel / count / All while selecting. Neither can be scrolled away.
             .safeAreaInset(edge: .top, spacing: 0) {
                 Group {
-                    if selecting { selectionHeader } else { header }
+                    if selecting {
+                        selectionHeader
+                    } else if searching {
+                        JournalSearchBar(query: $query, filter: $searchFilter) {
+                            withAnimation(.easeInOut(duration: 0.2)) { searching = false }
+                            query = ""
+                            searchFilter = SearchFilter()
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .trailing)))
+                    } else {
+                        header
+                    }
                 }
                 .padding(.horizontal, 18)
                 .padding(.bottom, 8)
                 .background(Brand.ground)
             }
             .toolbar(.hidden, for: .navigationBar)
-            .overlay(alignment: .bottomTrailing) { if !selecting { addButton } }
+            .overlay(alignment: .bottomTrailing) { if !selecting && !searching { addButton } }
             .safeAreaInset(edge: .bottom, spacing: 0) { if selecting { selectionBar } }
             // .automatic, not .visible, outside select mode: .visible overrode the entry
             // screen's own request to hide the tabs, stacking them on its toolbar.
@@ -181,7 +202,7 @@ struct JournalView: View {
                 }
             }
             .navigationDestination(for: OpeningDraft.self) { opening in
-                EntryScreen(id: opening.id)
+                EntryScreen(id: opening.id, highlight: opening.highlight)
                     .onDisappear { reload() }
             }
             .sheet(isPresented: $showingQuickDump, onDismiss: { dumpDay = nil }) {
@@ -201,13 +222,6 @@ struct JournalView: View {
                         }
                     }
                 )
-            }
-            .sheet(isPresented: $searching) {
-                if let search = services.search, let store = services.store, let files = services.files {
-                    SearchView(search: search, store: store, fileStore: files) { id in
-                        path.append(OpeningDraft(id: id))
-                    }
-                }
             }
             .sheet(isPresented: $showingInboxDigest) {
                 if let store = services.store, let files = services.files {
@@ -234,7 +248,9 @@ struct JournalView: View {
             Wordmark(size: 26)
             Spacer()
             if services.search != nil {
-                Button { searching = true } label: {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { searching = true }
+                } label: {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(Brand.ink)
@@ -1180,6 +1196,8 @@ private struct EntryThumb: View {
 struct EntryScreen: View {
     @Environment(AppServices.self) private var services
     let id: UUID
+    /// Words to find and highlight, when opened from search.
+    var highlight: String? = nil
     /// The draft, looked up once rather than on every redraw. Checked each time it's used, so
     /// one deleted underneath the screen still resolves to nothing instead of trapping.
     @State private var resolved = Resolved()
@@ -1200,7 +1218,7 @@ struct EntryScreen: View {
     var body: some View {
         if let store = services.store, let files = services.files,
            let draft = draft(in: store) {
-            CaptureView(draft: draft, store: store, fileStore: files)
+            CaptureView(draft: draft, store: store, fileStore: files, highlight: highlight)
         } else {
             ContentUnavailableView("Entry no longer exists", systemImage: "tray")
         }
@@ -1210,6 +1228,8 @@ struct EntryScreen: View {
 /// Wrapper so a `UUID` can drive navigation without a retroactive conformance.
 struct OpeningDraft: Identifiable, Hashable {
     let id: UUID
+    /// Words to find in it, when opened from search.
+    var highlight: String? = nil
 }
 
 /// Says what the inbox just filed, so something shared from another app is seen to arrive.

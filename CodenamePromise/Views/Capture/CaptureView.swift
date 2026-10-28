@@ -72,11 +72,15 @@ struct CaptureView: View {
     /// Kept so the move sheet can list the other entries. The controller deliberately owns
     /// one draft, and picking a destination is a question about all of them.
     private let store: DraftStore
+    /// Words searched for, when the entry was opened from search: the page scrolls to the
+    /// first and briefly highlights them.
+    private let highlight: String?
 
-    init(draft: EntryDraft, store: DraftStore, fileStore: MediaFileStore) {
+    init(draft: EntryDraft, store: DraftStore, fileStore: MediaFileStore, highlight: String? = nil) {
         _controller = State(initialValue: CaptureController(draft: draft, store: store))
         self.fileStore = fileStore
         self.store = store
+        self.highlight = highlight
     }
 
     var body: some View {
@@ -298,6 +302,7 @@ struct CaptureView: View {
     /// scrolling to the end and back. They are pinned now, top and bottom, and only the words
     /// move.
     private var editor: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 coverBanner
@@ -321,7 +326,7 @@ struct CaptureView: View {
                         Group {
                             if #available(iOS 26.0, *) {
                                 // Formatting you see as you type, saved as Markdown.
-                                RichEditor(markdown: $controller.text, focus: $writing)
+                                RichEditor(markdown: $controller.text, focus: $writing, highlight: highlight)
                                     .frame(minHeight: controller.orderedMedia.isEmpty ? 320 : 120, alignment: .top)
                             } else {
                             ZStack(alignment: .topLeading) {
@@ -386,6 +391,15 @@ struct CaptureView: View {
                 }
             }
             .padding(.bottom, 24)
+        }
+        .task {
+            // Once the page has laid out, bring the first match into view.
+            guard highlight != nil else { return }
+            try? await Task.sleep(for: .milliseconds(350))
+            withAnimation(.easeInOut(duration: 0.4)) {
+                proxy.scrollTo(SearchHit.id, anchor: .center)
+            }
+        }
         }
         .scrollDismissesKeyboard(.interactively)
         // How far the page is pulled down past its top, read from the scroll view itself.
