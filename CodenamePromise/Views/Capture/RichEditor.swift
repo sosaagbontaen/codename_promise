@@ -20,6 +20,9 @@ struct RichEditor: View {
     @State private var written: String?
     /// The text as last drawn, so redrawing doesn't trigger another redraw.
     @State private var drawn: AttributedString?
+    /// The document the text held after the last edit, so an edit compares against it
+    /// rather than reading the whole text a second time.
+    @State private var current: RichDocument?
     @State private var addingLink = false
     @State private var linkAddress = ""
 
@@ -71,6 +74,7 @@ struct RichEditor: View {
         let rendered = RichText.attributed(document, look: look)
         written = markdown
         drawn = rendered
+        current = document
         text = rendered
     }
 
@@ -80,13 +84,25 @@ struct RichEditor: View {
     private func edited(from old: AttributedString, to new: AttributedString) {
         if let drawn, new == drawn { return }
 
-        let previous = RichText.document(from: old)
+        let previous = current ?? RichText.document(from: old)
         var document = RichText.document(from: new)
         var caret: RichText.Place?
-        if let line = insertedNewline(old: old, new: new) {
+        // Only a new line can be a Return, so the character-by-character check is skipped
+        // for ordinary typing.
+        if document.blocks.count == previous.blocks.count + 1,
+           let line = insertedNewline(old: old, new: new) {
             caret = continueLine(at: line, previous: previous, document: &document)
         }
         keepFoldedContent(previous: previous, document: &document)
+        current = document
+
+        // Typing within lines that kept their kinds changes nothing drawn: no marker to
+        // redraw, no number to update. That's nearly every keystroke, and skipping the
+        // redraw is what keeps a long entry from lagging behind the keyboard.
+        if caret == nil, Self.sameShape(previous, document) {
+            save(document)
+            return
+        }
 
         let rendered = RichText.attributed(document, look: look)
         guard caret != nil || String(rendered.characters) != String(new.characters) else {
@@ -103,6 +119,14 @@ struct RichEditor: View {
         }
     }
 
+    /// Same lines, each the same kind at the same indent and folded the same way.
+    private static func sameShape(_ a: RichDocument, _ b: RichDocument) -> Bool {
+        guard a.blocks.count == b.blocks.count else { return false }
+        return zip(a.blocks, b.blocks).allSatisfy {
+            $0.kind == $1.kind && $0.indent == $1.indent && $0.folded == $1.folded
+        }
+    }
+
     private func save(_ document: RichDocument) {
         let markdown = document.markdown
         written = markdown
@@ -112,6 +136,7 @@ struct RichEditor: View {
     private func redraw(_ document: RichDocument, caret: RichText.Place?, end: RichText.Place? = nil) {
         let rendered = RichText.attributed(document, look: look)
         drawn = rendered
+        current = document
         if rendered != text { text = rendered }
         if let caret {
             let start = RichText.index(of: caret, in: rendered, document: document)

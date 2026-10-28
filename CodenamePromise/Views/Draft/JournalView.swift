@@ -37,6 +37,8 @@ struct JournalView: View {
     @State private var kinds: [CalendarDay: DayKind] = [:]
     @State private var months: [(key: String, label: String, entries: [DraftSummary])] = []
     @State private var artCache = EntryArtCache()
+    /// The store revision the list was last brought up to. See `refresh()`.
+    @State private var loadedRevision: Int?
     /// How far the list or grid is scrolled, 0 to 1, for the scrubber's handle.
     @State private var scrollProgress: CGFloat?
     @State private var loadError: String?
@@ -836,18 +838,54 @@ struct JournalView: View {
 
     // MARK: - Actions
 
+    /// Brings the list up to date with the store, doing only the work the change needs.
+    ///
+    /// Re-reading the whole journal on every return from an entry and every tab switch made
+    /// both visibly lag in a journal of a few thousand entries. The store records which
+    /// entries each save touched, so nothing changed costs nothing, an edit re-reads one
+    /// entry, and only an entry removed for good (or the first load) reads everything.
     private func reload() {
         guard let store = services.store else { return }
+        guard let since = loadedRevision else { return reloadAll(store) }
+        let changes = store.changes(since: since)
+        if changes.isEmpty { return }
+        if changes.structural { return reloadAll(store) }
         do {
+            var byId = Dictionary(uniqueKeysWithValues: drafts.map { ($0.id, $0) })
+            for id in changes.draftIds {
+                if let draft = try store.draft(id: id), !draft.isTrashed {
+                    byId[id] = DraftSummary(draft)
+                } else {
+                    byId[id] = nil
+                }
+            }
+            artCache.forget(changes.draftIds)
+            apply(byId.values.sorted {
+                ($0.entryDateKey, $0.createdAt) > ($1.entryDateKey, $1.createdAt)
+            })
+            loadedRevision = changes.revision
+        } catch {
+            reloadAll(store)
+        }
+    }
+
+    private func reloadAll(_ store: DraftStore) {
+        do {
+            let revision = store.revision
             let fresh = try store.allDrafts().map(DraftSummary.init)
             artCache.clear()
-            drafts = fresh
-            kinds = Self.kinds(of: fresh)
-            months = Self.months(of: fresh)
-            loadError = nil
+            apply(fresh)
+            loadedRevision = revision
         } catch {
             loadError = error.localizedDescription
         }
+    }
+
+    private func apply(_ fresh: [DraftSummary]) {
+        drafts = fresh
+        kinds = Self.kinds(of: fresh)
+        months = Self.months(of: fresh)
+        loadError = nil
     }
 
     private func createDraft(on day: CalendarDay? = nil) {

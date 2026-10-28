@@ -322,7 +322,15 @@ extension RichDocument {
 
     /// A small, forgiving inline parser: escapes, emphasis, strike, underline, spans and
     /// links. Anything it doesn't recognise stays as the characters it is.
+    /// Characters that can start markup. A line with none of them is plain words, which is
+    /// most of a journal, and skips the parser entirely: the list reads every entry's text on
+    /// each reload, so this is the difference between instant and seconds.
+    private static let markupStarts: Set<Character> = ["*", "_", "~", "<", "[", "\\"]
+
     static func parseInline(_ text: String) -> [Run] {
+        if !text.contains(where: markupStarts.contains) {
+            return text.isEmpty ? [] : [Run(text, Style())]
+        }
         var parser = InlineParser(Array(text))
         return merged(parser.parse(Style()))
     }
@@ -334,21 +342,30 @@ extension RichDocument {
         init(_ chars: [Character]) { self.chars = chars }
 
         func peek(_ token: String) -> Bool {
-            let token = Array(token)
-            guard position + token.count <= chars.count else { return false }
-            return Array(chars[position..<(position + token.count)]) == token
+            matches(token, at: position)
+        }
+
+        /// Compared in place: building arrays for every token at every character made a long
+        /// entry take milliseconds to read.
+        func matches(_ token: String, at start: Int) -> Bool {
+            var index = start
+            for character in token {
+                guard index < chars.count, chars[index] == character else { return false }
+                index += 1
+            }
+            return true
         }
 
         /// Whether `token` closes later on this line, so an unmatched `*` stays a `*`. As in
         /// Markdown, a closer can't follow a space and an opener can't precede one.
         func closes(_ token: String, from start: Int) -> Bool {
             let isTag = token.hasPrefix("<")
-            let token = Array(token)
             guard start < chars.count, isTag || !chars[start].isWhitespace else { return false }
+            let length = token.count
             var index = start
-            while index + token.count <= chars.count {
+            while index + length <= chars.count {
                 if chars[index] == "\\" { index += 2; continue }
-                if Array(chars[index..<(index + token.count)]) == token, index > start,
+                if matches(token, at: index), index > start,
                    isTag || !chars[index - 1].isWhitespace {
                     return true
                 }
@@ -383,7 +400,7 @@ extension RichDocument {
                     runs += parse(inner, until: close)
                     continue
                 }
-                if peek("<span style=\""), let end = spanStyleEnd() {
+                if c == "<", peek("<span style=\""), let end = spanStyleEnd() {
                     let css = String(chars[(position + 13)..<end])
                     var inner = style
                     Self.apply(css: css, to: &inner)
@@ -409,6 +426,10 @@ extension RichDocument {
         }
 
         func opener() -> (String, String, (inout Style) -> Void)? {
+            switch chars[position] {
+            case "*", "~", "<", "_": break
+            default: return nil
+            }
             if peek("***") { return ("***", "***", { $0.bold = true; $0.italic = true }) }
             if peek("**") { return ("**", "**", { $0.bold = true }) }
             if peek("~~") { return ("~~", "~~", { $0.strike = true }) }

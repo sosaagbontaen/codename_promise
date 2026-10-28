@@ -31,6 +31,84 @@ public final class DraftStore {
         // anything that mutates a model without going through this class.
         self.context.autosaveEnabled = true
         self.clock = clock
+        // Every save, explicit or autosave, is posted synchronously on the saving thread,
+        // which for this context is always the main actor. Recorded here so a list can
+        // update only what changed rather than re-reading the whole journal.
+        saveObserver = NotificationCenter.default.addObserver(
+            forName: ModelContext.didSave, object: context, queue: nil
+        ) { [weak self] note in
+            let info = Self.SavedIdentifiers(note)
+            MainActor.assumeIsolated { self?.record(info) }
+        }
+    }
+
+    deinit {
+        if let saveObserver { NotificationCenter.default.removeObserver(saveObserver) }
+    }
+
+    // MARK: - Change tracking
+
+    /// What changed since a given revision: which entries, and whether anything was added
+    /// or removed (or the log no longer reaches back that far), which calls for a full read.
+    public struct Changes: Equatable, Sendable {
+        public var revision: Int
+        public var draftIds: Set<UUID> = []
+        public var structural = false
+        public var isEmpty: Bool { draftIds.isEmpty && !structural }
+    }
+
+    /// Goes up by one on every save that changed anything.
+    public private(set) var revision = 0
+    private var log: [(revision: Int, ids: Set<UUID>, structural: Bool)] = []
+    nonisolated(unsafe) private var saveObserver: NSObjectProtocol?
+
+    /// The notification's identifiers, read out before hopping to the main actor.
+    private struct SavedIdentifiers: @unchecked Sendable {
+        var changed: [PersistentIdentifier] = []
+        var structural = false
+        init(_ note: Notification) {
+            let info = note.userInfo ?? [:]
+            func ids(_ key: ModelContext.NotificationKey) -> [PersistentIdentifier] {
+                info[key.rawValue] as? [PersistentIdentifier] ?? []
+            }
+            let inserted = ids(.insertedIdentifiers), deleted = ids(.deletedIdentifiers)
+            changed = ids(.updatedIdentifiers) + inserted
+            // An entry removed for good can't be looked up to say which it was, so the list
+            // reads everything again. Anything else names its entry: a new entry itself, a
+            // photo or recording added or removed through the entry it belongs to.
+            structural = deleted.contains { $0.entityName == "EntryDraft" }
+        }
+    }
+
+    private func record(_ saved: SavedIdentifiers) {
+        var ids = Set<UUID>()
+        var structural = saved.structural
+        for identifier in saved.changed {
+            switch context.model(for: identifier) {
+            case let draft as EntryDraft: ids.insert(draft.id)
+            case let media as MediaItem: if let id = media.draft?.id { ids.insert(id) }
+            case let audio as AudioCapture: if let id = audio.draft?.id { ids.insert(id) }
+            case let sync as SyncState: if let id = sync.draft?.id { ids.insert(id) }
+            default: structural = true
+            }
+        }
+        guard !ids.isEmpty || structural else { return }
+        revision += 1
+        log.append((revision, ids, structural))
+        if log.count > 500 { log.removeFirst(log.count - 500) }
+    }
+
+    /// Everything that changed after `since`. Asking about a revision the log has dropped
+    /// is answered as structural, so a caller that fell behind reads everything again.
+    public func changes(since: Int) -> Changes {
+        var changes = Changes(revision: revision)
+        guard since < revision else { return changes }
+        if let first = log.first, first.revision > since + 1 { changes.structural = true }
+        for entry in log where entry.revision > since {
+            changes.draftIds.formUnion(entry.ids)
+            changes.structural = changes.structural || entry.structural
+        }
+        return changes
     }
 
     // MARK: - Durability

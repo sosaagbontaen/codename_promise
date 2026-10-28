@@ -21,6 +21,8 @@ import Foundation
 struct DraftSummary: Identifiable, Hashable {
     let id: UUID
     let entryDateKey: String
+    /// For ordering entries on the same day, newest first, the way the store does.
+    let createdAt: Date
     let title: String
     let preview: String
     /// Everything attached. A count of the relationship, which doesn't load the photos.
@@ -77,6 +79,7 @@ extension DraftSummary {
 
         self.id = draft.id
         self.entryDateKey = draft.entryDateKey
+        self.createdAt = draft.createdAt
         self.title = title
         // What the preview is for is recognising an entry, not reading it: the part the title
         // didn't already say, flattened onto one run of lines.
@@ -108,6 +111,7 @@ final class EntryArtCache {
     private var cache: [UUID: Art] = [:]
 
     func clear() { cache.removeAll(keepingCapacity: true) }
+    func forget(_ ids: Set<UUID>) { for id in ids { cache[id] = nil } }
 
     func art(for summary: DraftSummary, store: DraftStore?) -> Art {
         guard summary.mediaCount > 0 else { return .none }
