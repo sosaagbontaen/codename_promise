@@ -106,7 +106,10 @@ struct MediaViewer: View {
                     .font(Type.label(15, .semibold))
                     .foregroundStyle(.white)
                 Spacer()
-                if items.count > 1 { layoutSwitcher } else { Color.clear.frame(width: 40, height: 40) }
+                HStack(spacing: 8) {
+                    if layout == .single { shareButton }
+                    if items.count > 1 { layoutSwitcher } else if layout != .single { Color.clear.frame(width: 40, height: 40) }
+                }
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
@@ -118,6 +121,23 @@ struct MediaViewer: View {
                 }
             }
             .opacity(pull > 0 ? 0 : 1)
+    }
+
+    /// The share sheet for the photo or video on screen: save it, AirDrop it, send it.
+    /// Shares the original as attached, not the smaller copy made for uploading.
+    @ViewBuilder
+    private var shareButton: some View {
+        if let index = items.firstIndex(where: { $0.id == selection }) {
+            let item = items[index]
+            ShareLink(item: ShareableMedia.url(for: item, index: index, fileStore: fileStore)) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(.white.opacity(0.15), in: Circle())
+            }
+            .accessibilityLabel(item.kind == .video ? "Share video" : "Share photo")
+        }
     }
 
     private var layoutSwitcher: some View {

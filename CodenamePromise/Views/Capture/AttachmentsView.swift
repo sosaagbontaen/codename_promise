@@ -219,6 +219,9 @@ struct AttachmentsView: View {
 
     @ViewBuilder
     private func menu(for item: MediaItem, isCover: Bool) -> some View {
+        ShareLink(item: ShareableMedia.url(for: item, index: order.firstIndex { $0.id == item.id } ?? 0, fileStore: fileStore)) {
+            Label("Share", systemImage: "square.and.arrow.up")
+        }
         if !isCover {
             Button {
                 move(item, to: 0)
