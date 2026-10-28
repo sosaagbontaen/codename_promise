@@ -43,7 +43,7 @@ struct SettingsView: View {
 
     /// One page per setting.
     enum Page: Hashable {
-        case look, backup, mac, names, sync, reminders, export, help, trash
+        case look, backup, mac, names, sync, reminders, export, help, trash, photos
     }
 
     var body: some View {
@@ -58,6 +58,7 @@ struct SettingsView: View {
                         SettingsIcon.iCloud
                     }
                     row(.export, "Export journal", "square.and.arrow.up.fill", Brand.Mode.extra, nil)
+                    row(.photos, "Fill in from Photos", "photo.on.rectangle.angled", Brand.Mode.photo, nil)
                     row(.trash, "Recently Deleted", "trash.fill", Color(uiColor: .systemGray), trashStatus)
                 }
                 Section("Connections") {
@@ -210,6 +211,12 @@ struct SettingsView: View {
                 RecentlyDeletedView(store: store, fileStore: files)
                     .onDisappear { trashCount = (try? store.trashedCount()) ?? 0 }
             }
+        case .photos:
+            if let filler = services.photoBackfill {
+                FillFromPhotosView(filler: filler)
+                    .scrollContentBackground(.hidden)
+                    .background(Brand.ground)
+            }
         case .names:
             if let store = services.store {
                 NameCorrectionsView(store: store)
@@ -237,6 +244,7 @@ struct SettingsView: View {
         case .export: "Export journal"
         case .help: "Help and feedback"
         case .trash: "Recently Deleted"
+        case .photos: "Fill in from Photos"
         }
     }
 
@@ -306,7 +314,7 @@ struct SettingsView: View {
         case .mac:
             MacInboxSection()
 
-        case .names, .trash:
+        case .names, .trash, .photos:
             EmptyView()
 
         case .sync:
