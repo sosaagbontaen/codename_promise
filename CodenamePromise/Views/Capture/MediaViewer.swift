@@ -253,17 +253,16 @@ private struct MediaPage: View {
     /// Either way the symptom was the same and gave no clue: a still first frame, no play
     /// button, no scrubber, nothing to tap. It read as an unsupported format. It was a player
     /// being thrown away, or one that arrived a frame too late.
+    ///
+    /// Made once, when the page first appears, and only then shown: the player used to be
+    /// built in `init`, which runs on every redraw of the viewer (every frame of a pull to
+    /// close), so each one made and threw away a player and checked the disk again.
     @State private var player: AVPlayer?
-    private let fileMissing: Bool
+    @State private var fileMissing = false
 
     init(item: MediaItem, fileStore: MediaFileStore) {
         self.item = item
         self.fileStore = fileStore
-        let missing = item.kind == .video && !fileStore.exists(item.relativePath)
-        self.fileMissing = missing
-        _player = State(initialValue: item.kind == .video && !missing
-            ? AVPlayer(url: fileStore.url(for: item.relativePath))
-            : nil)
     }
 
     var body: some View {
@@ -278,10 +277,18 @@ private struct MediaPage: View {
                         "Video unavailable", systemImage: "video.slash",
                         description: Text("The file couldn't be found on this device.")
                     )
-                } else {
+                } else if let player {
                     VideoPlayer(player: player)
                         .onAppear(perform: allowPlayback)
-                        .onDisappear { player?.pause() }
+                        .onDisappear { player.pause() }
+                } else {
+                    Color.black.task {
+                        guard fileStore.exists(item.relativePath) else {
+                            fileMissing = true
+                            return
+                        }
+                        player = AVPlayer(url: fileStore.url(for: item.relativePath))
+                    }
                 }
             case .photo:
                 if let image {
@@ -298,6 +305,9 @@ private struct MediaPage: View {
     /// Dictation leaves the audio session in `.record`, which silently refuses playback -
     /// and nothing about the resulting dead player says why.
     private func allowPlayback() {
+        // Not while recording: switching the session to playback cuts the recording off,
+        // silently. The video plays muted instead, and the recording is untouched.
+        guard !AudioRecorder.isRecordingAnywhere else { return }
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .default)
         try? session.setActive(true)

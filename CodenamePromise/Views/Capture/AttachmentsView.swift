@@ -185,7 +185,7 @@ struct AttachmentsView: View {
             }
             Spacer()
             Button(role: .destructive) {
-                for id in selected { onRemove(id) }
+                remove(selected)
                 endSelecting()
             } label: {
                 Label("Remove", systemImage: "trash")
@@ -195,6 +195,14 @@ struct AttachmentsView: View {
         .disabled(selected.isEmpty)
         .opacity(selected.isEmpty ? 0.45 : 1)
         .padding(.horizontal, 2)
+    }
+
+    /// Takes them off this screen first, then out of the entry. The other way round, the
+    /// screen read photos that had already been deleted on its next draw, which SwiftData
+    /// answers with a crash.
+    private func remove(_ ids: Set<UUID>) {
+        order.removeAll { ids.contains($0.id) }
+        for id in ids { onRemove(id) }
     }
 
     /// Moves the selection as a block, keeping the order they are already in.
@@ -235,7 +243,7 @@ struct AttachmentsView: View {
         Divider()
 
         Button(role: .destructive) {
-            onRemove(item.id)
+            remove([item.id])
         } label: {
             Label("Remove", systemImage: "trash")
         }

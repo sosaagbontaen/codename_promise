@@ -16,14 +16,40 @@ final class ThumbnailCache {
 
     private let cache = NSCache<NSString, UIImage>()
     private var inFlight: [String: Task<UIImage?, Never>] = [:]
+    /// Who is still waiting on each in-flight load, one token per request. A load whose
+    /// waiters have all gone (their cells scrolled away and cancelled) is skipped when its
+    /// turn comes, rather than decoding a photo nobody will see.
+    private var waiters: [String: Set<UUID>] = [:]
+
+    /// Decodes running at once. A fast fling through a photo-heavy grid used to start one
+    /// detached decode per tile it passed, dozens at a time, all competing with the tiles
+    /// actually on screen. Four keeps the cores busy without burying the visible ones.
+    private static let maxConcurrentDecodes = 4
+    private var running = 0
+    /// Loads waiting for a slot. Served newest first: the most recent requests are the
+    /// tiles on screen now, not the ones a scroll already carried past.
+    private var queue: [CheckedContinuation<Void, Never>] = []
 
     private init() {
         // Generous enough for a long list, bounded so a year of entries can't grow forever.
+        // The count alone didn't bound memory: four hundred cover-sized images is a lot more
+        // than four hundred list thumbnails, so the bytes are capped too.
         cache.countLimit = 400
+        cache.totalCostLimit = 120 * 1024 * 1024
     }
 
     func cached(for key: String) -> UIImage? {
         cache.object(forKey: key as NSString)
+    }
+
+    /// A thumbnail already in memory, without waiting. Lets a cell that is built for a photo
+    /// seen a moment ago draw it in its first frame, instead of flashing empty first.
+    func cached(id: UUID, maxPixel: CGFloat) -> UIImage? {
+        cache.object(forKey: Self.key(id, maxPixel) as NSString)
+    }
+
+    private static func key(_ id: UUID, _ maxPixel: CGFloat) -> String {
+        "\(id.uuidString)-\(Int(maxPixel))"
     }
 
     /// Loads a thumbnail, reusing an in-flight load for the same key so a fast scroll doesn't
@@ -65,24 +91,68 @@ final class ThumbnailCache {
         isVideo: Bool,
         maxPixel: CGFloat = 240
     ) async -> UIImage? {
-        let key = "\(id.uuidString)-\(Int(maxPixel))"
+        let key = Self.key(id, maxPixel)
         if let hit = cache.object(forKey: key as NSString) { return hit }
-        if let existing = inFlight[key] { return await existing.value }
+        if Task.isCancelled { return nil }
 
-        let task = Task<UIImage?, Never> {
-            let image: UIImage? = await Task.detached(priority: .utility) {
-                isVideo
-                    ? await Self.videoFrame(url, maxPixel: maxPixel)
-                    : Self.downsample(url, maxPixel: maxPixel)
-            }.value
-            return image
+        let token = UUID()
+        waiters[key, default: []].insert(token)
+        let task: Task<UIImage?, Never>
+        if let existing = inFlight[key] {
+            task = existing
+        } else {
+            task = Task {
+                let image = await self.decode(key: key, url: url, isVideo: isVideo, maxPixel: maxPixel)
+                self.inFlight[key] = nil
+                self.waiters[key] = nil
+                if let image { self.cache.setObject(image, forKey: key as NSString, cost: Self.cost(of: image)) }
+                return image
+            }
+            inFlight[key] = task
         }
-        inFlight[key] = task
-        let image = await task.value
-        inFlight[key] = nil
 
-        if let image { cache.setObject(image, forKey: key as NSString) }
-        return image
+        return await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            // The cell went away. It still gets whatever the load produces, but if it was the
+            // last one waiting and the decode hasn't started, the decode doesn't happen.
+            Task { @MainActor in self.waiters[key]?.remove(token) }
+        }
+    }
+
+    /// Waits for a decode slot, then decodes, unless everyone who asked has since gone.
+    private func decode(key: String, url: URL, isVideo: Bool, maxPixel: CGFloat) async -> UIImage? {
+        await acquireSlot()
+        defer { releaseSlot() }
+        guard let wanted = waiters[key], !wanted.isEmpty else { return nil }
+        return await Task.detached(priority: .utility) {
+            isVideo
+                ? await Self.videoFrame(url, maxPixel: maxPixel)
+                : Self.downsample(url, maxPixel: maxPixel)
+        }.value
+    }
+
+    private func acquireSlot() async {
+        if running < Self.maxConcurrentDecodes {
+            running += 1
+            return
+        }
+        // The slot is handed over by `releaseSlot`, already counted.
+        await withCheckedContinuation { queue.append($0) }
+    }
+
+    private func releaseSlot() {
+        if let next = queue.popLast() {
+            next.resume()
+        } else {
+            running -= 1
+        }
+    }
+
+    /// What an image costs the cache: its decoded bytes, not its file size.
+    private static func cost(of image: UIImage) -> Int {
+        guard let cgImage = image.cgImage else { return 0 }
+        return cgImage.bytesPerRow * cgImage.height
     }
 
     /// Decodes at the size needed rather than decoding fully and shrinking afterwards.

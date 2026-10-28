@@ -249,7 +249,13 @@ struct CaptureView: View {
         }
         .task { learnTitlePrefix() }
         // Leaving the view is exactly the moment a debounce must not be trusted.
-        .onDisappear { controller.commitNow() }
+        .onDisappear {
+            controller.commitNow()
+            // Leaving the entry ends a recording rather than leaving it running out of sight.
+            // Every chunk is registered as it closes, so stopping here keeps all of it and
+            // queues it for transcription, the same as pressing stop. See ADR-002.
+            if recorder.isActive { stopRecording() }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
                 controller.commitNow()
@@ -402,7 +408,11 @@ struct CaptureView: View {
 
     /// Learns the prefix from titles already written, such as "WWWT 8/14/26".
     private func learnTitlePrefix() {
-        guard Self.learnedTitlePrefix == nil, let drafts = try? store.allDrafts() else { return }
+        // Only an untitled entry shows the suggestion, so only one pays for reading every
+        // title to learn it.
+        guard Self.learnedTitlePrefix == nil,
+              controller.title.trimmingCharacters(in: .whitespaces).isEmpty,
+              let drafts = try? store.allDrafts() else { return }
         let best = TitleSuggestion.prefix(from: drafts.compactMap(\.content.title))
         Self.learnedTitlePrefix = best
         titlePrefix = best
@@ -893,53 +903,10 @@ struct CaptureView: View {
     /// Two controls now rather than one. Stop used to be the whole capsule, which made it the
     /// thing you hit by reflex when you only wanted to think for a moment — and stopping is
     /// the one move you cannot take back into the same recording.
+    /// Its own view so the waveform and timer, which change sixteen times a second, redraw
+    /// only the capsule. Read here, they redrew the whole entry screen at that rate.
     private var recordingCapsule: some View {
-        HStack(spacing: 10) {
-            Button {
-                Haptics.committed()
-                togglePause()
-            } label: {
-                Image(systemName: recorder.isPaused ? "mic.fill" : "pause.fill")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 40, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(recorder.isPaused ? "Resume recording" : "Pause recording")
-
-            if recorder.isPaused {
-                // A waveform that has stopped moving looks like a bug. Say the word instead.
-                Text("Paused")
-                    .font(Type.label(13))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                LiveWaveform(levels: recorder.levels, tint: .white)
-                    .frame(height: 20).frame(maxWidth: .infinity)
-            }
-
-            Text(elapsedLabel).font(Type.mono(13)).foregroundStyle(.white)
-
-            Button {
-                Haptics.committed()
-                stopRecording()
-            } label: {
-                Image(systemName: "stop.fill")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 40, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Stop recording")
-        }
-        .padding(.horizontal, 8)
-        .frame(height: 44)
-        .background(
-            recorder.isPaused ? AnyShapeStyle(Brand.muted) : AnyShapeStyle(Brand.gradient),
-            in: Capsule()
-        )
+        RecordingCapsule(recorder: recorder, togglePause: togglePause, stop: stopRecording)
     }
 
     /// Whether there is anywhere to send to at all. Nil when no backend is configured, which
@@ -1073,10 +1040,6 @@ struct CaptureView: View {
     }
 
 
-    private var elapsedLabel: String {
-        let total = Int(recorder.elapsed)
-        return String(format: "%d:%02d", total / 60, total % 60)
-    }
 
     /// Only offer a pane that has something in it. A tab that shows an empty state is worse
     /// than no tab, because it reads as something broken rather than something unused.
@@ -1123,8 +1086,13 @@ struct CaptureView: View {
 
     private func organise() async {
         guard let organising = services.organising else { return }
+        // Arrange what's on screen, not what the debounce last saved.
+        controller.commitNow()
         let outcome = await organising.organise(draftId: controller.draftId)
-        controller.reload()
+        // Folds in what changed without replacing the buffer: anything typed while Arrange
+        // ran (it can take a minute) would otherwise be thrown away.
+        controller.absorbExternalChanges()
+        controller.reloadFormatted()
         switch outcome {
         case .organised:
             Haptics.committed()
@@ -1279,8 +1247,12 @@ struct CaptureView: View {
                 guard let data = try await item.loadTransferable(type: Data.self) else {
                     return "Couldn't load that photo. If it's stored in iCloud, open it in Photos first."
                 }
+                // Named for what the bytes are. Photos hands over HEIC as often as JPEG, and a
+                // HEIC called .jpg is what got uploaded under the wrong type.
+                let type = item.supportedContentTypes.first { $0.conforms(to: .image) }
                 controller.attachPhoto(
-                    data: data, fileExtension: "jpg", kind: .photo, fileStore: fileStore
+                    data: data, fileExtension: type?.preferredFilenameExtension ?? "jpg",
+                    kind: .photo, fileStore: fileStore
                 )
             }
             return nil
@@ -1480,5 +1452,68 @@ struct OverscrollReader: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+/// The bar shown while recording: pause, a live waveform, the time, stop.
+private struct RecordingCapsule: View {
+    let recorder: AudioRecorder
+    let togglePause: () -> Void
+    let stop: () -> Void
+
+    private func stopRecording() { stop() }
+
+    private var elapsedLabel: String {
+        let total = Int(recorder.elapsed)
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button {
+                Haptics.committed()
+                togglePause()
+            } label: {
+                Image(systemName: recorder.isPaused ? "mic.fill" : "pause.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(recorder.isPaused ? "Resume recording" : "Pause recording")
+
+            if recorder.isPaused {
+                // A waveform that has stopped moving looks like a bug. Say the word instead.
+                Text("Paused")
+                    .font(Type.label(13))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                LiveWaveform(levels: recorder.levels, tint: .white)
+                    .frame(height: 20).frame(maxWidth: .infinity)
+            }
+
+            Text(elapsedLabel).font(Type.mono(13)).foregroundStyle(.white)
+
+            Button {
+                Haptics.committed()
+                stopRecording()
+            } label: {
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Stop recording")
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 44)
+        .background(
+            recorder.isPaused ? AnyShapeStyle(Brand.muted) : AnyShapeStyle(Brand.gradient),
+            in: Capsule()
+        )
     }
 }

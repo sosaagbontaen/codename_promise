@@ -86,7 +86,13 @@ final class CaptureController {
     var draftId: UUID { draft.id }
 
     /// The arranged entry, if one has been made.
-    var organised: OrganisedEntry? { draft.organised }
+    ///
+    /// Kept until the store next saves. The screen asks several times a render, and every
+    /// ask decoded the JSON again; the same goes for the media order and the sync check below.
+    var organised: OrganisedEntry? {
+        _ = draft.organiserVersion  // so the view still redraws when this changes
+        return cached(\.organised) { draft.organised }
+    }
 
     /// Whether the arrangement was built from words that have since changed.
     ///
@@ -101,18 +107,48 @@ final class CaptureController {
             && spoken.count != current.trimmingCharacters(in: .whitespacesAndNewlines).count
     }
 
+    /// Picks up formatting written elsewhere (by Arrange), leaving the text buffer alone.
+    func reloadFormatted() {
+        formatted = draft.content.formattedText ?? ""
+    }
+
     /// Re-reads the draft after work done elsewhere, so the editor shows it.
     func reload() {
         text = draft.content.rawText
         formatted = draft.content.formattedText ?? ""
     }
     var mediaCount: Int { draft.media.count }
-    var orderedMedia: [MediaItem] { draft.orderedMedia }
+    var orderedMedia: [MediaItem] {
+        _ = draft.media.count  // so the view still redraws when photos come or go
+        return cached(\.orderedMedia) { draft.orderedMedia }
+    }
     var pendingTranscriptionCount: Int {
         draft.audioCaptures.filter { !$0.isSafeToDelete }.count
     }
 
-    var needsSync: Bool { draft.needsSync(to: .notion) }
+    var needsSync: Bool {
+        _ = draft.updatedAt
+        return cached(\.needsSync) { draft.needsSync(to: .notion) }
+    }
+
+    /// Derived values, good until the store's next save.
+    private struct Derived {
+        var revision = -1
+        var organised: OrganisedEntry??
+        var orderedMedia: [MediaItem]?
+        var needsSync: Bool?
+    }
+    @ObservationIgnored private var derived = Derived()
+
+    private func cached<T>(_ keyPath: WritableKeyPath<Derived, T?>, _ make: () -> T) -> T {
+        if derived.revision != store.revision {
+            derived = Derived(revision: store.revision)
+        }
+        if let hit = derived[keyPath: keyPath] { return hit }
+        let value = make()
+        derived[keyPath: keyPath] = value
+        return value
+    }
 
     /// Whether this entry already owns a page in the destination. Changes what syncing
     /// *means* — creating something new versus rewriting something that exists — so the

@@ -51,7 +51,13 @@ final class AudioRecorder {
         case failed(String)
     }
 
-    private(set) var state: RecorderState = .idle
+    private(set) var state: RecorderState = .idle {
+        didSet { Self.isRecordingAnywhere = state == .recording }
+    }
+
+    /// Whether any recorder has the microphone, for code that would otherwise change the
+    /// audio session underneath it. See `MediaViewer`.
+    @ObservationIgnored static private(set) var isRecordingAnywhere = false
     /// Total across every chunk, so the clock on screen counts the whole session.
     private(set) var elapsed: TimeInterval = 0
 

@@ -58,7 +58,9 @@ struct MediaCompressor {
         case .video:
             await compressVideo(item, at: source, originalSize: originalSize)
         case .photo:
-            keep(compressPhoto(at: source), on: item, extension: "jpg")
+            let target = targetBytes
+            let data = await Task.detached(priority: .utility) { Self.compressPhoto(at: source, targetBytes: target) }.value
+            keep(data, on: item, extension: "jpg")
         }
     }
 
@@ -219,25 +221,30 @@ struct MediaCompressor {
     // MARK: - Photo
 
     /// Steps the JPEG quality down until it fits, downscaling first if the image is huge.
-    private func compressPhoto(at url: URL) -> Data? {
-        guard let image = UIImage(contentsOfFile: url.path) else { return nil }
+    ///
+    /// Off the main actor, and through ImageIO: it reads only as much of the original as a
+    /// 2048-pixel image needs. The UIKit version decoded the whole photo on the main thread
+    /// and, because its renderer used the screen's scale, drew it three times the intended
+    /// size, which froze the screen for seconds per photo.
+    nonisolated private static func compressPhoto(at url: URL, targetBytes: Int) -> Data? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: 2048,
+        ]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
 
-        let maxDimension: CGFloat = 2048
-        let scaled: UIImage
-        if max(image.size.width, image.size.height) > maxDimension {
-            let ratio = maxDimension / max(image.size.width, image.size.height)
-            let size = CGSize(width: image.size.width * ratio, height: image.size.height * ratio)
-            let renderer = UIGraphicsImageRenderer(size: size)
-            scaled = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
-        } else {
-            scaled = image
+        func jpeg(_ quality: Double) -> Data? {
+            let data = NSMutableData()
+            guard let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil)
+            else { return nil }
+            CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
+            return CGImageDestinationFinalize(destination) ? data as Data : nil
         }
-
         for quality in stride(from: 0.8, through: 0.3, by: -0.1) {
-            if let data = scaled.jpegData(compressionQuality: quality), data.count <= targetBytes {
-                return data
-            }
+            if let data = jpeg(quality), data.count <= targetBytes { return data }
         }
-        return scaled.jpegData(compressionQuality: 0.3)
+        return jpeg(0.3)
     }
 }
