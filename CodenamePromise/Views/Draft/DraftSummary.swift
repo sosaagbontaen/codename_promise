@@ -65,7 +65,9 @@ extension DraftSummary {
 
     /// Snapshots a live draft. Only ever called on the main actor while the model is valid.
     init(_ draft: EntryDraft) {
-        let rawText = draft.content.rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        // The words, not the Markdown, so a list or a bold word doesn't show its markup.
+        let rawText = RichDocument.plainText(ofMarkdown: draft.content.rawText)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         let title: String = {
             if let title = draft.content.title, !title.isEmpty { return title }
             let firstLine = rawText.split(separator: "\n", omittingEmptySubsequences: true).first.map(String.init) ?? ""

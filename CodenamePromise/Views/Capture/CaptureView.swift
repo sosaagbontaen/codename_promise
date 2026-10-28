@@ -296,18 +296,26 @@ struct CaptureView: View {
                         // height was cut off at its bottom edge, slicing a line in half, with
                         // the photos below. An invisible copy of the text sets the height,
                         // the editor fills it, and the page does all the scrolling.
-                        ZStack(alignment: .topLeading) {
-                            Text(controller.text + "\n ")
-                                .writingSurface(minHeight: controller.orderedMedia.isEmpty ? 320 : 120)
-                                .padding(.vertical, 8)
-                                .padding(.horizontal, 5)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .hidden()
-                                .accessibilityHidden(true)
-                            TextEditor(text: $controller.text)
-                                .writingSurface(minHeight: 0)
-                                .scrollDisabled(true)
-                                .focused($writing)
+                        Group {
+                            if #available(iOS 26.0, *) {
+                                // Formatting you see as you type, saved as Markdown.
+                                RichEditor(markdown: $controller.text, focus: $writing)
+                                    .frame(minHeight: controller.orderedMedia.isEmpty ? 320 : 120, alignment: .top)
+                            } else {
+                            ZStack(alignment: .topLeading) {
+                                Text(controller.text + "\n ")
+                                    .writingSurface(minHeight: controller.orderedMedia.isEmpty ? 320 : 120)
+                                    .padding(.vertical, 8)
+                                    .padding(.horizontal, 5)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .hidden()
+                                    .accessibilityHidden(true)
+                                TextEditor(text: $controller.text)
+                                    .writingSurface(minHeight: 0)
+                                    .scrollDisabled(true)
+                                    .focused($writing)
+                            }
+                            }
                         }
                             .overlay(alignment: .topLeading) {
                                 if controller.text.isEmpty {
@@ -371,26 +379,17 @@ struct CaptureView: View {
     /// "WWWT 10/27/26": the prefix most often used in titles like "<word> <date>", or WWWT,
     /// followed by this entry's day.
     private var suggestedTitle: String {
-        let day = controller.entryDate.representativeDate()
-            .formatted(.dateTime.month(.defaultDigits).day(.defaultDigits).year(.twoDigits))
-        return "\(titlePrefix) \(day)"
+        TitleSuggestion.title(prefix: titlePrefix, day: controller.entryDate)
     }
 
-    @State private var titlePrefix = CaptureView.learnedTitlePrefix ?? "WWWT"
+    @State private var titlePrefix = CaptureView.learnedTitlePrefix ?? TitleSuggestion.defaultPrefix
     /// Learned once per launch, not on every entry opened: it reads every title.
     @MainActor private static var learnedTitlePrefix: String?
 
     /// Learns the prefix from titles already written, such as "WWWT 8/14/26".
     private func learnTitlePrefix() {
         guard Self.learnedTitlePrefix == nil, let drafts = try? store.allDrafts() else { return }
-        var counts: [String: Int] = [:]
-        for draft in drafts {
-            guard let title = draft.content.title,
-                  let match = title.firstMatch(of: /^(.+?)\s+\d{1,2}\/\d{1,2}\/\d{2,4}$/)
-            else { continue }
-            counts[String(match.1), default: 0] += 1
-        }
-        let best = counts.max(by: { $0.value < $1.value })?.key ?? "WWWT"
+        let best = TitleSuggestion.prefix(from: drafts.compactMap(\.content.title))
         Self.learnedTitlePrefix = best
         titlePrefix = best
     }

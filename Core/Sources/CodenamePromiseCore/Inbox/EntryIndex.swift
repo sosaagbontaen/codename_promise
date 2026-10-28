@@ -57,7 +57,7 @@ public struct EntryIndex: Codable, Sendable, Equatable {
         if let title = draft.content.title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty {
             return title
         }
-        let firstLine = draft.content.rawText
+        let firstLine = RichDocument.plainText(ofMarkdown: draft.content.rawText)
             .split(whereSeparator: \.isNewline)
             .first.map(String.init)?
             .trimmingCharacters(in: .whitespaces) ?? ""

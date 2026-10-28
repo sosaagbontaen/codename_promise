@@ -76,7 +76,9 @@ public final class OrganisingCoordinator {
         // recognisable as stale rather than merely plausible.
         let request = OrganiseRequest(
             draftId: draftId,
-            transcript: draft.content.rawText,
+            // The words only: formatting markup from the editor never reaches the model, so
+            // it can't be "kept" or "dropped" as if it were something said.
+            transcript: RichDocument.plainText(ofMarkdown: draft.content.rawText),
             contentHash: draft.contentHash
         )
 
