@@ -44,12 +44,35 @@ final class PhotoBackfillCoordinator {
         var keep: Set<String>
     }
 
-    struct Outcome: Equatable {
+    struct Outcome: Equatable, Codable {
         var added = 0
         var duplicates = 0
         var newEntries = 0
         var unreadable = 0
+        /// Stopped before the end, by Stop or by the app closing.
+        var stopped = false
+        /// Items not reached yet when it stopped.
+        var remaining = 0
+        /// The latest day it had finished, for saying how far it got.
+        var reachedDay: String?
     }
+
+    /// What the last fill did, kept so a fill cut off by the app closing can say afterwards
+    /// what it saved. Written after every saved batch.
+    private static let lastRunKey = "photoBackfill.lastRun"
+
+    /// The last fill, if it was cut off before finishing and nothing has run since.
+    private(set) var interrupted: Outcome?
+
+    private func remember(_ outcome: Outcome) {
+        if let data = try? JSONEncoder().encode(outcome) {
+            UserDefaults.standard.set(data, forKey: Self.lastRunKey)
+        }
+    }
+
+    /// Asks the running fill to stop once the batch in hand is saved.
+    func stop() { stopRequested = true }
+    private var stopRequested = false
 
     enum Phase: Equatable {
         case idle
@@ -107,12 +130,18 @@ final class PhotoBackfillCoordinator {
     init(store: DraftStore, fileStore: MediaFileStore) {
         self.store = store
         self.fileStore = fileStore
+        if UserDefaults.standard.bool(forKey: Self.inProgressKey),
+           let data = UserDefaults.standard.data(forKey: Self.lastRunKey),
+           var last = try? JSONDecoder().decode(Outcome.self, from: data) {
+            last.stopped = true
+            interrupted = last
+        }
         if UserDefaults.standard.bool(forKey: Self.inProgressKey) {
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .seconds(2))
                 guard let self else { return }
                 await self.scan()
-                if case .ready = self.phase { self.start() }
+                if case .ready = self.phase { self.start(resuming: true) }
             }
         }
     }
@@ -179,7 +208,11 @@ final class PhotoBackfillCoordinator {
 
     // MARK: - Filling in
 
-    func start() {
+    /// - Parameter resuming: picking up after the app closed mid-fill. The note about what
+    ///   the cut-off fill saved stays on screen while it carries on; a fill started by hand
+    ///   clears it.
+    func start(resuming: Bool = false) {
+        if !resuming { interrupted = nil }
         guard case .ready = phase, !plan.isEmpty else { return }
         // The frames of each similar run that weren't kept stay out, now and next time.
         let dropped: Set<String> = similarRule == .keepAll ? [] : Set(groups.flatMap { group in
@@ -199,7 +232,10 @@ final class PhotoBackfillCoordinator {
     }
 
     func reset() {
-        if !isWorking { phase = .idle }
+        if !isWorking {
+            phase = .idle
+            interrupted = nil
+        }
     }
 
     private func run(_ plan: [PhotoBackfill.Day]) async {
@@ -208,6 +244,9 @@ final class PhotoBackfillCoordinator {
         let titles: [String] = ((try? store.allDrafts()) ?? []).compactMap(\.content.title)
         let prefix = TitleSuggestion.prefix(from: titles)
         var outcome = Outcome()
+        outcome.remaining = total
+        stopRequested = false
+        remember(outcome)
         phase = .working(done: 0, total: total, day: plan[0].day)
 
         await BackgroundWork.run(title: "Filling in from Photos") { report in
@@ -216,17 +255,21 @@ final class PhotoBackfillCoordinator {
             // or two, and one day at a time left the workers waiting on each other.
             var batch: [PhotoBackfill.Day] = []
             for day in plan {
+                if self.stopRequested { break }
                 batch.append(day)
                 if batch.reduce(0, { $0 + $1.assets.count }) >= Self.batchSize {
                     await self.fill(batch, prefix: prefix, done: &done, total: total, outcome: &outcome, report: report)
                     batch = []
                 }
             }
-            if !batch.isEmpty {
+            if !batch.isEmpty, !self.stopRequested {
                 await self.fill(batch, prefix: prefix, done: &done, total: total, outcome: &outcome, report: report)
             }
+            outcome.remaining = total - done
+            outcome.stopped = outcome.remaining > 0
         }
         UserDefaults.standard.removeObject(forKey: Self.inProgressKey)
+        remember(outcome)
         self.plan = []
         phase = .done(outcome)
         // Thumbnails for everything that just arrived, made in the background.
@@ -302,6 +345,9 @@ final class PhotoBackfillCoordinator {
         // Saved a batch at a time, so an interruption costs at most the batch in hand, and
         // the next run adds it then (everything saved is recognised and skipped).
         try? store.flush()
+        outcome.remaining = total - done
+        outcome.reachedDay = days.last?.day.rawValue
+        remember(outcome)
     }
 
     // MARK: - Similar shots

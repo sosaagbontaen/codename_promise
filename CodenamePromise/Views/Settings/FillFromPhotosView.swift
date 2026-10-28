@@ -10,6 +10,7 @@ struct FillFromPhotosView: View {
         List {
             switch filler.phase {
             case .idle:
+                if let last = filler.interrupted { stoppedSummary(last, unplanned: true) }
                 Section {
                     Button {
                         Task { await filler.scan() }
@@ -106,6 +107,13 @@ struct FillFromPhotosView: View {
                 copiesNote
 
             case .working(let done, let total, let day):
+                if let last = filler.interrupted {
+                    Section {
+                        Label("Picked up where the last fill stopped", systemImage: "arrow.clockwise.circle.fill")
+                            .foregroundStyle(Brand.waiting)
+                        row("Saved before it stopped", last.added)
+                    }
+                }
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
                         ProgressView(value: Double(done), total: Double(max(total, 1)))
@@ -116,8 +124,15 @@ struct FillFromPhotosView: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
+                    Button("Stop", role: .destructive) { filler.stop() }
                 } footer: {
-                    Text("You can leave the app. It keeps going, with its progress on the Lock Screen.")
+                    Text("You can leave the app. It keeps going, with its progress on the Lock Screen. Stop finishes the few in hand and saves them; everything saved stays.")
+                }
+
+            case .done(let outcome) where outcome.stopped:
+                stoppedSummary(outcome, unplanned: false)
+                Section {
+                    Button("Done") { filler.reset() }
                 }
 
             case .done(let outcome):
@@ -125,6 +140,10 @@ struct FillFromPhotosView: View {
                     Label(doneLabel(outcome.added), systemImage: "checkmark.circle.fill")
                         .foregroundStyle(Brand.reached)
                     if outcome.newEntries > 0 { row("New entries", outcome.newEntries) }
+                    if let last = filler.interrupted {
+                        // This run finished one that had been cut off.
+                        row("Saved before the earlier stop", last.added)
+                    }
                     if outcome.duplicates > 0 { row("Already in an entry, left out", outcome.duplicates) }
                     if outcome.unreadable > 0 { row("Couldn't be read", outcome.unreadable) }
                     Button("Done") { filler.reset() }
@@ -145,6 +164,27 @@ struct FillFromPhotosView: View {
     private func similarLabel(_ summary: PhotoBackfillCoordinator.Summary) -> String {
         let noun = summary.similarGroups == 1 ? "run" : "runs"
         return "Review \(summary.similarGroups.formatted()) \(noun) (\(summary.similarPhotos.formatted()) photos)"
+    }
+
+    /// What a fill that stopped partway saved, and what's left.
+    private func stoppedSummary(_ outcome: PhotoBackfillCoordinator.Outcome, unplanned: Bool) -> some View {
+        Section {
+            Label(unplanned ? "The last fill stopped partway" : "Stopped", systemImage: "pause.circle.fill")
+                .foregroundStyle(Brand.waiting)
+            row("Saved to your journal", outcome.added)
+            if outcome.newEntries > 0 { row("New entries", outcome.newEntries) }
+            if outcome.duplicates > 0 { row("Already in an entry, left out", outcome.duplicates) }
+            if outcome.remaining > 0 { row("Still to fill in", outcome.remaining) }
+            if let day = outcome.reachedDay.flatMap(CalendarDay.init(rawValue:)) {
+                HStack {
+                    Text("Filled in up to")
+                    Spacer()
+                    Text(dayLabel(day)).foregroundStyle(.secondary)
+                }
+            }
+        } footer: {
+            Text("Everything listed as saved is in your journal. Filling in again skips it and carries on with the rest.")
+        }
     }
 
     private func fillLabel(_ days: Int) -> String {
