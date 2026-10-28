@@ -84,11 +84,10 @@ final class CaptureModel {
     }
 
     func setDay(_ date: Date, for id: UUID) {
-        guard var day = plan[id] else { return }
-        day.day = CalendarDay(date: date)
         // An entry picked on the old day doesn't belong to the new one.
-        if case .existing = day.entry { day.entry = .latest }
-        plan[id] = day
+        if case .existing = plan[id]?.entry { plan[id]?.entry = .latest }
+        // Joins that day if it's already here, and gives a "No date found" group its date.
+        plan.setDay(CalendarDay(date: date), for: id)
     }
 
     func addDay() {
@@ -137,7 +136,7 @@ final class CaptureModel {
         loadThumbnail(for: item)
         Task {
             let taken = await Self.takenOn(item)
-            plan.place(item.id, on: taken ?? .today())
+            plan.place(item.id, on: taken)
             reading -= 1
         }
     }

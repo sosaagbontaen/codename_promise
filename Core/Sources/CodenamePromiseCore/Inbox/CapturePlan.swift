@@ -33,13 +33,22 @@ public struct CapturePlan: Sendable, Equatable {
         public var text: String
         public var entry: EntryChoice
         public var fileIds: [UUID]
+        /// Holds photos and videos that carry no date. Still filed under `day` (today) if
+        /// left alone, but shown as "No date found" so they aren't mistaken for today's.
+        /// Picking a day for it makes it an ordinary day.
+        public var undated: Bool
+        /// A title for the entry if it's new or untitled. Empty means none.
+        public var title: String
 
-        public init(id: UUID = UUID(), day: CalendarDay, text: String = "", entry: EntryChoice = .latest, fileIds: [UUID] = []) {
+        public init(id: UUID = UUID(), day: CalendarDay, text: String = "", entry: EntryChoice = .latest,
+                    fileIds: [UUID] = [], undated: Bool = false, title: String = "") {
             self.id = id
             self.day = day
             self.text = text
             self.entry = entry
             self.fileIds = fileIds
+            self.undated = undated
+            self.title = title
         }
 
         public var hasNote: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -66,17 +75,74 @@ public struct CapturePlan: Sendable, Equatable {
     }
 
     /// Files a photo under the day it was taken, joining that day if it's already here.
-    public mutating func place(_ fileId: UUID, on day: CalendarDay) {
-        if let index = days.firstIndex(where: { $0.day == day }) {
+    /// Nil means it carries no date, and it goes into the "No date found" group instead of
+    /// quietly becoming today's.
+    public mutating func place(_ fileId: UUID, on day: CalendarDay?, today: CalendarDay = .today()) {
+        guard let day else {
+            if let index = days.firstIndex(where: \.undated) {
+                days[index].fileIds.append(fileId)
+            } else if let index = days.firstIndex(where: { $0.isEmpty }) {
+                days[index].day = today
+                days[index].undated = true
+                days[index].fileIds.append(fileId)
+            } else {
+                days.append(Day(day: today, fileIds: [fileId], undated: true))
+            }
+            sortDays()
+            return
+        }
+        if let index = days.firstIndex(where: { $0.day == day && !$0.undated }) {
             days[index].fileIds.append(fileId)
         } else if let index = days.firstIndex(where: { $0.isEmpty }) {
             // The untouched starting day takes it rather than sitting empty above it.
             days[index].day = day
+            days[index].undated = false
             days[index].fileIds.append(fileId)
         } else {
             days.append(Day(day: day, fileIds: [fileId]))
         }
-        days.sort { $0.day > $1.day }
+        sortDays()
+    }
+
+    /// Moves one photo or video to another day, joining that day if it's already here.
+    /// The day it left goes away if it's now empty, unless it's the only one.
+    public mutating func move(_ fileId: UUID, to day: CalendarDay) {
+        guard let from = days.firstIndex(where: { $0.fileIds.contains(fileId) }) else { return }
+        if days[from].day == day && !days[from].undated { return }
+        days[from].fileIds.removeAll { $0 == fileId }
+        let leftId = days[from].id
+        if let index = days.firstIndex(where: { $0.day == day && !$0.undated }) {
+            days[index].fileIds.append(fileId)
+        } else {
+            days.append(Day(day: day, fileIds: [fileId]))
+        }
+        if let left = days.firstIndex(where: { $0.id == leftId }), days[left].isEmpty, days.count > 1 {
+            days.remove(at: left)
+        }
+        sortDays()
+    }
+
+    /// Gives a day (usually the "No date found" group) a date. If that date is already
+    /// here, the two become one rather than showing the same day twice.
+    public mutating func setDay(_ day: CalendarDay, for id: UUID) {
+        guard let index = days.firstIndex(where: { $0.id == id }) else { return }
+        if let other = days.firstIndex(where: { $0.id != id && $0.day == day && !$0.undated }) {
+            let moving = days[index]
+            days[other].fileIds += moving.fileIds
+            if moving.hasNote {
+                days[other].text = days[other].hasNote ? days[other].text + "\n\n" + moving.text : moving.text
+            }
+            days.remove(at: index)
+        } else {
+            days[index].day = day
+            days[index].undated = false
+        }
+        sortDays()
+    }
+
+    /// Undated first, so it's seen; then newest first.
+    private mutating func sortDays() {
+        days.sort { ($0.undated ? 1 : 0, $0.day) > ($1.undated ? 1 : 0, $1.day) }
     }
 
     public mutating func remove(file fileId: UUID) {
@@ -116,7 +182,9 @@ public struct CapturePlan: Sendable, Equatable {
             return Capture.Group(
                 id: day.id, day: day.day, entryId: entryId, newEntry: newEntry,
                 text: day.hasNote ? day.text.trimmingCharacters(in: .whitespacesAndNewlines) : nil,
-                fileIds: day.fileIds
+                fileIds: day.fileIds,
+                title: day.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? nil : day.title.trimmingCharacters(in: .whitespacesAndNewlines)
             )
         }
     }

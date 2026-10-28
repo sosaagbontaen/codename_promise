@@ -75,6 +75,7 @@ final class ShareModel {
         // Dot-prefixed so the app's inbox scan never mistakes it for a capture.
         staging = group?.appendingPathComponent("Inbox/.staging/\(UUID().uuidString)", isDirectory: true)
         index = group.flatMap { EntryIndex.read(from: $0.appendingPathComponent(EntryIndex.fileName)) }
+        titlePrefix = TitleSuggestion.prefix(from: index?.entries.map(\.title) ?? [])
     }
 
     var hasMedia: Bool { total > 0 }
@@ -86,12 +87,37 @@ final class ShareModel {
     var canAdd: Bool { !preparing && !saving && staging != nil && !plan.isEmpty }
 
     func setDay(_ date: Date, for id: UUID) {
-        guard var day = plan[id] else { return }
-        day.day = CalendarDay(date: date)
         // An entry picked on the old day doesn't belong to the new one.
-        if case .existing = day.entry { day.entry = .latest }
-        plan[id] = day
+        if case .existing = plan[id]?.entry { plan[id]?.entry = .latest }
+        // Joins that day if it's already here, and gives a "No date found" group its date.
+        plan.setDay(CalendarDay(date: date), for: id)
     }
+
+    /// Moves one photo or video to another day, the way a misdated one gets put right.
+    func move(_ fileId: UUID, to date: Date) {
+        plan.move(fileId, to: CalendarDay(date: date))
+    }
+
+    /// "WWWT 10/27/26" for this day, learned from the titles already in the journal. Nil
+    /// when the day's things are going into an entry that already exists, or when an entry
+    /// that day already has this title (pick that one instead).
+    func suggestedTitle(for dayId: UUID) -> String? {
+        guard let day = plan[dayId], !day.undated else { return nil }
+        let existing = entries(on: day.day)
+        if case .existing = day.entry.shown(among: existing) { return nil }
+        let title = TitleSuggestion.title(prefix: titlePrefix, day: day.day)
+        if existing.contains(where: { $0.title == title }) { return nil }
+        return title
+    }
+
+    /// Whether the day's things are going into a new entry, which is when a title applies.
+    func makesNewEntry(_ dayId: UUID) -> Bool {
+        guard let day = plan[dayId] else { return false }
+        if case .existing = day.entry.shown(among: entries(on: day.day)) { return false }
+        return true
+    }
+
+    @ObservationIgnored private let titlePrefix: String
 
     func addDay() {
         // The day before the earliest one here: filling in a gap is the usual reason.
@@ -130,20 +156,35 @@ final class ShareModel {
             if !shared.isEmpty, let first = plan.days.first {
                 plan[first.id]?.text = shared.joined(separator: "\n\n")
             }
-            // One at a time: hundreds of photos at once would hold hundreds of copies in
-            // flight and push the extension past its memory limit.
-            for provider in media {
-                guard let kind = Self.kind(of: provider) else { continue }
-                if let url = await Self.copy(provider, kind: kind, into: staging) {
-                    let item = Item(id: UUID(), url: url, kind: kind)
-                    items[item.id] = item
-                    let taken: Date? = kind == .video
-                        ? await CaptureDateReader.captureDate(ofVideoAt: url)
-                        : CaptureDateReader.captureDate(ofImageAt: url)
-                    plan.place(item.id, on: taken.map { CalendarDay(date: $0) } ?? .today())
-                    preparedCount += 1
-                } else {
-                    skipped += 1
+            // A few at a time. Photos hands each one over slowly (it may have to fetch the
+            // original from iCloud first), so waiting on them one by one is what made a big
+            // share crawl. Only a few are ever in flight, and each is a file on disk rather
+            // than in memory, so the extension stays well inside its memory limit. Results
+            // are placed in the order they were selected, not the order they finish.
+            let width = 4
+            var finished: [Int: Prepared?] = [:]
+            var nextToPlace = 0
+            await withTaskGroup(of: (Int, Prepared?).self) { group in
+                var started = 0
+                func startNext() {
+                    guard started < media.count, let kind = Self.kind(of: media[started]) else { return }
+                    let index = started, provider = SharedProvider(media[index])
+                    started += 1
+                    group.addTask { (index, await Self.prepare(provider.value, kind: kind, into: staging)) }
+                }
+                for _ in 0..<width { startNext() }
+                for await (index, result) in group {
+                    finished[index] = result
+                    startNext()
+                    while let ready = finished.removeValue(forKey: nextToPlace) {
+                        nextToPlace += 1
+                        guard let ready else { skipped += 1; continue }
+                        let item = Item(id: UUID(), url: ready.url, kind: ready.kind)
+                        items[item.id] = item
+                        // No date means "No date found", never silently today.
+                        plan.place(item.id, on: ready.taken.map { CalendarDay(date: $0) })
+                        preparedCount += 1
+                    }
                 }
             }
             preparing = false
@@ -179,14 +220,14 @@ final class ShareModel {
 
     // MARK: - Loading
 
-    private static func kind(of provider: NSItemProvider) -> Capture.Kind? {
+    nonisolated private static func kind(of provider: NSItemProvider) -> Capture.Kind? {
         if provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) { return .video }
         if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) { return .photo }
         if provider.hasItemConformingToTypeIdentifier(UTType.audio.identifier) { return .audio }
         return nil
     }
 
-    private static func type(for kind: Capture.Kind) -> UTType {
+    nonisolated private static func type(for kind: Capture.Kind) -> UTType {
         switch kind {
         case .video: .movie
         case .photo: .image
@@ -195,9 +236,33 @@ final class ShareModel {
         }
     }
 
-    /// Copies the shared file out before the callback returns, because the system deletes
-    /// the file it lent as soon as it does.
-    private static func copy(_ provider: NSItemProvider, kind: Capture.Kind, into folder: URL) async -> URL? {
+    /// NSItemProvider is safe to load from any thread (its callbacks arrive on arbitrary
+    /// queues by design) but isn't marked Sendable, so it crosses into the loading tasks
+    /// in this box. Each provider is only ever used by the one task it's handed to.
+    struct SharedProvider: @unchecked Sendable {
+        let value: NSItemProvider
+        init(_ value: NSItemProvider) { self.value = value }
+    }
+
+    struct Prepared: Sendable {
+        let url: URL
+        let kind: Capture.Kind
+        let taken: Date?
+    }
+
+    /// Brings one shared item into the staging folder and reads the day it was taken.
+    nonisolated private static func prepare(_ provider: NSItemProvider, kind: Capture.Kind, into folder: URL) async -> Prepared? {
+        guard let url = await copy(provider, kind: kind, into: folder) else { return nil }
+        let taken: Date? = kind == .video
+            ? await CaptureDateReader.captureDate(ofVideoAt: url)
+            : CaptureDateReader.captureDate(ofImageAt: url)
+        return Prepared(url: url, kind: kind, taken: taken)
+    }
+
+    /// Takes the shared file before the callback returns, because the system deletes the
+    /// file it lent as soon as it does. Moved rather than copied: the file is ours to take,
+    /// and a move on the same disk is instant where copying a long video is not.
+    nonisolated private static func copy(_ provider: NSItemProvider, kind: Capture.Kind, into folder: URL) async -> URL? {
         let type = type(for: kind)
         let fromFile: URL? = await withCheckedContinuation { continuation in
             _ = provider.loadFileRepresentation(forTypeIdentifier: type.identifier) { url, _ in
@@ -205,7 +270,12 @@ final class ShareModel {
                 let ext = url.pathExtension.isEmpty ? (type.preferredFilenameExtension ?? "dat") : url.pathExtension
                 let target = folder.appendingPathComponent("\(UUID().uuidString).\(ext)")
                 do {
-                    try FileManager.default.copyItem(at: url, to: target)
+                    do {
+                        try FileManager.default.moveItem(at: url, to: target)
+                    } catch {
+                        // Lent read-only or from another volume: fall back to a copy.
+                        try FileManager.default.copyItem(at: url, to: target)
+                    }
                     continuation.resume(returning: target)
                 } catch {
                     continuation.resume(returning: nil)
@@ -295,6 +365,8 @@ private struct DaySection: View {
     @Bindable var model: ShareModel
     let dayId: UUID
     let isOnly: Bool
+    @State private var moving: UUID?
+    @State private var movingTo = Date()
 
     var body: some View {
         if let day = model.plan[dayId] {
@@ -304,20 +376,30 @@ private struct DaySection: View {
                         LazyHStack(spacing: 6) {
                             ForEach(day.fileIds, id: \.self) { fileId in
                                 if let item = model.items[fileId] {
-                                    ShareThumbnail(item: item)
-                                        .contextMenu {
-                                            Button(role: .destructive) {
-                                                model.remove(fileId)
-                                            } label: {
-                                                Label("Leave this one out", systemImage: "xmark")
-                                            }
+                                    // Tap for the menu: moving a misdated photo is common
+                                    // enough that it shouldn't hide behind a long press.
+                                    Menu {
+                                        moveMenu(for: fileId, from: day)
+                                        Button(role: .destructive) {
+                                            model.remove(fileId)
+                                        } label: {
+                                            Label("Leave this one out", systemImage: "xmark")
                                         }
+                                    } label: {
+                                        ShareThumbnail(item: item)
+                                    }
                                 }
                             }
                         }
                         .padding(.vertical, 2)
                     }
                     .frame(height: 60)
+
+                    if day.undated {
+                        Text("These don\u{2019}t say when they were taken. Tap one to move it to its day, or pick a day below to move them all.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 TextField(
@@ -331,7 +413,7 @@ private struct DaySection: View {
                 .lineLimit(2...10)
 
                 DatePicker(
-                    "Day",
+                    day.undated ? "Move all to" : "Day",
                     selection: Binding(
                         get: { day.day.representativeDate() },
                         set: { model.setDay($0, for: dayId) }
@@ -341,6 +423,21 @@ private struct DaySection: View {
                 )
 
                 let existing = model.entries(on: day.day)
+                if !day.undated && model.makesNewEntry(dayId) {
+                    TextField("Title (optional)", text: Binding(
+                        get: { model.plan[dayId]?.title ?? "" },
+                        set: { model.plan[dayId]?.title = $0 }
+                    ))
+                    if day.title.isEmpty, let suggestion = model.suggestedTitle(for: dayId) {
+                        Button {
+                            model.plan[dayId]?.title = suggestion
+                        } label: {
+                            Label("Name it \u{201C}\(suggestion)\u{201D}", systemImage: "plus")
+                        }
+                        .font(.subheadline)
+                    }
+                }
+
                 Picker("Entry", selection: Binding(
                     get: { day.entry.shown(among: existing) },
                     set: { model.plan[dayId]?.entry = $0 }
@@ -362,10 +459,55 @@ private struct DaySection: View {
             } header: {
                 Text(header(for: day))
             }
+            .sheet(isPresented: Binding(get: { moving != nil }, set: { if !$0 { moving = nil } })) {
+                NavigationStack {
+                    DatePicker("Day", selection: $movingTo, in: ...Date(), displayedComponents: .date)
+                        .datePickerStyle(.graphical)
+                        .padding()
+                        .navigationTitle("Move to")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Cancel") { moving = nil }
+                            }
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Move") {
+                                    if let moving { model.move(moving, to: movingTo) }
+                                    moving = nil
+                                }
+                            }
+                        }
+                }
+                .presentationDetents([.medium, .large])
+            }
+        }
+    }
+
+    /// Every other day already here, then any day at all.
+    @ViewBuilder
+    private func moveMenu(for fileId: UUID, from day: CapturePlan.Day) -> some View {
+        let others = model.plan.days.filter { !$0.undated && $0.id != day.id }
+        if !others.isEmpty {
+            Section("Move to") {
+                ForEach(others) { other in
+                    Button(other.day.representativeDate().formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().year())) {
+                        model.move(fileId, to: other.day.representativeDate())
+                    }
+                }
+            }
+        }
+        Button {
+            moving = fileId
+        } label: {
+            Label("Move to another day\u{2026}", systemImage: "calendar")
         }
     }
 
     private func header(for day: CapturePlan.Day) -> String {
+        if day.undated {
+            let count = day.fileIds.count
+            return "No date found \u{00B7} \(count) \(count == 1 ? "item" : "items")"
+        }
         let date = day.day.representativeDate().formatted(.dateTime.weekday(.wide).month(.wide).day())
         let count = day.fileIds.count
         return count == 0 ? date : "\(date) \u{00B7} \(count) \(count == 1 ? "item" : "items")"

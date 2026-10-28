@@ -94,6 +94,12 @@ public final class CaptureIngestor {
                     for: capture, day: group.day, newEntry: group.newEntry,
                     key: group.newEntry ? "group|\(group.id.uuidString)" : group.day.rawValue
                 )
+                if let title = group.title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty,
+                   (draft.content.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    draft.updateTitle(title)
+                    try store.flush()
+                    outcome.entryIds.insert(draft.id)
+                }
                 if let text = group.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
                     if try append(text, to: draft) {
                         outcome.jots += 1

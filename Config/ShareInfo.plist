@@ -11,13 +11,16 @@
 		<key>NSExtensionAttributes</key>
 		<dict>
 			<!-- Photos, videos, text and links, and voice memos. Generous on count because the
-			     point is selecting a whole afternoon in Photos and pouring it in. -->
+			     point is selecting a whole afternoon, or a whole trip, in Photos and pouring it in.
+			     Past these counts iOS hides DumpNotes from the share sheet without saying why, so
+			     they sit well above any real selection. The extension copies one file at a time
+			     and only draws thumbnails on screen, so the count doesn't drive memory. -->
 			<key>NSExtensionActivationRule</key>
 			<dict>
 				<key>NSExtensionActivationSupportsImageWithMaxCount</key>
-				<integer>500</integer>
+				<integer>5000</integer>
 				<key>NSExtensionActivationSupportsMovieWithMaxCount</key>
-				<integer>500</integer>
+				<integer>5000</integer>
 				<key>NSExtensionActivationSupportsText</key>
 				<true/>
 				<key>NSExtensionActivationSupportsWebURLWithMaxCount</key>

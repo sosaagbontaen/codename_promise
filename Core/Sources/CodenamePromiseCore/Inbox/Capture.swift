@@ -90,14 +90,20 @@ public struct Capture: Codable, Sendable, Equatable, Identifiable {
         public var newEntry: Bool
         public var text: String?
         public var fileIds: [UUID]
+        /// A title for the entry, used only if it doesn't have one yet: naming a new entry
+        /// is the point, renaming one someone already titled never is. Absent in captures
+        /// written before titles existed, which decode as nil.
+        public var title: String?
 
-        public init(id: UUID = UUID(), day: CalendarDay, entryId: UUID? = nil, newEntry: Bool = false, text: String? = nil, fileIds: [UUID] = []) {
+        public init(id: UUID = UUID(), day: CalendarDay, entryId: UUID? = nil, newEntry: Bool = false,
+                    text: String? = nil, fileIds: [UUID] = [], title: String? = nil) {
             self.id = id
             self.day = day
             self.entryId = entryId
             self.newEntry = newEntry
             self.text = text
             self.fileIds = fileIds
+            self.title = title
         }
     }
 

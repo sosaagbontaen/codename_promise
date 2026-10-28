@@ -196,6 +196,64 @@ struct InboxTests {
 
     // MARK: - Arranged by day
 
+    @Test func undatedPhotosAreGroupedNotFiledAsToday() {
+        let monday = CalendarDay(rawValue: "2026-03-09")!
+        var plan = CapturePlan(today: day)
+        let a = UUID(), b = UUID(), c = UUID()
+        plan.place(a, on: nil, today: day)
+        plan.place(b, on: day)
+        plan.place(c, on: nil, today: day)
+        #expect(plan.days.count == 2, "undated stays apart from a real today")
+        #expect(plan.days.first?.undated == true, "shown first so it's noticed")
+        #expect(plan.days.first?.fileIds == [a, c])
+
+        plan.move(a, to: monday)
+        #expect(plan.days.first { $0.day == monday }?.fileIds == [a])
+        plan.move(c, to: day)
+        #expect(!plan.days.contains { $0.undated }, "the emptied undated group goes away")
+        #expect(plan.days.first { $0.day == day }?.fileIds == [b, c])
+    }
+
+    @Test func datingTheUndatedGroupJoinsAnExistingDay() {
+        let monday = CalendarDay(rawValue: "2026-03-09")!
+        var plan = CapturePlan(today: day)
+        let a = UUID(), b = UUID()
+        plan.place(a, on: monday)
+        plan.place(b, on: nil, today: day)
+        let undated = plan.days.first { $0.undated }!.id
+        plan.setDay(monday, for: undated)
+        #expect(plan.days.count == 1)
+        #expect(plan.days.first?.fileIds == [a, b])
+    }
+
+    @Test func aTitleNamesANewEntryButNeverRenamesOne() async throws {
+        let h = try makeHarness()
+        let titled = try h.store.createDraft(entryDate: day)
+        titled.updateTitle("Already named")
+        try h.store.flush()
+        let monday = CalendarDay(rawValue: "2026-03-09")!
+
+        var plan = CapturePlan(today: day)
+        plan[plan.days[0].id]?.text = "Lunch by the water"
+        plan[plan.days[0].id]?.title = "WWWT 3/14/26"
+        let other = plan.addDay(monday)
+        plan[other]?.text = "Quiet day"
+        plan[other]?.title = "  WWWT 3/9/26 "
+        #expect(plan.groups.last?.title == "WWWT 3/9/26", "trimmed")
+        try CaptureWriter(inbox: h.inbox).write(plan: plan, sources: [], source: "test")
+        _ = await h.drainer.drain(h.inbox)
+
+        let drafts = try h.store.allDrafts()
+        #expect(drafts.first { $0.id == titled.id }?.content.title == "Already named")
+        #expect(drafts.first { $0.entryDate == monday }?.content.title == "WWWT 3/9/26")
+    }
+
+    @Test func theSuggestedPrefixIsLearned() {
+        #expect(TitleSuggestion.prefix(from: ["Day 1/2/26", "Day 1/3/26", "WWWT 1/4/26", "Trip"]) == "Day")
+        #expect(TitleSuggestion.prefix(from: []) == "WWWT")
+        #expect(TitleSuggestion.title(prefix: "WWWT", day: day) == "WWWT 3/14/26")
+    }
+
     @Test func photosSortIntoTheirDaysAndNotesCanGoAnywhere() {
         let monday = CalendarDay(rawValue: "2026-03-09")!
         var plan = CapturePlan(today: day)
