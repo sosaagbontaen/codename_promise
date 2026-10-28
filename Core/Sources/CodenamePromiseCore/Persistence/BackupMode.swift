@@ -69,16 +69,18 @@ extension ModelContainerFactory {
     public static func openAppContainer(
         backup: BackupMode,
         cloudContainerId: String = CloudContainer.identifier,
+        /// Where the store lives. Nil leaves it to SwiftData, which only tests should do;
+        /// see `StoreLocation` for why the app never does.
+        url: URL? = nil,
         /// Takes the CloudKit container id, or nil for a purely local store. Deliberately
         /// a `String?` rather than SwiftData's own type: that one is a struct of static
         /// factories rather than an enum, so a test cannot look at it and say which was
         /// asked for. The seam is only useful if a test can see through it.
-        make: (String?) throws -> ModelContainer = { id in
-            try makeAppContainer(
-                cloudKitDatabase: id.map { .private($0) } ?? .none
-            )
-        }
+        make: ((String?) throws -> ModelContainer)? = nil
     ) throws -> StoreOpening {
+        let make = make ?? { id in
+            try makeAppContainer(url: url, cloudKitDatabase: id.map { .private($0) } ?? .none)
+        }
         guard backup == .iCloud else {
             return StoreOpening(container: try make(nil), isBackedUp: false)
         }

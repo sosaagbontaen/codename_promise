@@ -169,3 +169,22 @@ public final class MediaItem {
             .filter { !$0.isEmpty }
     }
 }
+
+extension MediaItem {
+    /// See `EntryDraft.copyForAnotherStore`. The bytes don't move; only the row does.
+    func copyForAnotherStore() -> MediaItem {
+        let copy = MediaItem(id: id, kind: kind, relativePath: relativePath,
+                             originalSizeBytes: originalSizeBytes, createdAt: createdAt)
+        copy.compressedRelativePath = compressedRelativePath
+        copy.compressedSizeBytes = compressedSizeBytes
+        copy.partRelativePaths = partRelativePaths
+        copy.sortIndex = sortIndex
+        copy.compressionLevelRaw = compressionLevelRaw
+        copy.compressionStatusRaw = compressionStatusRaw
+        copy.uploadStatusRaw = uploadStatusRaw
+        copy.uploadStartedAt = uploadStartedAt
+        copy.uploadAttemptCount = uploadAttemptCount
+        copy.uploadError = uploadError
+        return copy
+    }
+}

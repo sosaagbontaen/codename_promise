@@ -257,3 +257,29 @@ public final class SyncState {
         return now.timeIntervalSince(started) > timeout
     }
 }
+
+extension SyncState {
+    /// See `EntryDraft.copyForAnotherStore`. The idempotency bookkeeping comes along so a
+    /// sync interrupted before the move replays rather than writes twice. See ADR-003.
+    func copyForAnotherStore() -> SyncState {
+        let copy = SyncState(id: id, target: target)
+        copy.statusRaw = statusRaw
+        copy.phaseRaw = phaseRaw
+        copy.externalId = externalId
+        copy.syncedContentHash = syncedContentHash
+        copy.attemptId = attemptId
+        copy.attemptContentHash = attemptContentHash
+        copy.uploadedFileIds = uploadedFileIds
+        copy.insertedBlockIds = insertedBlockIds
+        copy.photoBlockIds = photoBlockIds
+        copy.videoBlockIds = videoBlockIds
+        copy.destinationFingerprint = destinationFingerprint
+        copy.appendsToExistingPage = appendsToExistingPage
+        copy.externalTitle = externalTitle
+        copy.startedAt = startedAt
+        copy.lastSyncedAt = lastSyncedAt
+        copy.lastSyncError = lastSyncError
+        copy.attemptCount = attemptCount
+        return copy
+    }
+}

@@ -112,3 +112,20 @@ public final class AudioCapture {
         relativePath.isEmpty ? [] : [relativePath]
     }
 }
+
+extension AudioCapture {
+    /// See `EntryDraft.copyForAnotherStore`.
+    func copyForAnotherStore() -> AudioCapture {
+        let copy = AudioCapture(id: id, relativePath: relativePath, durationSeconds: durationSeconds,
+                                sizeBytes: sizeBytes, recordedAt: recordedAt)
+        copy.chunkIndex = chunkIndex
+        copy.transcriptionStatusRaw = transcriptionStatusRaw
+        copy.transcript = transcript
+        copy.transcriptionStartedAt = transcriptionStartedAt
+        copy.transcriptionAttemptCount = transcriptionAttemptCount
+        copy.transcriptionError = transcriptionError
+        copy.nextTranscriptionAttemptAt = nextTranscriptionAttemptAt
+        copy.mergedIntoDraftAt = mergedIntoDraftAt
+        return copy
+    }
+}

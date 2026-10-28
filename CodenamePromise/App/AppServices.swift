@@ -63,9 +63,17 @@ final class AppServices {
             let requested = Self.backupMode
             // Backup may never stop the journal opening: asking for iCloud and not getting
             // it falls back to local and says why. See BackupMode.
-            let opening = try ModelContainerFactory.openAppContainer(backup: requested)
+            // The store's location is chosen here, not left to SwiftData, whose default
+            // moved when the App Group was added. See StoreLocation.
+            let location = try StoreLocation.standard(groupIdentifier: CaptureInbox.appGroup)
+            let opening = try ModelContainerFactory.openAppContainer(backup: requested, url: location.active)
             isBackedUp = opening.isBackedUp
             backupUnavailable = opening.unavailable
+            if let legacy = location.pendingMerge {
+                // Entries left in the old location come across. If this fails, the old store
+                // stays put and the next launch tries again.
+                _ = try? ModelContainerFactory.mergeLegacyStore(at: legacy, into: opening.container)
+            }
 
             let store = DraftStore(container: opening.container)
             // Media follows the store: if iCloud was asked for and refused, media stays

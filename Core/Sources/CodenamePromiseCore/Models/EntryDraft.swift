@@ -301,3 +301,25 @@ public final class EntryDraft {
         updatedAt = now
     }
 }
+
+extension EntryDraft {
+    /// A field-for-field copy for another store, with its media, recordings and sync
+    /// bookkeeping. Used to bring entries across when the store moves; see `StoreLocation`.
+    /// Nothing is bumped: the copy is the same entry, not an edit of it.
+    func copyForAnotherStore() -> EntryDraft {
+        let copy = EntryDraft(id: id, createdAt: createdAt)
+        copy.updatedAt = updatedAt
+        copy.entryDateKey = entryDateKey
+        copy.content = content
+        copy.formattedTextEditedByUser = formattedTextEditedByUser
+        copy.organisedJSON = organisedJSON
+        copy.organiserVersion = organiserVersion
+        copy.coverMediaId = coverMediaId
+        copy.coverMediaIds = coverMediaIds
+        copy.deletedAt = deletedAt
+        copy.media = media.map { $0.copyForAnotherStore() }
+        copy.audioCaptures = audioCaptures.map { $0.copyForAnotherStore() }
+        copy.syncStates = syncStates.map { $0.copyForAnotherStore() }
+        return copy
+    }
+}
