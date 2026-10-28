@@ -168,7 +168,7 @@ struct FillFromPhotosView: View {
     private var copiesNote: some View {
         Section {
         } footer: {
-            Text("DumpNotes keeps its own phone-friendly copies: photos at 2048 pixels with their date and place kept, videos at 1080p. Your library isn't changed. Running this again later adds only what's new.")
+            Text("DumpNotes keeps its own phone-friendly copies: photos at 2048 pixels with when and where they were taken, videos at 1080p. Your library isn't changed. Running this again later adds only what's new.")
         }
     }
 

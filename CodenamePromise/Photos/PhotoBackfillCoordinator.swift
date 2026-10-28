@@ -1,3 +1,4 @@
+import UIKit
 import AVFoundation
 import CodenamePromiseCore
 import ImageIO
@@ -211,8 +212,18 @@ final class PhotoBackfillCoordinator {
 
         await BackgroundWork.run(title: "Filling in from Photos") { report in
             var done = 0
+            // Several days at a time, so the copies run side by side: most days have a photo
+            // or two, and one day at a time left the workers waiting on each other.
+            var batch: [PhotoBackfill.Day] = []
             for day in plan {
-                await self.fill(day, prefix: prefix, done: &done, total: total, outcome: &outcome, report: report)
+                batch.append(day)
+                if batch.reduce(0, { $0 + $1.assets.count }) >= Self.batchSize {
+                    await self.fill(batch, prefix: prefix, done: &done, total: total, outcome: &outcome, report: report)
+                    batch = []
+                }
+            }
+            if !batch.isEmpty {
+                await self.fill(batch, prefix: prefix, done: &done, total: total, outcome: &outcome, report: report)
             }
         }
         UserDefaults.standard.removeObject(forKey: Self.inProgressKey)
@@ -222,53 +233,74 @@ final class PhotoBackfillCoordinator {
         ThumbnailWarmer.warm(container: store.context.container, files: fileStore)
     }
 
-    /// One day: copies its items and files them into the day's entry, starting one if need be.
+    /// Items copied per batch, and how many copies run at once.
+    nonisolated private static let batchSize = 40
+    nonisolated private static let workers = 6
+
+    /// A batch of days: copies their items side by side, then files each into its day's
+    /// entry, starting one if need be, in the order taken, and saves once.
     private func fill(
-        _ day: PhotoBackfill.Day,
+        _ days: [PhotoBackfill.Day],
         prefix: String,
         done: inout Int,
         total: Int,
         outcome: inout Outcome,
         report: BackgroundWork.Report
     ) async {
-        phase = .working(done: done, total: total, day: day.day)
-        let existing: [EntryDraft] = (try? store.drafts(on: day.day)) ?? []
-        // What the day already has, so the same photo or video isn't added twice.
-        let media: [MediaItem] = existing.flatMap(\.orderedMedia)
-        let photoPaths: [URL] = media.filter { $0.kind == .photo }.map { fileStore.url(for: $0.relativePath) }
-        let videoPaths: [URL] = media.filter { $0.kind == .video }.map { fileStore.url(for: $0.relativePath) }
-        let known: Known = await Self.known(photos: photoPaths, videos: videoPaths)
-
-        var entry: EntryDraft? = existing.max { $0.updatedAt < $1.updatedAt }
-        let prepared: [(PhotoBackfill.Asset, Prepared)] = await Self.prepare(day.assets, into: fileStore, alongside: known)
-        for (asset, file) in prepared {
-            done += 1
-            report(done, total, "\(done) of \(total)")
-            guard case .ready(let adopted) = file else {
-                if case .duplicate = file { outcome.duplicates += 1 } else { outcome.unreadable += 1 }
-                continue
-            }
-            do {
-                let target: EntryDraft
-                if let entry {
-                    target = entry
-                } else {
-                    // A day with photos and no entry gets one, named the way the rest of
-                    // the journal is.
-                    target = try store.createDraft(entryDate: day.day)
-                    try store.updateTitle(TitleSuggestion.title(prefix: prefix, day: day.day), for: target)
-                    entry = target
-                    outcome.newEntries += 1
-                }
-                try store.record(adopted, kind: asset.isVideo ? .video : .photo, to: target, saving: false)
-                outcome.added += 1
-            } catch {
-                fileStore.delete(relativePaths: [adopted.relativePath])
-                outcome.unreadable += 1
-            }
+        phase = .working(done: done, total: total, day: days[0].day)
+        // What each day already has, so the same photo or video isn't added twice.
+        var existingByDay: [CalendarDay: [EntryDraft]] = [:]
+        var knownByDay: [CalendarDay: Known] = [:]
+        for day in days {
+            let existing: [EntryDraft] = (try? store.drafts(on: day.day)) ?? []
+            existingByDay[day.day] = existing
+            let media: [MediaItem] = existing.flatMap(\.orderedMedia)
+            if media.isEmpty { continue }
+            let photoPaths: [URL] = media.filter { $0.kind == .photo }.map { fileStore.url(for: $0.relativePath) }
+            let videoPaths: [URL] = media.filter { $0.kind == .video }.map { fileStore.url(for: $0.relativePath) }
+            knownByDay[day.day] = await Self.known(photos: photoPaths, videos: videoPaths)
         }
-        // Saved a day at a time, so an interruption costs at most the day in hand, and the
-        // next run adds it then.
+
+        let jobs: [(asset: PhotoBackfill.Asset, known: Known)] = days.flatMap { day in
+            day.assets.map { ($0, knownByDay[day.day] ?? Known()) }
+        }
+        let prepared = await Self.prepare(jobs, into: fileStore)
+
+        var index = 0
+        for day in days {
+            var entry: EntryDraft? = existingByDay[day.day]?.max { $0.updatedAt < $1.updatedAt }
+            for asset in day.assets {
+                let file = prepared[index]
+                index += 1
+                done += 1
+                report(done, total, "\(done) of \(total)")
+                guard case .ready(let adopted) = file else {
+                    if case .duplicate = file { outcome.duplicates += 1 } else { outcome.unreadable += 1 }
+                    continue
+                }
+                do {
+                    let target: EntryDraft
+                    if let entry {
+                        target = entry
+                    } else {
+                        // A day with photos and no entry gets one, named the way the rest of
+                        // the journal is.
+                        target = try store.createDraft(entryDate: day.day)
+                        try store.updateTitle(TitleSuggestion.title(prefix: prefix, day: day.day), for: target)
+                        entry = target
+                        outcome.newEntries += 1
+                    }
+                    try store.record(adopted, kind: asset.isVideo ? .video : .photo, to: target, saving: false)
+                    outcome.added += 1
+                } catch {
+                    fileStore.delete(relativePaths: [adopted.relativePath])
+                    outcome.unreadable += 1
+                }
+            }
+            phase = .working(done: done, total: total, day: day.day)
+        }
+        // Saved a batch at a time, so an interruption costs at most the batch in hand, and
+        // the next run adds it then (everything saved is recognised and skipped).
         try? store.flush()
     }
 
@@ -368,27 +400,28 @@ final class PhotoBackfillCoordinator {
     /// Phone-friendly copies of a day's items, four at a time, adopted into the store and in
     /// the order taken. Off the main actor: this is the slow part (iCloud downloads, video
     /// encoding).
+    /// Phone-friendly copies, `workers` at a time, adopted into the store, in the order
+    /// given. Off the main actor: this is the slow part (iCloud downloads, video encoding).
     nonisolated private static func prepare(
-        _ assets: [PhotoBackfill.Asset],
-        into fileStore: MediaFileStore,
-        alongside known: Known
-    ) async -> [(PhotoBackfill.Asset, Prepared)] {
-        await withTaskGroup(of: (Int, Prepared).self) { group -> [(PhotoBackfill.Asset, Prepared)] in
-            var results = [Prepared](repeating: .unreadable, count: assets.count)
+        _ jobs: [(asset: PhotoBackfill.Asset, known: Known)],
+        into fileStore: MediaFileStore
+    ) async -> [Prepared] {
+        await withTaskGroup(of: (Int, Prepared).self) { group -> [Prepared] in
+            var results = [Prepared](repeating: .unreadable, count: jobs.count)
             var next = 0
             func start() {
-                guard next < assets.count else { return }
+                guard next < jobs.count else { return }
                 let index = next
                 next += 1
-                let asset = assets[index]
-                group.addTask { (index, await copy(asset, into: fileStore, alongside: known)) }
+                let job = jobs[index]
+                group.addTask { (index, await copy(job.asset, into: fileStore, alongside: job.known)) }
             }
-            for _ in 0..<4 { start() }
+            for _ in 0..<workers { start() }
             while let (index, prepared) = await group.next() {
                 results[index] = prepared
                 start()
             }
-            return Array(zip(assets, results))
+            return results
         }
     }
 
@@ -410,7 +443,7 @@ final class PhotoBackfillCoordinator {
         if asset.isVideo {
             guard await exportVideo(item, to: temporary) else { return .unreadable }
         } else {
-            guard let data = photoData(item), writeJPEG(from: data, to: temporary) else { return .unreadable }
+            guard writePhoto(item, to: temporary) else { return .unreadable }
             if let print = fingerprint(of: temporary), known.photos.contains(where: { $0.distance(to: print) < 10 }) {
                 return .duplicate
             }
@@ -462,32 +495,72 @@ final class PhotoBackfillCoordinator {
         return known
     }
 
-    /// The photo as Photos shows it (edits included), downloading from iCloud if need be.
-    nonisolated private static func photoData(_ asset: PHAsset) -> Data? {
+    /// The photo as Photos shows it (edits included), at most 2048 pixels on the long side,
+    /// as JPEG, with when and where it was taken.
+    ///
+    /// Asked of Photos at that size rather than as the full original: for a library kept in
+    /// iCloud, Photos can then fetch a smaller copy instead of downloading every full-size
+    /// original only to shrink it, which was most of the time a large fill took. The date and
+    /// place come from the library's own record of the photo.
+    nonisolated private static func writePhoto(_ asset: PHAsset, to url: URL) -> Bool {
         let options = PHImageRequestOptions()
         options.isSynchronous = true
         options.isNetworkAccessAllowed = true
         options.deliveryMode = .highQualityFormat
+        options.resizeMode = .fast
         options.version = .current
-        var result: Data?
-        PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, _ in
-            result = data
-        }
-        return result
-    }
-
-    /// At most 2048 pixels on the long side, as JPEG, with the original's metadata carried
-    /// over (when and where it was taken, the camera, its orientation).
-    nonisolated private static func writeJPEG(from data: Data, to url: URL) -> Bool {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+        var result: UIImage?
+        PHImageManager.default().requestImage(
+            for: asset, targetSize: CGSize(width: 2048, height: 2048),
+            contentMode: .aspectFit, options: options
+        ) { image, _ in result = image }
+        guard let image = result, let cgImage = image.cgImage,
               let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil)
         else { return false }
-        let options: [CFString: Any] = [
-            kCGImageDestinationImageMaxPixelSize: 2048,
+
+        var properties: [CFString: Any] = [
             kCGImageDestinationLossyCompressionQuality: 0.82,
+            kCGImagePropertyOrientation: exifOrientation(image.imageOrientation).rawValue,
         ]
-        CGImageDestinationAddImageFromSource(destination, source, 0, options as CFDictionary)
+        if let date = asset.creationDate {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
+            let offset = DateFormatter()
+            offset.locale = Locale(identifier: "en_US_POSIX")
+            offset.dateFormat = "xxx"
+            properties[kCGImagePropertyExifDictionary] = [
+                kCGImagePropertyExifDateTimeOriginal: formatter.string(from: date),
+                kCGImagePropertyExifDateTimeDigitized: formatter.string(from: date),
+                kCGImagePropertyExifOffsetTimeOriginal: offset.string(from: date),
+            ]
+        }
+        if let location = asset.location {
+            let c = location.coordinate
+            properties[kCGImagePropertyGPSDictionary] = [
+                kCGImagePropertyGPSLatitude: abs(c.latitude),
+                kCGImagePropertyGPSLatitudeRef: c.latitude >= 0 ? "N" : "S",
+                kCGImagePropertyGPSLongitude: abs(c.longitude),
+                kCGImagePropertyGPSLongitudeRef: c.longitude >= 0 ? "E" : "W",
+                kCGImagePropertyGPSAltitude: location.altitude,
+            ]
+        }
+        CGImageDestinationAddImage(destination, cgImage, properties as CFDictionary)
         return CGImageDestinationFinalize(destination)
+    }
+
+    nonisolated private static func exifOrientation(_ orientation: UIImage.Orientation) -> CGImagePropertyOrientation {
+        switch orientation {
+        case .up: .up
+        case .down: .down
+        case .left: .left
+        case .right: .right
+        case .upMirrored: .upMirrored
+        case .downMirrored: .downMirrored
+        case .leftMirrored: .leftMirrored
+        case .rightMirrored: .rightMirrored
+        @unknown default: .up
+        }
     }
 
     /// The export session, carried across the hop from Photos' callback. Used by one task
