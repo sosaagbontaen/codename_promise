@@ -26,6 +26,8 @@ final class AppServices {
         let journalImport: JournalImportCoordinator
         /// Filling the journal in from the Photos library. See `PhotoBackfillCoordinator`.
         let photoBackfill: PhotoBackfillCoordinator
+        /// Search, when its index could be opened. The journal works the same without it.
+        let search: SearchCoordinator?
         let connection: any NotionConnectionService
         /// Kept so Settings can test the connection without rebuilding one.
         let client: APIClient
@@ -141,6 +143,9 @@ final class AppServices {
                     ),
                     journalImport: JournalImportCoordinator(store: store, fileStore: files),
                     photoBackfill: PhotoBackfillCoordinator(store: store, fileStore: files),
+                    search: (try? SearchIndex.makeDefault()).map {
+                        SearchCoordinator(index: $0, store: store, fileStore: files)
+                    },
                     connection: HTTPNotionConnectionService(client: client),
                     client: client
                 )
@@ -172,6 +177,7 @@ final class AppServices {
     var imports: ImportCoordinator? { ready?.imports }
     var journalImport: JournalImportCoordinator? { ready?.journalImport }
     var photoBackfill: PhotoBackfillCoordinator? { ready?.photoBackfill }
+    var search: SearchCoordinator? { ready?.search }
 
     /// The model container, for work done on a context of its own off the main actor.
     private var container: ModelContainer? { ready?.store.context.container }
@@ -179,6 +185,8 @@ final class AppServices {
     func warmThumbnails() {
         guard let container, let files else { return }
         ThumbnailWarmer.warm(container: container, files: files)
+        // Search catches up on whatever changed, and goes on reading photos it hasn't yet.
+        ready?.search?.refresh()
     }
     var apiClient: APIClient? { ready?.client }
 

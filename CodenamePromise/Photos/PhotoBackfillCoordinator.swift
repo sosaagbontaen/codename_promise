@@ -780,7 +780,8 @@ final class PhotoBackfillCoordinator {
 ///
 /// For Photos requests that can hang: a download from iCloud that never finishes would
 /// otherwise hold up a fill forever, and iOS ends a long task whose progress stops moving.
-private func withTimeLimit<T: Sendable>(
+/// Search uses it the same way for Vision, which can stall on a photo.
+func withTimeLimit<T: Sendable>(
     seconds: Double,
     onTimeout: T,
     _ start: (_ finish: @escaping @Sendable (T) -> Void) -> (@Sendable () -> Void)

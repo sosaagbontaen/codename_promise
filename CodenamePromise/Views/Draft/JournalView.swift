@@ -53,6 +53,7 @@ struct JournalView: View {
     /// The day the dump sheet opens on, when it was opened for one.
     @State private var dumpDay: CalendarDay?
     @State private var showingInboxDigest = false
+    @State private var searching = false
 
     // Select mode: entered by holding an entry, which arrives already selected.
     @State private var selecting = false
@@ -201,6 +202,13 @@ struct JournalView: View {
                     }
                 )
             }
+            .sheet(isPresented: $searching) {
+                if let search = services.search, let store = services.store, let files = services.files {
+                    SearchView(search: search, store: store, fileStore: files) { id in
+                        path.append(OpeningDraft(id: id))
+                    }
+                }
+            }
             .sheet(isPresented: $showingInboxDigest) {
                 if let store = services.store, let files = services.files {
                     InboxDigestView(digest: services.inboxDigest, store: store, fileStore: files) { id in
@@ -225,6 +233,15 @@ struct JournalView: View {
         HStack {
             Wordmark(size: 26)
             Spacer()
+            if services.search != nil {
+                Button { searching = true } label: {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Brand.ink)
+                        .frame(width: 36, height: 32)
+                }
+                .accessibilityLabel("Search")
+            }
             modeSwitcher
         }
         .padding(.top, 8)
