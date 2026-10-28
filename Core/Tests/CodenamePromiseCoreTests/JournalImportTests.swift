@@ -139,6 +139,7 @@ struct JournalImportTests {
         let report = try await destination.importJournal(from: folder, fileStore: files)
 
         #expect(report.added == 1)
+        #expect(report.importedIds == [draft.id], "the screen lists what arrived")
         let restored = try #require(try destination.allDrafts().first)
         #expect(restored.content.title == "The sea")
         #expect(restored.content.rawText == "It was colder than it looked.\n\nWe stayed anyway.")

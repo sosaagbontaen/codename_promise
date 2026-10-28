@@ -18,7 +18,10 @@ struct ImportView: View {
     let importer: JournalImportCoordinator
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppServices.self) private var services
     @State private var picking = false
+    /// What the finished import brought in, read once when it finishes.
+    @State private var arrived: [DraftSummary] = []
 
     private var phase: JournalImportCoordinator.Phase { importer.phase }
 
@@ -51,6 +54,12 @@ struct ImportView: View {
                         Label(headline(report), systemImage: "checkmark.circle.fill")
                             .foregroundStyle(Brand.reached)
                         reportRows(report)
+                        Button {
+                            importer.reset()
+                            picking = true
+                        } label: {
+                            Label("Import another folder", systemImage: "folder.badge.plus")
+                        }
 
                     case .failed(let message):
                         Label(message, systemImage: "exclamationmark.triangle.fill")
@@ -59,6 +68,33 @@ struct ImportView: View {
                 } footer: {
                     Text("Pick the folder an export produced. If you have the zip, uncompress it in Files first, then choose the folder inside.\n\nNothing already on this phone is changed or removed. An entry that is already here is left alone, so importing the same folder twice is safe.")
                 }
+                // What came in, so an import is something you can look through rather than a
+                // number. Each opens the entry.
+                if !arrived.isEmpty {
+                    Section("Brought in") {
+                        ForEach(arrived) { entry in
+                            NavigationLink {
+                                EntryScreen(id: entry.id)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(entry.title).lineLimit(1)
+                                    Text(entry.mediaCount == 0
+                                         ? entry.shortDate
+                                         : "\(entry.shortDate) \u{00B7} \(entry.mediaCount) \(entry.mediaCount == 1 ? "photo" : "photos")")
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .onChange(of: phase, initial: true) { _, now in
+                guard case .done(let report) = now, let store = services.store else {
+                    arrived = []
+                    return
+                }
+                arrived = report.importedIds.compactMap { try? store.draft(id: $0) }.map(DraftSummary.init)
             }
             .navigationTitle("Import a journal")
             .navigationBarTitleDisplayMode(.inline)

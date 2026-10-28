@@ -99,6 +99,9 @@ extension DraftStore {
         public var added = 0
         /// Entries whose id was already here. Skipped, not merged, not duplicated.
         public var alreadyPresent = 0
+        /// The entries this import brought in or finished, newest day first, so the screen
+        /// can show what arrived rather than only how many.
+        public var importedIds: [UUID] = []
         public var attachments = 0
         /// Files an entry named that were not in the folder. Reported, never fatal.
         public var missingAttachments: [String] = []
@@ -202,6 +205,7 @@ extension DraftStore {
 
             unfinished.remove(draft.id.uuidString)
             remember()
+            report.importedIds.append(draft.id)
             // Lets the screen draw between entries on a long import.
             await Task.yield()
         }
