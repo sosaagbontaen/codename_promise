@@ -25,6 +25,8 @@ struct CaptureView: View {
     @Namespace private var coverZoom
     /// How far the cover is being pulled down past the top.
     @State private var coverPull: CGFloat = 0
+    /// Which page of the cover is showing.
+    @State private var coverPage: UUID?
     @State private var showingDatePicker = false
     @State private var showingEntryPicker = false
     @State private var showingSendSheet = false
@@ -430,29 +432,34 @@ struct CaptureView: View {
         }
     }
 
-    /// The cover, full width, and stretchy: pull down and it grows with your finger; pull far
-    /// enough and it opens full screen. Tapping it zooms into the full-screen viewer.
+    /// The cover's pages: the chosen covers, then the rest of the entry's photos and videos.
+    private var coverPages: [DraftSummary.Thumb] {
+        let covers = coverThumbs
+        let chosen = Set(covers.map(\.id))
+        return covers + controller.orderedMedia.filter { !chosen.contains($0.id) }.map {
+            DraftSummary.Thumb(id: $0.id, relativePath: $0.relativePath, isVideo: $0.kind == .video)
+        }
+    }
+
+    /// The cover, full width, swipeable, and stretchy: swipe through the entry's photos and
+    /// play its videos in place; pull down and it grows with your finger; pull far enough and
+    /// it opens full screen. Tapping a photo zooms into the full-screen viewer.
     @ViewBuilder
     private var coverBanner: some View {
         let covers = coverThumbs
         if !covers.isEmpty {
             let height: CGFloat = 300
+            let pages = coverPages
+            let showing = coverPage.flatMap { id in pages.first { $0.id == id }?.id } ?? covers[0].id
             GeometryReader { geometry in
                 let pull = coverPull
-                Button {
-                    viewingMedia = ViewingMedia(id: covers[0].id)
-                } label: {
-                    PhotoMosaic(
-                        thumbs: covers, overflow: max(0, covers.count - 4),
-                        // Full-screen resolution, so the cover is sharp at its full width.
-                        fileStore: fileStore, maxPixel: 1600
-                    )
-                    .frame(width: geometry.size.width, height: height + pull)
-                    .clipped()
-                    .overlay(alignment: .bottomTrailing) { photosBadge(covers: covers) }
+                CoverPager(items: pages, fileStore: fileStore, page: $coverPage) { id in
+                    viewingMedia = ViewingMedia(id: id)
                 }
-                .buttonStyle(.plain)
-                .modifier(ZoomSource(id: covers[0].id, namespace: coverZoom))
+                .frame(width: geometry.size.width, height: height + pull)
+                .clipped()
+                .overlay(alignment: .bottomTrailing) { photosBadge(covers: covers) }
+                .modifier(ZoomSource(id: showing, namespace: coverZoom))
                 // Grows upward with the pull, so the photo stays pinned to the top.
                 .offset(y: -pull)
                 // Pulling down on the cover itself stretches it too, whether or not the page
@@ -489,11 +496,11 @@ struct CaptureView: View {
     /// The way to every photo, now that they don't sit in a grid below.
     @ViewBuilder
     private func photosBadge(covers: [DraftSummary.Thumb]) -> some View {
-        if controller.orderedMedia.count > covers.count {
+        if controller.orderedMedia.count > 1 {
             Button {
                 showingAttachments = true
             } label: {
-                Label("\(controller.orderedMedia.count) photos", systemImage: "square.grid.2x2")
+                Label("All \(controller.orderedMedia.count)", systemImage: "square.grid.2x2")
                     .font(Type.label(13, .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12)
@@ -513,7 +520,7 @@ struct CaptureView: View {
         if pull > Self.pullToOpen, coverPull <= Self.pullToOpen, viewingMedia == nil,
            let first = coverThumbs.first {
             Haptics.committed()
-            viewingMedia = ViewingMedia(id: first.id)
+            viewingMedia = ViewingMedia(id: coverPage ?? first.id)
         }
         coverPull = pull
     }

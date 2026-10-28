@@ -58,15 +58,18 @@ struct PhotoTile: View {
     let fileStore: MediaFileStore
     /// Largest edge to decode, in pixels. Defaults to card size.
     var maxPixel: CGFloat = 420
+    /// The small play mark on a video. Off where the video has its own play button.
+    var marksVideo = true
     @State private var image: UIImage?
     /// Which photo `image` is. A cell reused for a different photo must not show the old one
     /// while the new one loads, and must load the new one at all, which it once didn't.
     @State private var shownId: UUID?
 
-    init(thumb: DraftSummary.Thumb, fileStore: MediaFileStore, maxPixel: CGFloat = 420) {
+    init(thumb: DraftSummary.Thumb, fileStore: MediaFileStore, maxPixel: CGFloat = 420, marksVideo: Bool = true) {
         self.thumb = thumb
         self.fileStore = fileStore
         self.maxPixel = maxPixel
+        self.marksVideo = marksVideo
         // Straight from memory when it's there, so a photo seen a moment ago is drawn in the
         // cell's first frame rather than flashing empty while a task looks it up.
         let hit = ThumbnailCache.shared.cached(id: thumb.id, maxPixel: maxPixel)
@@ -83,7 +86,7 @@ struct PhotoTile: View {
             }
             .clipped()
             .overlay(alignment: .bottomLeading) {
-                if thumb.isVideo {
+                if thumb.isVideo && marksVideo {
                     Image(systemName: "play.fill")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(.white)
