@@ -73,10 +73,14 @@ struct FillFromPhotosView: View {
                         } label: {
                             Label(similarLabel(summary), systemImage: "square.stack.3d.down.right")
                         }
+                        Toggle("Keep every shot", isOn: Binding(
+                            get: { filler.keepsEverything },
+                            set: { $0 ? filler.keepEverything() : filler.keepOneEach() }
+                        ))
                     } header: {
                         Text("Similar shots")
                     } footer: {
-                        Text("Runs of photos taken seconds apart that look alike. One from each comes in unless you choose otherwise; review them to pick. The rest stay in your library, just not in your journal.")
+                        Text("Runs of photos taken seconds apart that look alike. One from each comes in unless you choose otherwise; review them to pick, or keep every shot. Ones left out stay in your library, just not in your journal.")
                     }
                 }
                 if summary.days > 0 {

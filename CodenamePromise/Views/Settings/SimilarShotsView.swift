@@ -51,6 +51,15 @@ struct SimilarShotsView: View {
         }
         .navigationTitle("Similar shots")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(filler.keepsEverything ? "Keep one each" : "Keep all") {
+                    if filler.keepsEverything { filler.keepOneEach() } else { filler.keepEverything() }
+                    Haptics.picked()
+                }
+                .fontWeight(.semibold)
+            }
+        }
     }
 
     private func header(_ group: PhotoBackfillCoordinator.SimilarGroup) -> String {

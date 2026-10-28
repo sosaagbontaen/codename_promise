@@ -249,6 +249,24 @@ final class PhotoBackfillCoordinator {
         if keep { groups[index].keep.insert(assetId) } else { groups[index].keep.remove(assetId) }
     }
 
+    /// Every frame of every run comes in.
+    func keepEverything() {
+        for index in groups.indices { groups[index].keep = Set(groups[index].assets.map(\.id)) }
+    }
+
+    /// Back to one per run (the favourite, or the first frame).
+    func keepOneEach() {
+        for index in groups.indices {
+            let group = groups[index]
+            let favourite = group.assets.first { asset in
+                PHAsset.fetchAssets(withLocalIdentifiers: [asset.id], options: nil).firstObject?.isFavorite == true
+            }
+            groups[index].keep = [(favourite ?? group.assets[0]).id]
+        }
+    }
+
+    var keepsEverything: Bool { groups.allSatisfy { $0.keep.count == $0.assets.count } }
+
     func keepAll(in groupId: String) {
         guard let index = groups.firstIndex(where: { $0.id == groupId }) else { return }
         groups[index].keep = Set(groups[index].assets.map(\.id))
