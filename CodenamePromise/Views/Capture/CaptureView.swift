@@ -33,6 +33,8 @@ struct CaptureView: View {
     @State private var selectingMedia = false
     @State private var showingMoveSheet = false
     @State private var showingAttachments = false
+    @State private var findingDates = false
+    @Environment(\.dismiss) private var closeEntry
     @State private var moveNotice: String?
     /// Which field has the keyboard, so the pinned details can get out of its way.
     @FocusState private var writing: Bool
@@ -156,6 +158,11 @@ struct CaptureView: View {
                                 Label("Clear cover photos", systemImage: "photo.badge.minus")
                             }
                         }
+                        Button {
+                            findingDates = true
+                        } label: {
+                            Label("Find photo dates", systemImage: "calendar.badge.clock")
+                        }
                     }
                     Divider()
                     Button {
@@ -198,6 +205,13 @@ struct CaptureView: View {
             .modifier(ZoomFrom(id: viewing.id, namespace: coverZoom))
         }
         .sheet(isPresented: $showingSendSheet) { sendSheet }
+        .sheet(isPresented: $findingDates) {
+            if let draft = try? store.draft(id: controller.draftId) {
+                FindPhotoDatesSheet(draft: draft, store: store, fileStore: fileStore) {
+                    closeEntry()
+                }
+            }
+        }
         .sheet(isPresented: $showingAttachments) {
             AttachmentsView(
                 items: controller.orderedMedia,
