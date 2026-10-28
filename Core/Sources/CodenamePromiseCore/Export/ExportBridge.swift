@@ -167,68 +167,91 @@ extension DraftStore {
         state.filesTotal = reading.entries.reduce(0) { $0 + $1.attachments.count + $1.untranscribedAudio.count }
         progress(state)
 
-        for parsed in reading.entries {
-            let files = parsed.attachments + parsed.untranscribedAudio
-            // Files already counted for this entry as they were copied; the rest (already
-            // here, or skipped with the entry) are counted when it's done.
-            var counted = 0
-            defer {
-                state.entriesDone += 1
-                state.filesDone += files.count - counted
-                progress(state)
-            }
+        // Entries go in a few at a time. Their photos are fetched together, so iCloud Drive
+        // and the disk always have a full queue of work rather than waiting at the end of
+        // each entry for its last photo, and the store saves once per batch rather than once
+        // per photo. A batch is small enough that an interruption costs little: everything
+        // in it is marked unfinished first, and the next run completes it.
+        var next = 0
+        while next < reading.entries.count {
+            let batch = reading.entries[next..<min(next + 6, reading.entries.count)]
+            next += batch.count
 
-            let draft: EntryDraft
-            if let id = parsed.id, existing.contains(id) {
-                guard unfinished.contains(id.uuidString), let resumed = try self.draft(id: id) else {
-                    report.alreadyPresent += 1
-                    continue
+            var jobs: [(draft: EntryDraft, files: [String], wanted: [(relative: String, id: UUID)])] = []
+            for parsed in batch {
+                let files = parsed.attachments + parsed.untranscribedAudio
+                let draft: EntryDraft
+                if let id = parsed.id, existing.contains(id) {
+                    guard unfinished.contains(id.uuidString), let resumed = try self.draft(id: id) else {
+                        report.alreadyPresent += 1
+                        state.entriesDone += 1
+                        state.filesDone += files.count
+                        continue
+                    }
+                    draft = resumed
+                } else {
+                    guard let day = CalendarDay(rawValue: parsed.entryDateKey) else {
+                        report.unreadable.append(parsed.entryDateKey)
+                        state.entriesDone += 1
+                        state.filesDone += files.count
+                        continue
+                    }
+                    // Keeps the id the export recorded. Without it an imported entry gets a
+                    // fresh UUID, the folder's ids never match anything in the store, and the
+                    // skip above can never fire - so a second run of the same import silently
+                    // doubles the journal. That is the failure that would make this feature
+                    // worse than not having it, and it is what `importIsIdempotent` exists to
+                    // catch.
+                    let id = parsed.id ?? UUID()
+                    unfinished.insert(id.uuidString)
+                    remember()
+                    draft = try createDraft(id: id, entryDate: day)
+                    if let title = parsed.title { try updateTitle(title, for: draft) }
+                    try updateRawText(parsed.rawText, for: draft)
+                    report.added += 1
                 }
-                draft = resumed
-            } else {
-                guard let day = CalendarDay(rawValue: parsed.entryDateKey) else {
-                    report.unreadable.append(parsed.entryDateKey)
-                    continue
-                }
-                // Keeps the id the export recorded. Without it an imported entry gets a fresh
-                // UUID, the folder's ids never match anything in the store, and the skip above
-                // can never fire - so a second run of the same import silently doubles the
-                // journal. That is the failure that would make this feature worse than not
-                // having it, and it is what `importIsIdempotent` exists to catch.
-                let id = parsed.id ?? UUID()
-                unfinished.insert(id.uuidString)
-                remember()
-                draft = try createDraft(id: id, entryDate: day)
-                if let title = parsed.title { try updateTitle(title, for: draft) }
-                try updateRawText(parsed.rawText, for: draft)
-                report.added += 1
+                // Each attachment's id comes from the entry and its path, so a resumed import
+                // recognises what it already brought in and doesn't attach it twice.
+                let have = Set(draft.media.map(\.id))
+                let wanted = files
+                    .map { (relative: $0, id: InboxScanner.stableUUID("\(draft.id.uuidString)|\($0)")) }
+                    .filter { !have.contains($0.id) }
+                jobs.append((draft, files, wanted))
             }
+            progress(state)
 
-            // Each attachment's id comes from the entry and its path, so a resumed import
-            // recognises what it already brought in and doesn't attach it twice.
-            let have = Set(draft.media.map(\.id))
-            let wanted = files
-                .map { (relative: $0, id: InboxScanner.stableUUID("\(draft.id.uuidString)|\($0)")) }
-                .filter { !have.contains($0.id) }
-            let copied = await adopt(wanted, from: directory, into: fileStore) {
-                counted += 1
+            let all = jobs.flatMap(\.wanted)
+            var copied = await adopt(all, from: directory, into: fileStore) {
                 state.filesDone += 1
                 progress(state)
-            }
-            for (relative, adopted) in copied {
-                guard let adopted else {
-                    report.missingAttachments.append(relative)
-                    continue
-                }
-                let kind = MediaKind.forExtension((relative as NSString).pathExtension)
-                try record(adopted, kind: kind, to: draft)
-                report.attachments += 1
-            }
+            }[...]
 
-            unfinished.remove(draft.id.uuidString)
+            for job in jobs {
+                let results = copied.prefix(job.wanted.count)
+                copied = copied.dropFirst(job.wanted.count)
+                for (relative, adopted) in results {
+                    guard let adopted else {
+                        report.missingAttachments.append(relative)
+                        continue
+                    }
+                    let kind = MediaKind.forExtension((relative as NSString).pathExtension)
+                    try record(adopted, kind: kind, to: job.draft, saving: false)
+                    report.attachments += 1
+                }
+            }
+            // Rows are written once the batch's bytes are all in (ADR-007), and saved before
+            // anything is marked finished, so a finished entry is never missing a photo.
+            try flush()
+
+            for job in jobs {
+                unfinished.remove(job.draft.id.uuidString)
+                report.importedIds.append(job.draft.id)
+                state.entriesDone += 1
+                state.filesDone += job.files.count - job.wanted.count
+            }
             remember()
-            report.importedIds.append(draft.id)
-            // Lets the screen draw between entries on a long import.
+            progress(state)
+            // Lets the screen draw between batches on a long import.
             await Task.yield()
         }
 
@@ -262,7 +285,8 @@ extension DraftStore {
                 let id = wanted[index].id
                 group.addTask { (index, Self.coordinatedAdopt(source, id: id, into: fileStore)) }
             }
-            for _ in 0..<4 { start() }
+            // Mostly waiting on iCloud and the disk, so more in flight is faster, up to a point.
+            for _ in 0..<8 { start() }
             while let (index, adopted) = await group.next() {
                 results[index] = adopted
                 each()

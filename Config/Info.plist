@@ -107,6 +107,13 @@
 	<array>
 		<string>com.codenamepromise.journal.import.*</string>
 	</array>
+	<!-- The app's Documents folder shows in Finder (iPhone > Files) and in the Files app, so a
+	     journal export can be copied in over a cable and imported from there, instead of
+	     downloading gigabytes from iCloud. Nothing else is kept in Documents. -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

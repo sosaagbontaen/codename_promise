@@ -68,7 +68,7 @@ struct ImportView: View {
                             .foregroundStyle(Brand.failed)
                     }
                 } footer: {
-                    Text("Pick the folder an export produced. If you have the zip, uncompress it in Files first, then choose the folder inside.\n\nNothing already on this phone is changed or removed. An entry that is already here is left alone, so importing the same folder twice is safe.")
+                    Text("Pick the folder an export produced. If you have the zip, uncompress it in Files first, then choose the folder inside.\n\nFastest for a big journal: plug this iPhone into your Mac, open it in Finder, and drag the folders onto DumpNotes under Files. Then choose them here from On My iPhone, DumpNotes. Nothing has to download from iCloud.\n\nNothing already on this phone is changed or removed. An entry that is already here is left alone, so importing the same folder twice is safe.")
                 }
                 // What came in, so an import is something you can look through rather than a
                 // number. Each opens the entry.

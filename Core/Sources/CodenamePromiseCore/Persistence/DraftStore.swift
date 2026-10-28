@@ -403,8 +403,11 @@ public final class DraftStore {
     /// Records a file already adopted into the store as one of the draft's attachments, and
     /// commits. For callers that copy the bytes off the main actor first (ADR-007: bytes
     /// first, row second).
+    ///
+    /// `saving: false` leaves the commit to the caller, for an import that writes a batch of
+    /// rows and saves once. The caller must flush before treating them as kept.
     @discardableResult
-    public func record(_ adopted: AdoptedFile, kind: MediaKind, to draft: EntryDraft) throws -> MediaItem {
+    public func record(_ adopted: AdoptedFile, kind: MediaKind, to draft: EntryDraft, saving: Bool = true) throws -> MediaItem {
         let item = MediaItem(
             id: adopted.id,
             kind: kind,
@@ -418,7 +421,7 @@ public final class DraftStore {
         item.sortIndex = nextSortIndex(in: draft)
         context.insert(item)
         draft.attach(item, now: clock())
-        try flush()
+        if saving { try flush() }
         return item
     }
 
