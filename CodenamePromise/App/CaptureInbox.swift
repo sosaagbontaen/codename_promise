@@ -112,7 +112,7 @@ enum CaptureInbox {
             if mac.scoped { mac.url.stopAccessingSecurityScopedResource() }
         }
 
-        writeIndex(store: store)
+        await writeIndex(store: store)
         return filed
     }
 
@@ -141,17 +141,46 @@ enum CaptureInbox {
         return (url, url.startAccessingSecurityScopedResource())
     }
 
+    /// What the index was last written from: the journal's revision, which folder it went to,
+    /// and the day (it lists the last sixty days, so it shifts at midnight on its own).
+    private struct IndexStamp: Equatable {
+        let revision: Int
+        let macFolder: Data?
+        let macOverride: URL?
+        let day: CalendarDay
+    }
+    private static var lastIndexed: IndexStamp?
+
     /// Rewrites the recent-entries list. Cheap, and wrong only in the harmless direction.
-    static func writeIndex(store: DraftStore) {
+    ///
+    /// Skipped when nothing it's built from has changed, which is most drains: every launch
+    /// and every return to the app runs one. When it does run, the list is built here, on the
+    /// main actor where the store lives, and the files are written off it. A coordinated
+    /// write into iCloud Drive can wait on the file provider, and it used to wait with the
+    /// interface frozen.
+    static func writeIndex(store: DraftStore) async {
+        let stamp = IndexStamp(
+            revision: store.revision,
+            macFolder: UserDefaults.standard.data(forKey: bookmarkKey),
+            macOverride: debugOverride,
+            day: CalendarDay.today()
+        )
+        guard stamp != lastIndexed else { return }
         guard let index = try? EntryIndex.make(from: store) else { return }
-        if let shared = sharedIndexURL { try? index.write(to: shared) }
-        _ = withMacFolder { folder in
-            var coordinationError: NSError?
-            let target = folder.appendingPathComponent(EntryIndex.fileName)
-            NSFileCoordinator().coordinate(writingItemAt: target, options: .forReplacing, error: &coordinationError) {
-                try? index.write(to: $0)
+        lastIndexed = stamp
+        let shared = sharedIndexURL
+        let mac = resolvedMacFolder()
+        await Task.detached(priority: .utility) {
+            if let shared { try? index.write(to: shared) }
+            if let mac {
+                defer { if mac.scoped { mac.url.stopAccessingSecurityScopedResource() } }
+                var coordinationError: NSError?
+                let target = mac.url.appendingPathComponent(EntryIndex.fileName)
+                NSFileCoordinator().coordinate(writingItemAt: target, options: .forReplacing, error: &coordinationError) {
+                    try? index.write(to: $0)
+                }
             }
-        }
+        }.value
     }
 
     /// "2 photos and a note", for the notice the list shows.

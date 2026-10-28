@@ -250,10 +250,27 @@ final class AppServices {
     /// to perform — see ADR-001.
     func flushOnBackground() {
         store?.flushQuietly()
-        // The "when I've been away" reminder depends on when the journal was last written,
-        // so it's worked out as the app leaves rather than on every refresh of the list.
-        if let store { reminders.reschedule(using: store) }
     }
+
+    /// The flush, then the "when I've been away" reminder, which depends on when the journal
+    /// was last written, so it's worked out as the app leaves rather than on every refresh of
+    /// the list. Only on the way to the background, not on every brief inactive moment (a
+    /// notification pulled down, the app switcher), and only when something was saved since
+    /// it was last worked out, or a day has gone by and the nudge it set may have fired.
+    func flushEnteringBackground() {
+        flushOnBackground()
+        guard let store else { return }
+        let stamp = ReminderStamp(revision: store.revision, day: CalendarDay.today())
+        guard stamp != remindersStamp else { return }
+        remindersStamp = stamp
+        reminders.reschedule(using: store)
+    }
+
+    private struct ReminderStamp: Equatable {
+        let revision: Int
+        let day: CalendarDay
+    }
+    private var remindersStamp: ReminderStamp?
 
     func dismissRecoveryNotice() {
         recoveryNotice = nil

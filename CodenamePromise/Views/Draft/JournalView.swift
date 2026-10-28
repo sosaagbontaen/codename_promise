@@ -39,8 +39,11 @@ struct JournalView: View {
     @State private var artCache = EntryArtCache()
     /// The store revision the list was last brought up to. See `refresh()`.
     @State private var loadedRevision: Int?
-    /// How far the list or grid is scrolled, 0 to 1, for the scrubber's handle.
-    @State private var scrollProgress: CGFloat?
+    /// The scrubber's labels, built when the months change rather than on every redraw.
+    @State private var scrubberMonths: [MonthScrubber.Month] = []
+    /// How far the list or grid is scrolled, for the scrubber's handle. An object only the
+    /// scrubber reads, so scrolling redraws the scrubber and not this whole view.
+    @State private var scrollTracker = ScrollProgressTracker()
     @State private var loadError: String?
     @State private var month = Self.startOfMonth(Date())
     @State private var selectedDay = CalendarDay.today()
@@ -102,14 +105,21 @@ struct JournalView: View {
                 } else {
                     ScrollViewReader { proxy in
                         ScrollView {
-                            VStack(alignment: .leading, spacing: 18) {
-                                notices
-
+                            Group {
                                 if mode == .calendar {
-                                    calendar
-                                    dayEntries
+                                    VStack(alignment: .leading, spacing: 18) {
+                                        notices
+                                        calendar
+                                        dayEntries
+                                    }
                                 } else {
-                                    gridByMonth
+                                    // Lazy, so only the months on screen are built. A plain
+                                    // stack built every month of eight years up front, each
+                                    // time the grid appeared.
+                                    LazyVStack(alignment: .leading, spacing: 18) {
+                                        notices
+                                        gridByMonth
+                                    }
                                 }
                             }
                             .padding(.horizontal, 18)
@@ -119,7 +129,7 @@ struct JournalView: View {
                         .onChange(of: selecting) { _, _ in keep(anchor, in: proxy) }
                         // One scroll handle, not two: the month scrubber stands in for it.
                         .scrollIndicators(mode == .grid && showsScrubber ? .hidden : .automatic)
-                        .modifier(ScrollProgress(progress: $scrollProgress))
+                        .modifier(ScrollProgress(tracker: scrollTracker))
                         .overlay(alignment: .trailing) {
                             if mode == .grid { scrubber(proxy) }
                         }
@@ -700,7 +710,7 @@ struct JournalView: View {
         .onChange(of: anchor) { _, id in keep(id, in: proxy) }
         .onChange(of: selecting) { _, _ in keep(anchor, in: proxy) }
         .scrollIndicators(showsScrubber ? .hidden : .automatic)
-        .modifier(ScrollProgress(progress: $scrollProgress))
+        .modifier(ScrollProgress(tracker: scrollTracker))
         }
         }
     }
@@ -751,7 +761,7 @@ struct JournalView: View {
     @ViewBuilder
     private func scrubber(_ proxy: ScrollViewProxy) -> some View {
         if showsScrubber {
-            MonthScrubber(months: scrubberMonths, progress: scrollProgress) { key in
+            MonthScrubber(months: scrubberMonths, tracker: scrollTracker) { key in
                 proxy.scrollTo(key, anchor: .top)
             }
             // Over the content, not beside it: at rest it's only a slim handle, flush with the
@@ -762,7 +772,9 @@ struct JournalView: View {
         }
     }
 
-    private var scrubberMonths: [MonthScrubber.Month] {
+    private static func scrubberMonths(
+        of months: [(key: String, label: String, entries: [DraftSummary])]
+    ) -> [MonthScrubber.Month] {
         months.compactMap { month in
             guard let date = CalendarDay(rawValue: month.key + "-01")?.representativeDate() else { return nil }
             return MonthScrubber.Month(
@@ -849,31 +861,86 @@ struct JournalView: View {
         guard let since = loadedRevision else { return reloadAll(store) }
         let changes = store.changes(since: since)
         if changes.isEmpty { return }
-        if changes.structural { return reloadAll(store) }
+        if changes.structural {
+            // The store's log keeps the last 500 saves. Fall further behind than that and it
+            // can't say which entries changed, so no cached photos can be trusted.
+            if changes.revision - since >= 500 { artCache.clear() }
+            artCache.forget(changes.draftIds)
+            return reloadAll(store)
+        }
         do {
-            var byId = Dictionary(uniqueKeysWithValues: drafts.map { ($0.id, $0) })
+            var fresh: [UUID: DraftSummary?] = [:]
             for id in changes.draftIds {
                 if let draft = try store.draft(id: id), !draft.isTrashed {
-                    byId[id] = DraftSummary(draft)
+                    fresh[id] = DraftSummary(draft)
                 } else {
-                    byId[id] = nil
+                    fresh[id] = .some(nil)
                 }
             }
             artCache.forget(changes.draftIds)
-            apply(byId.values.sorted {
-                ($0.entryDateKey, $0.createdAt) > ($1.entryDateKey, $1.createdAt)
-            })
+            if !patch(fresh) {
+                var byId = Dictionary(uniqueKeysWithValues: drafts.map { ($0.id, $0) })
+                for (id, summary) in fresh { byId[id] = summary }
+                apply(byId.values.sorted {
+                    ($0.entryDateKey, $0.createdAt) > ($1.entryDateKey, $1.createdAt)
+                })
+            }
             loadedRevision = changes.revision
         } catch {
             reloadAll(store)
         }
     }
 
+    /// Updates entries in place when none of them moved: each still exists, is still listed,
+    /// and is still on the same day. That's the common case, coming back from editing one,
+    /// and it needs no re-sort of the journal and no regrouping of every month. Anything else
+    /// (an entry added, removed, or moved to another day) returns false for a full rebuild,
+    /// so the list is never left showing old words or an entry in the wrong place.
+    private func patch(_ fresh: [UUID: DraftSummary?]) -> Bool {
+        var plan: [(index: Int, summary: DraftSummary)] = []
+        for (id, summary) in fresh {
+            guard let summary, let index = drafts.firstIndex(where: { $0.id == id }),
+                  drafts[index].entryDateKey == summary.entryDateKey,
+                  drafts[index].createdAt == summary.createdAt
+            else { return false }
+            if drafts[index] != summary { plan.append((index, summary)) }
+        }
+        // Check every month bucket can take its entry before changing anything.
+        var placements: [(month: Int, entry: Int, summary: DraftSummary)] = []
+        for (_, summary) in plan {
+            let key = String(summary.entryDateKey.prefix(7))
+            guard let m = months.firstIndex(where: { $0.key == key }),
+                  let e = months[m].entries.firstIndex(where: { $0.id == summary.id })
+            else { return false }
+            placements.append((m, e, summary))
+        }
+        guard !plan.isEmpty else { return true }
+
+        for (index, summary) in plan { drafts[index] = summary }
+        for placement in placements {
+            months[placement.month].entries[placement.entry] = placement.summary
+        }
+        // Words or photos may have come or gone, which changes how the calendar marks the day.
+        for day in Set(plan.compactMap { $0.summary.day }) {
+            var kind = DayKind()
+            let key = String(day.rawValue.prefix(7))
+            for entry in months.first(where: { $0.key == key })?.entries ?? [] where entry.entryDateKey == day.rawValue {
+                kind.words = kind.words || entry.hasWords
+                kind.media = kind.media || entry.mediaCount > 0
+            }
+            kinds[day] = kind
+        }
+        loadError = nil
+        return true
+    }
+
     private func reloadAll(_ store: DraftStore) {
         do {
             let revision = store.revision
             let fresh = try store.allDrafts().map(DraftSummary.init)
-            artCache.clear()
+            // Cached photos are dropped as their entries change (see `reload`), so a full read
+            // only needs to let go of the ones for entries that are gone.
+            artCache.keepOnly(Set(fresh.map(\.id)))
             apply(fresh)
             loadedRevision = revision
         } catch {
@@ -884,7 +951,13 @@ struct JournalView: View {
     private func apply(_ fresh: [DraftSummary]) {
         drafts = fresh
         kinds = Self.kinds(of: fresh)
-        months = Self.months(of: fresh)
+        let grouped = Self.months(of: fresh)
+        // The scrubber's labels mean parsing and formatting a date per month, so only when
+        // the set of months actually changed.
+        if grouped.map(\.key) != months.map(\.key) || scrubberMonths.isEmpty {
+            scrubberMonths = Self.scrubberMonths(of: grouped)
+        }
+        months = grouped
         loadError = nil
     }
 
@@ -1102,10 +1175,26 @@ private struct EntryThumb: View {
 struct EntryScreen: View {
     @Environment(AppServices.self) private var services
     let id: UUID
+    /// The draft, looked up once rather than on every redraw. Checked each time it's used, so
+    /// one deleted underneath the screen still resolves to nothing instead of trapping.
+    @State private var resolved = Resolved()
+    private final class Resolved {
+        var looked = false
+        var draft: EntryDraft?
+    }
+
+    private func draft(in store: DraftStore) -> EntryDraft? {
+        if !resolved.looked {
+            resolved.draft = try? store.draft(id: id)
+            resolved.looked = true
+        }
+        guard let draft = resolved.draft, draft.modelContext != nil, !draft.isDeleted else { return nil }
+        return draft
+    }
 
     var body: some View {
         if let store = services.store, let files = services.files,
-           let draft = try? store.draft(id: id) {
+           let draft = draft(in: store) {
             CaptureView(draft: draft, store: store, fileStore: files)
         } else {
             ContentUnavailableView("Entry no longer exists", systemImage: "tray")
@@ -1159,8 +1248,11 @@ struct RecoveryNotice: View {
 
 /// Reports how far a scroll view is scrolled, 0 at the top to 1 at the bottom. iOS 18 and
 /// later; before that the progress stays unknown and the scrubber handle doesn't track.
+///
+/// Rounded to a thousandth, so a slow drag doesn't report a new value for every fraction of a
+/// point, and written to a tracker only the scrubber reads.
 private struct ScrollProgress: ViewModifier {
-    @Binding var progress: CGFloat?
+    let tracker: ScrollProgressTracker
 
     func body(content: Content) -> some View {
         if #available(iOS 18.0, *) {
@@ -1168,9 +1260,10 @@ private struct ScrollProgress: ViewModifier {
                 let range = geometry.contentSize.height + geometry.contentInsets.top
                     + geometry.contentInsets.bottom - geometry.containerSize.height
                 guard range > 1 else { return 0 }
-                return min(max((geometry.contentOffset.y + geometry.contentInsets.top) / range, 0), 1)
+                let fraction = min(max((geometry.contentOffset.y + geometry.contentInsets.top) / range, 0), 1)
+                return (fraction * 1000).rounded() / 1000
             } action: { _, value in
-                progress = value
+                tracker.progress = value
             }
         } else {
             content

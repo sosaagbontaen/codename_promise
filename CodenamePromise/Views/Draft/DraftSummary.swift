@@ -1,5 +1,6 @@
 import CodenamePromiseCore
 import Foundation
+import SwiftData
 
 /// Everything the draft list needs to draw one row, as plain values.
 ///
@@ -99,6 +100,11 @@ extension DraftSummary {
 
 /// Each entry's photos for display, read when its row first appears and kept until the
 /// journal changes.
+///
+/// A miss used to load the entry and sort every photo it holds just to keep four, from inside
+/// a row's body, on the main thread. With forty to sixty photos an entry, scrolling into a
+/// stretch of uncached rows read thousands of photos a second. Now a miss asks the store for
+/// only the four it shows, plus the covers if any were chosen.
 @MainActor
 final class EntryArtCache {
     struct Art {
@@ -112,21 +118,55 @@ final class EntryArtCache {
 
     func clear() { cache.removeAll(keepingCapacity: true) }
     func forget(_ ids: Set<UUID>) { for id in ids { cache[id] = nil } }
+    /// Drops entries that no longer exist, keeping everything else.
+    func keepOnly(_ ids: Set<UUID>) { cache = cache.filter { ids.contains($0.key) } }
 
     func art(for summary: DraftSummary, store: DraftStore?) -> Art {
         guard summary.mediaCount > 0 else { return .none }
         if let hit = cache[summary.id] { return hit }
-        guard let store, let draft = try? store.draft(id: summary.id) else { return .none }
-        let media = draft.orderedMedia
+        guard let store, let art = try? Self.read(summary, from: store) else { return .none }
+        cache[summary.id] = art
+        return art
+    }
+
+    private static let shown = 4
+
+    private static func read(_ summary: DraftSummary, from store: DraftStore) throws -> Art {
+        let draftId = summary.id
         func thumb(_ item: MediaItem) -> DraftSummary.Thumb {
             DraftSummary.Thumb(id: item.id, relativePath: item.relativePath, isVideo: item.kind == .video)
         }
-        let art = Art(
-            covers: draft.covers.map(thumb),
-            thumbs: media.prefix(4).map(thumb),
-            hidden: max(0, media.count - 4)
+
+        var first = FetchDescriptor<MediaItem>(
+            predicate: #Predicate { $0.draft?.id == draftId },
+            sortBy: [SortDescriptor(\.sortIndex)]
         )
-        cache[summary.id] = art
-        return art
+        first.fetchLimit = shown
+        // The same order `orderedMedia` gives: position, then id as its tiebreak.
+        let thumbs = try store.context.fetch(first)
+            .map { (key: ($0.sortIndex, $0.id.uuidString), thumb: thumb($0)) }
+            .sorted { $0.key < $1.key }
+            .map(\.thumb)
+
+        // Covers are chosen by id on the entry. Only ones still attached to it count, in the
+        // order they were picked, as `EntryDraft.covers` has it.
+        var coverIds: [UUID] = []
+        var one = FetchDescriptor<EntryDraft>(predicate: #Predicate { $0.id == draftId })
+        one.fetchLimit = 1
+        one.propertiesToFetch = [\.coverMediaIds, \.coverMediaId]
+        if let draft = try store.context.fetch(one).first {
+            coverIds = draft.coverMediaIds.isEmpty ? (draft.coverMediaId.map { [$0] } ?? []) : draft.coverMediaIds
+        }
+        var covers: [DraftSummary.Thumb] = []
+        if !coverIds.isEmpty {
+            let wanted = coverIds
+            let found = try store.context.fetch(FetchDescriptor<MediaItem>(
+                predicate: #Predicate { wanted.contains($0.id) && $0.draft?.id == draftId }
+            ))
+            let byId = Dictionary(found.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+            covers = coverIds.compactMap { byId[$0].map(thumb) }
+        }
+
+        return Art(covers: covers, thumbs: thumbs, hidden: max(0, summary.mediaCount - shown))
     }
 }

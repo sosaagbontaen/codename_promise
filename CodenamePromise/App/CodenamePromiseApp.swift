@@ -28,8 +28,10 @@ struct CodenamePromiseApp: App {
             // thrashing the store; this closes the window that debounce opens, because
             // autosave is not a per-mutation durability guarantee. See ADR-001.
             switch phase {
-            case .inactive, .background:
+            case .inactive:
                 services.flushOnBackground()
+            case .background:
+                services.flushEnteringBackground()
             case .active:
                 // Connectivity may have returned while we were away.
                 Task {

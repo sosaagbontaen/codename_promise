@@ -14,19 +14,26 @@ struct InboxDigestView: View {
 
     @Environment(\.dismiss) private var dismiss
 
+    /// Plain values, read once. Rows used to hold the photos' models and be re-read from the
+    /// store on every redraw; a photo deleted while the sheet was up then trapped the moment
+    /// a row touched it (ADR-009a).
     private struct Row: Identifiable {
         let id: UUID
         let day: CalendarDay
         let title: String
         let added: CaptureIngestor.Outcome.Added
-        let media: [MediaItem]
+        let media: [DraftSummary.Thumb]
     }
 
+    @State private var rows: [Row]?
+
     /// Newest day first, the same order as the entry list.
-    private var rows: [Row] {
+    private func readRows() -> [Row] {
         digest.added.compactMap { id, added -> Row? in
             guard let draft = try? store.draft(id: id) else { return nil }
-            let media = added.mediaIds.compactMap { try? store.mediaItem(id: $0) }
+            let media = added.mediaIds.compactMap { try? store.mediaItem(id: $0) }.map {
+                DraftSummary.Thumb(id: $0.id, relativePath: $0.relativePath, isVideo: $0.kind == .video)
+            }
             return Row(id: id, day: draft.entryDate, title: title(of: draft), added: added, media: media)
         }
         .sorted { $0.day > $1.day }
@@ -35,8 +42,8 @@ struct InboxDigestView: View {
     var body: some View {
         NavigationStack {
             List {
-                let rows = rows
-                if rows.isEmpty {
+                let rows = rows ?? []
+                if self.rows != nil, rows.isEmpty {
                     ContentUnavailableView(
                         "Nothing to show", systemImage: "tray",
                         description: Text("The entries these went into have since been deleted.")
@@ -47,8 +54,10 @@ struct InboxDigestView: View {
                         if !row.media.isEmpty {
                             ScrollView(.horizontal, showsIndicators: false) {
                                 LazyHStack(spacing: 6) {
-                                    ForEach(row.media, id: \.id) { item in
-                                        DigestThumbnail(item: item, fileStore: fileStore)
+                                    ForEach(row.media) { thumb in
+                                        PhotoTile(thumb: thumb, fileStore: fileStore, maxPixel: 216)
+                                            .frame(width: 72, height: 72)
+                                            .clipShape(RoundedRectangle(cornerRadius: 8))
                                     }
                                 }
                                 .padding(.vertical, 2)
@@ -94,6 +103,7 @@ struct InboxDigestView: View {
                     }
                 }
             }
+            .onAppear { if rows == nil { rows = readRows() } }
             .navigationTitle("Added from your inbox")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -110,8 +120,8 @@ struct InboxDigestView: View {
         }
         let parts = [
             count(row.added.notes.count, "note", "notes"),
-            count(row.media.filter { $0.kind == .photo }.count, "photo", "photos"),
-            count(row.media.filter { $0.kind == .video }.count, "video", "videos"),
+            count(row.media.filter { !$0.isVideo }.count, "photo", "photos"),
+            count(row.media.filter { $0.isVideo }.count, "video", "videos"),
         ].compactMap { $0 }
         guard !parts.isEmpty else { return "" }
         let list = parts.count == 1 ? parts[0] : parts.dropLast().joined(separator: ", ") + " and " + parts.last!
@@ -123,35 +133,5 @@ struct InboxDigestView: View {
         let firstLine = draft.content.rawText
             .split(separator: "\n", omittingEmptySubsequences: true).first.map(String.init)
         return firstLine.map { String($0.prefix(50)) } ?? "Untitled entry"
-    }
-}
-
-private struct DigestThumbnail: View {
-    let item: MediaItem
-    let fileStore: MediaFileStore
-    @State private var image: UIImage?
-
-    var body: some View {
-        Group {
-            if let image {
-                Image(uiImage: image).resizable().scaledToFill()
-            } else {
-                Color.secondary.opacity(0.15)
-            }
-        }
-        .frame(width: 72, height: 72)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(alignment: .bottomLeading) {
-            if item.kind == .video {
-                Image(systemName: "play.fill")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.white)
-                    .padding(4)
-                    .shadow(radius: 2)
-            }
-        }
-        .task(id: item.id) {
-            image = await ThumbnailCache.shared.thumbnail(for: item, fileStore: fileStore, maxPixel: 216)
-        }
     }
 }

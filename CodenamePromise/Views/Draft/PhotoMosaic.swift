@@ -59,11 +59,25 @@ struct PhotoTile: View {
     /// Largest edge to decode, in pixels. Defaults to card size.
     var maxPixel: CGFloat = 420
     @State private var image: UIImage?
+    /// Which photo `image` is. A cell reused for a different photo must not show the old one
+    /// while the new one loads, and must load the new one at all, which it once didn't.
+    @State private var shownId: UUID?
+
+    init(thumb: DraftSummary.Thumb, fileStore: MediaFileStore, maxPixel: CGFloat = 420) {
+        self.thumb = thumb
+        self.fileStore = fileStore
+        self.maxPixel = maxPixel
+        // Straight from memory when it's there, so a photo seen a moment ago is drawn in the
+        // cell's first frame rather than flashing empty while a task looks it up.
+        let hit = ThumbnailCache.shared.cached(id: thumb.id, maxPixel: maxPixel)
+        _image = State(initialValue: hit)
+        _shownId = State(initialValue: hit == nil ? nil : thumb.id)
+    }
 
     var body: some View {
         Brand.ground
             .overlay {
-                if let image {
+                if let image, shownId == thumb.id {
                     Image(uiImage: image).resizable().scaledToFill()
                 }
             }
@@ -77,13 +91,18 @@ struct PhotoTile: View {
                         .padding(7)
                 }
             }
+            // Cancelled when the cell leaves the screen, which lets the cache skip a decode
+            // nobody is waiting for any more.
             .task(id: thumb.id) {
-                if image == nil {
-                    image = await ThumbnailCache.shared.thumbnail(
-                        id: thumb.id, relativePath: thumb.relativePath,
-                        isVideo: thumb.isVideo, fileStore: fileStore, maxPixel: maxPixel
-                    )
-                }
+                let id = thumb.id
+                if shownId == id, image != nil { return }
+                let loaded = await ThumbnailCache.shared.thumbnail(
+                    id: id, relativePath: thumb.relativePath,
+                    isVideo: thumb.isVideo, fileStore: fileStore, maxPixel: maxPixel
+                )
+                guard !Task.isCancelled, let loaded else { return }
+                image = loaded
+                shownId = id
             }
     }
 }

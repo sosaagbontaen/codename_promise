@@ -1,5 +1,6 @@
 import CodenamePromiseCore
 import Foundation
+import SwiftData
 import UserNotifications
 
 /// The gentle nudge back, scheduled entirely on the device.
@@ -111,12 +112,11 @@ final class ReminderScheduler {
             return
         }
 
-        guard let drafts = try? store.allDrafts(), !drafts.isEmpty else { return }
-        let written = drafts.filter { !$0.content.isEmpty }
-        guard let lastWrote = written.map(\.updatedAt).max() else { return }
+        let written = recentlyWritten(in: store)
+        guard let lastWrote = written.first else { return }
 
         // Their hour if there is enough history to know it; otherwise a defensible evening.
-        let hour = WritingRhythm.usualHour(of: written.map(\.updatedAt)) ?? 20
+        let hour = WritingRhythm.usualHour(of: written) ?? 20
 
         guard let fireAt = WritingRhythm.nextNudge(
             lastWrote: lastWrote, idleDays: Self.idleDays, preferredHour: hour
@@ -137,6 +137,22 @@ final class ReminderScheduler {
             content: content,
             trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
         ))
+    }
+
+    /// When the most recently written entries were last changed, newest first.
+    ///
+    /// Only the latest couple of hundred. This runs as the app leaves, on the main thread,
+    /// and reading every entry of a long journal (and decoding each one's text to see whether
+    /// it's empty) to find the newest was most of the cost of going to the background. The
+    /// recent ones are also the better guide to the hour someone writes at now.
+    private func recentlyWritten(in store: DraftStore) -> [Date] {
+        var descriptor = FetchDescriptor<EntryDraft>(
+            predicate: #Predicate { $0.deletedAt == nil },
+            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
+        )
+        descriptor.fetchLimit = 200
+        guard let drafts = try? store.context.fetch(descriptor) else { return [] }
+        return drafts.filter { !$0.content.isEmpty }.map(\.updatedAt)
     }
 
     /// What is actually queued. Used by the settings row, and by the test hook below.

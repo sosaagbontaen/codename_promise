@@ -1,12 +1,25 @@
 import SwiftUI
 
+/// How far the journal is scrolled, 0 to 1, kept apart from the journal itself.
+///
+/// It changes every frame of a scroll. Held in the journal's own state, every one of those
+/// frames re-ran the journal's whole body, regrouping and diffing a few thousand entries, just
+/// to move a handle. Here only the scrubber reads it, so only the scrubber redraws.
+@MainActor
+@Observable
+final class ScrollProgressTracker {
+    /// Nil when it isn't known (before iOS 18), and the handle stays put.
+    var progress: CGFloat?
+}
+
 /// A fast-scroll handle for the journal, like the one in Photos. It replaces the system
 /// scroll bar: it tracks the scroll position, and grabbing it jumps by month.
 ///
 /// At rest it's a slim handle on the right edge, over the content, taking no room from it.
-/// Grab it and the months fade in beside it, the one under the finger highlighted, with a
-/// bubble giving its full name, and the journal jumps as the finger moves. Let go and they
-/// fade away again.
+/// Scrolling wakes it into a tab that can be grabbed, and nothing more: the months only fade
+/// in once a finger is on the handle itself, the one under the finger highlighted, and the
+/// journal jumps as the finger moves. Let go and they fade away again. Showing the months on
+/// every scroll covered the entries being read and invited jumping somewhere by accident.
 ///
 /// Built for a journal that spans years: when there are more months than fit, the column
 /// shows evenly spaced labels, but the finger still moves through every single month.
@@ -21,19 +34,29 @@ struct MonthScrubber: View {
     }
 
     let months: [Month]
-    /// How far through the journal the list is scrolled, 0 to 1, so the handle doubles as the
-    /// scroll bar. Nil when it isn't known (before iOS 18), and the handle stays put.
-    var progress: CGFloat?
+    /// How far through the journal the list is scrolled, so the handle doubles as the
+    /// scroll bar.
+    let tracker: ScrollProgressTracker
     let onSelect: (String) -> Void
+
+    private var progress: CGFloat? { tracker.progress }
 
     @State private var active: Int?
     /// True only while a finger is on the handle. Gesture state, so it resets itself if the
     /// touch is cancelled (a notification, a system gesture) rather than staying stuck on.
     @GestureState private var touching = false
-    private var dragging: Bool { touching }
+    /// Whether the touch now under way began on the handle. Decided on its first movement
+    /// and cleared when it ends. A touch that began anywhere else never moves the journal,
+    /// whatever the gesture system hands this view.
+    @State private var grabbed = false
+    private var dragging: Bool { touching && grabbed }
     /// True for a moment after the list moves, so the handle shows itself while scrolling:
     /// the moment someone might want it is when they're already scrolling.
     @State private var awake = false
+    /// When the list last moved. Not state the body reads, so writing it every frame of a
+    /// scroll redraws nothing.
+    @State private var lastMoved = LastMoved()
+    private final class LastMoved { var at = Date.distantPast }
     /// Where along the edge the handle sits, 0 at the top to 1 at the bottom.
     @State private var position: CGFloat = 0
 
@@ -72,9 +95,8 @@ struct MonthScrubber: View {
             let anchor = dragging ? (active ?? currentIndex) : currentIndex
 
             ZStack(alignment: .topTrailing) {
-                // Every month, whenever the handle is awake, so you can see where you could go
-                // before touching it. Only the one under the finger is highlighted.
-                if dragging || awake {
+                // The months, only while a finger is on the handle.
+                if dragging {
                     labels(height: height) { index in
                         compact
                             ? handleCenter + CGFloat(index - anchor) * monthSpacing
@@ -83,8 +105,8 @@ struct MonthScrubber: View {
                     .transition(.opacity)
                 }
 
-                // The handle, flush with the edge like a scroll bar, in a target big enough to
-                // catch with a thumb. Awake, it becomes a tab you can see is meant to be held.
+                // The handle, flush with the edge like a scroll bar. Awake, it becomes a tab you
+                // can see is meant to be held.
                 Group {
                     if dragging || awake {
                         Capsule()
@@ -103,13 +125,33 @@ struct MonthScrubber: View {
                     }
                 }
                 .padding(.trailing, 3)
-                .frame(width: 44, height: handleHeight + 24, alignment: .trailing)
+                // The tab itself and nothing around it. A wider strip down the edge caught
+                // ordinary scrolls that happened to start near it, and the scrubber took the
+                // touch and jumped instead of the list scrolling.
+                .frame(width: 30, height: handleHeight, alignment: .trailing)
                 .contentShape(Rectangle())
-                .offset(y: handleY - 12)
+                .offset(y: handleY)
+                // Only grabbable once it's showing, as in Photos. The slim line at rest sits
+                // where a thumb lands to scroll, and grabbing it there jumped by accident.
+                .allowsHitTesting(dragging || awake)
                 .gesture(
                     DragGesture(minimumDistance: 0, coordinateSpace: .named("scrubber"))
                         .updating($touching) { _, state, _ in state = true }
-                        .onChanged { value in move(to: value.location.y, height: height) }
+                        .onChanged { value in
+                            if !grabbed {
+                                // Only a touch that started on the tab as it was drawn then.
+                                let start = value.startLocation
+                                let onHandle = start.x >= geometry.size.width - 34
+                                    && abs(start.y - handleCenter) <= handleHeight / 2 + 6
+                                guard onHandle else { return }
+                                grabbed = true
+                            }
+                            // Nothing jumps until the finger has deliberately moved up or down.
+                            // A touch that merely lands on the tab, say partway through a run
+                            // of flicks, shows the months and goes no further.
+                            if active == nil, abs(value.translation.height) < 8 { return }
+                            move(to: value.location.y, height: height)
+                        }
                 )
             }
             .frame(width: geometry.size.width, height: height, alignment: .topTrailing)
@@ -119,21 +161,32 @@ struct MonthScrubber: View {
         .animation(.easeOut(duration: 0.2), value: awake)
         .onChange(of: touching) { _, now in
             if !now {
+                grabbed = false
                 active = nil
                 dragStart = nil
             }
         }
         .onChange(of: progress) { _, _ in
-            awake = true
+            lastMoved.at = .now
+            if !awake { awake = true }
         }
-        // Settles back to a slim line a moment after the scrolling stops.
-        .task(id: progress) {
-            try? await Task.sleep(for: .seconds(1.4))
-            if !Task.isCancelled { awake = false }
+        // Settles back to a slim line a moment after the scrolling stops. One task per time
+        // it wakes, not one per frame of scrolling, sleeping until the last movement is old.
+        .task(id: awake) {
+            guard awake else { return }
+            while !Task.isCancelled {
+                let remaining = 1.4 - Date.now.timeIntervalSince(lastMoved.at)
+                if remaining <= 0, !dragging {
+                    awake = false
+                    return
+                }
+                try? await Task.sleep(for: .seconds(max(remaining, 0.3)))
+            }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Jump to month")
-        .accessibilityValue(active.map { months[$0].full } ?? "")
+        // Guarded: the journal can lose months (a delete) while one is still marked active.
+        .accessibilityValue(active.flatMap { months.indices.contains($0) ? months[$0].full : nil } ?? "")
         .accessibilityAdjustableAction { direction in
             let index = active ?? 0
             let next = direction == .increment ? min(index + 1, months.count - 1) : max(index - 1, 0)
@@ -157,7 +210,8 @@ struct MonthScrubber: View {
 
             ForEach(rows, id: \.self) { index in
                 let isActive = dragging && (active.map { nearestRow(to: $0, in: rows) == index } ?? false)
-                Text(isActive ? months[active ?? index].full : months[index].short)
+                let activeIndex = active.flatMap { months.indices.contains($0) ? $0 : nil } ?? index
+                Text(isActive ? months[activeIndex].full : months[index].short)
                     .font(.system(size: isActive ? 14 : 11, weight: isActive ? .bold : .semibold))
                     .foregroundStyle(isActive ? .white : Brand.ink.opacity(0.8))
                     .lineLimit(1)

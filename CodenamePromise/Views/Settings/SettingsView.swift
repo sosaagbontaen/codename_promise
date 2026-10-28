@@ -110,7 +110,7 @@ struct SettingsView: View {
         }
         .task {
             await services.reminders.refreshAuthorization()
-            trashCount = (try? services.store?.trashedDrafts().count) ?? 0
+            trashCount = (try? services.store?.trashedCount()) ?? 0
             serverURL = AppServices.backendSettings.overrideValue
                 ?? AppServices.backendSettings.bundled ?? ""
             if coordinator == nil, let service = services.connectionService {
@@ -208,7 +208,7 @@ struct SettingsView: View {
         case .trash:
             if let store = services.store, let files = services.files {
                 RecentlyDeletedView(store: store, fileStore: files)
-                    .onDisappear { trashCount = (try? store.trashedDrafts().count) ?? 0 }
+                    .onDisappear { trashCount = (try? store.trashedCount()) ?? 0 }
             }
         case .names:
             if let store = services.store {
