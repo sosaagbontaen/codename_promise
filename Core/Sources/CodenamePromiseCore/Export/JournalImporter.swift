@@ -37,6 +37,10 @@ public struct JournalImporter: Sendable {
         /// Recordings the export marked as never transcribed. Kept apart because they are
         /// the one thing whose words exist nowhere else (ADR-002).
         public let untranscribedAudio: [String]
+        /// "adds: attachments" in the front matter: this file only adds its photos to the
+        /// entry with its id, if that entry is already here. It never creates one and never
+        /// changes its words. Used to bring photos to entries imported before they existed.
+        public var addsAttachments = false
 
         public init(
             id: UUID?, entryDateKey: String, title: String?, rawText: String,
@@ -179,7 +183,7 @@ public struct JournalImporter: Sendable {
         let body = Array(lines[index...])
         let sections = Self.split(body)
 
-        return ParsedEntry(
+        var entry = ParsedEntry(
             id: front["id"].flatMap(UUID.init(uuidString:)),
             entryDateKey: date,
             title: front["title"].flatMap { $0.isEmpty ? nil : $0 },
@@ -189,6 +193,8 @@ public struct JournalImporter: Sendable {
             attachments: sections.attachments,
             untranscribedAudio: sections.audio
         )
+        entry.addsAttachments = front["adds"]?.lowercased() == "attachments"
+        return entry
     }
 
     private struct Sections {

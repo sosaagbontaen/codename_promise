@@ -125,6 +125,10 @@ struct ImportView: View {
     }
 
     private func headline(_ report: DraftStore.ImportReport) -> String {
+        if report.added == 0 && report.attachments > 0 {
+            let noun = report.attachments == 1 ? "photo" : "photos"
+            return "Added \(report.attachments) \(noun) to entries already here"
+        }
         if report.added == 0 && report.alreadyPresent > 0 {
             return "Everything in that folder was already here"
         }
@@ -139,6 +143,10 @@ struct ImportView: View {
         }
         if report.attachments > 0 {
             row("Photos and recordings", "\(report.attachments)", Brand.muted)
+        }
+        if report.additionsWaiting > 0 {
+            // Not a problem: those entries' year hasn't been imported, and it brings them.
+            row("For entries not imported yet", "\(report.additionsWaiting)", Brand.muted)
         }
         // Said plainly rather than buried. An import that quietly dropped things would be
         // worse than one that failed, because you would not know to go looking.

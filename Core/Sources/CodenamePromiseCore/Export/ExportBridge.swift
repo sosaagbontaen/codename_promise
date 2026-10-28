@@ -105,6 +105,9 @@ extension DraftStore {
         public var attachments = 0
         /// Files an entry named that were not in the folder. Reported, never fatal.
         public var missingAttachments: [String] = []
+        /// Additions (see `JournalImporter.ParsedEntry.addsAttachments`) for entries that
+        /// aren't on this phone yet. Left alone: importing their year brings everything.
+        public var additionsWaiting = 0
         /// Markdown files that could not be read at all.
         public var unreadable: [String] = []
 
@@ -180,7 +183,16 @@ extension DraftStore {
             for parsed in batch {
                 let files = parsed.attachments + parsed.untranscribedAudio
                 let draft: EntryDraft
-                if let id = parsed.id, existing.contains(id) {
+                if parsed.addsAttachments {
+                    // Photos for an entry that's already here, and only that.
+                    guard let id = parsed.id, existing.contains(id), let target = try self.draft(id: id) else {
+                        report.additionsWaiting += 1
+                        state.entriesDone += 1
+                        state.filesDone += files.count
+                        continue
+                    }
+                    draft = target
+                } else if let id = parsed.id, existing.contains(id) {
                     guard unfinished.contains(id.uuidString), let resumed = try self.draft(id: id) else {
                         report.alreadyPresent += 1
                         state.entriesDone += 1

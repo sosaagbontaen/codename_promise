@@ -208,6 +208,41 @@ struct JournalImportTests {
         #expect(third.attachments == 0)
     }
 
+    /// Photos brought back after an entry was imported arrive in an "adds" file. They join
+    /// the entry already here, change nothing else, and wait if the entry isn't here yet.
+    @Test("an additions file adds photos to an entry that's here, and only then")
+    func additionsJoinExistingEntries() async throws {
+        let store = try makeStore()
+        let files = try MediaFileStore(root: tempDirectory())
+        let here = try store.createDraft(entryDate: CalendarDay(rawValue: "2021-10-01")!)
+        try store.updateRawText("Photoshoot day.", for: here)
+        let notHere = UUID()
+
+        let folder = tempDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder.appendingPathComponent("media/x"), withIntermediateDirectories: true)
+        try Data("raw photo".utf8).write(to: folder.appendingPathComponent("media/x/001 IMG_0515.jpg"))
+        for (id, name) in [(here.id, "a"), (notHere, "b")] {
+            let md = "---\nid: \(id.uuidString)\ndate: 2021-10-01\nadds: attachments\ntitle: Should not rename\n---\n\n# Title\n\n## Attachments\n\n![p](media/x/001%20IMG_0515.jpg)\n"
+            try md.write(to: folder.appendingPathComponent("\(name).md"), atomically: true, encoding: .utf8)
+        }
+
+        let report = try await store.importJournal(from: folder, fileStore: files)
+        #expect(report.added == 0)
+        #expect(report.attachments == 1)
+        #expect(report.additionsWaiting == 1)
+        let updated = try #require(try store.draft(id: here.id))
+        #expect(updated.media.count == 1)
+        #expect(updated.content.rawText == "Photoshoot day.", "words untouched")
+        #expect(updated.content.title == nil, "title untouched")
+        #expect(try store.draft(id: notHere) == nil, "never creates an entry")
+
+        // Running it again adds nothing more.
+        let again = try await store.importJournal(from: folder, fileStore: files)
+        #expect(again.attachments == 0)
+        #expect(try store.draft(id: here.id)?.media.count == 1)
+    }
+
     @Test("progress counts every entry and file")
     func reportsProgress() async throws {
         let source = try makeStore()
