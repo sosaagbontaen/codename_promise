@@ -39,20 +39,48 @@ struct MonthScrubber: View {
 
     private let rowHeight: CGFloat = 22
     private let handleHeight: CGFloat = 46
+    /// Room per month in a short journal: a pill and a comfortable gap.
+    private let monthSpacing: CGFloat = 34
+    /// Where a drag in a short journal began, and the month showing then.
+    @State private var dragStart: (y: CGFloat, index: Int)?
+
+    /// A short journal: every month fits down the edge at `monthSpacing`.
+    ///
+    /// Spreading a few months down the whole edge put them hundreds of points apart, too far
+    /// to read as one column. So a short journal gets a tight column that rides with the
+    /// handle, the current month beside it, and dragging steps a month per `monthSpacing`.
+    /// A long journal keeps the full-height track, where every point of the edge is a month.
+    private func isCompact(_ height: CGFloat) -> Bool {
+        CGFloat(months.count) * monthSpacing < height
+    }
+
+    /// The month the list is showing, as far as the scroll position says.
+    private var currentIndex: Int {
+        guard months.count > 1 else { return 0 }
+        let fraction = min(max(progress ?? position, 0), 1)
+        return Int((fraction * CGFloat(months.count - 1)).rounded())
+    }
 
     var body: some View {
         GeometryReader { geometry in
             let height = geometry.size.height
+            let compact = isCompact(height)
             // Follows the scroll, except while it's being dragged, when it follows the finger.
             let shown = dragging ? position : (progress ?? position)
             let handleY = shown * max(height - handleHeight, 0)
+            let handleCenter = handleY + handleHeight / 2
+            let anchor = dragging ? (active ?? currentIndex) : currentIndex
 
             ZStack(alignment: .topTrailing) {
                 // Every month, whenever the handle is awake, so you can see where you could go
                 // before touching it. Only the one under the finger is highlighted.
                 if dragging || awake {
-                    labels(height: height)
-                        .transition(.opacity)
+                    labels(height: height) { index in
+                        compact
+                            ? handleCenter + CGFloat(index - anchor) * monthSpacing
+                            : center(of: index, height: height)
+                    }
+                    .transition(.opacity)
                 }
 
                 // The handle, flush with the edge like a scroll bar, in a target big enough to
@@ -90,7 +118,10 @@ struct MonthScrubber: View {
         .animation(.easeOut(duration: 0.15), value: dragging)
         .animation(.easeOut(duration: 0.2), value: awake)
         .onChange(of: touching) { _, now in
-            if !now { active = nil }
+            if !now {
+                active = nil
+                dragStart = nil
+            }
         }
         .onChange(of: progress) { _, _ in
             awake = true
@@ -117,7 +148,7 @@ struct MonthScrubber: View {
     ///
     /// They used to sit stacked in a small box in the middle while the finger was measured
     /// against the whole edge, so the highlighted month could be half a screen away from it.
-    private func labels(height: CGFloat) -> some View {
+    private func labels(height: CGFloat, centerOf: @escaping (Int) -> CGFloat) -> some View {
         let rows = visibleRows(fitting: height)
         return ZStack(alignment: .topTrailing) {
             // Each month on its own small pill rather than one strip down the screen, which
@@ -141,7 +172,7 @@ struct MonthScrubber: View {
                         }
                     }
                     .shadow(color: .black.opacity(0.25), radius: 3, y: 1)
-                    .offset(y: center(of: index, height: height) - rowHeight / 2)
+                    .offset(y: centerOf(index) - rowHeight / 2)
             }
         }
         .frame(height: height, alignment: .topTrailing)
@@ -174,7 +205,17 @@ struct MonthScrubber: View {
         guard !months.isEmpty, height > 0 else { return }
         let fraction = min(max(y / height, 0), 0.9999)
         position = fraction
-        let index = Int(fraction * CGFloat(months.count))
+        let index: Int
+        if isCompact(height) {
+            // A month per step of the finger, counted from where the drag began, so the
+            // highlighted month is always the one beside the thumb.
+            let start = dragStart ?? (y, currentIndex)
+            dragStart = start
+            let steps = Int(((y - start.y) / monthSpacing).rounded())
+            index = min(max(start.index + steps, 0), months.count - 1)
+        } else {
+            index = Int(fraction * CGFloat(months.count))
+        }
         guard index != active else { return }
         active = index
         Haptics.picked()
