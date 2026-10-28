@@ -23,6 +23,11 @@ struct RichEditor: View {
     /// The document the text held after the last edit, so an edit compares against it
     /// rather than reading the whole text a second time.
     @State private var current: RichDocument?
+    /// The document last written out, so an edit that changes nothing (focusing the editor
+    /// can nudge its attributes) doesn't rewrite the entry in normalised Markdown, bump its
+    /// edit time and mark it as needing to sync again.
+    @State private var saved: RichDocument?
+    @State private var textJustChanged = false
     @State private var addingLink = false
     @State private var linkAddress = ""
 
@@ -31,9 +36,11 @@ struct RichEditor: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             // An invisible copy sets the height, so the page scrolls rather than the editor.
-            Text(text + AttributedString("\n "))
+            Text(text)
                 .lineSpacing(7)
-                .padding(.vertical, 8)
+                .padding(.top, 8)
+                // A line's room below the last one, where the caret goes after Return.
+                .padding(.bottom, 40)
                 .padding(.horizontal, 5)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .hidden()
@@ -50,7 +57,18 @@ struct RichEditor: View {
             if now != written { load(now) }
         }
         .onChange(of: journalFont) { _, _ in load(markdown) }
-        .onChange(of: text) { old, new in edited(from: old, to: new) }
+        .onChange(of: text) { old, new in
+            textJustChanged = true
+            // Cleared after the selection handler below has had its turn, whichever order
+            // SwiftUI runs the two in.
+            DispatchQueue.main.async { DispatchQueue.main.async { textJustChanged = false } }
+            edited(from: old, to: new)
+        }
+        .onChange(of: selection) { _, _ in
+            // Next turn, once any edit in the same update has been seen: a caret that moved
+            // because of typing is not a tap.
+            DispatchQueue.main.async { if !textJustChanged { caretMoved() } }
+        }
         .toolbar {
             ToolbarItem(placement: .keyboard) {
                 FormattingBar(editor: self)
@@ -75,6 +93,7 @@ struct RichEditor: View {
         written = markdown
         drawn = rendered
         current = document
+        saved = document
         text = rendered
     }
 
@@ -89,11 +108,14 @@ struct RichEditor: View {
         var caret: RichText.Place?
         // Only a new line can be a Return, so the character-by-character check is skipped
         // for ordinary typing.
+        // Before Return is handled, which may open a folded toggle on purpose.
+        keepFoldedContent(previous: previous, document: &document)
         if document.blocks.count == previous.blocks.count + 1,
            let line = insertedNewline(old: old, new: new) {
             caret = continueLine(at: line, previous: previous, document: &document)
+        } else if document.blocks.count == previous.blocks.count {
+            caret = applyShortcut(previous: previous, document: &document)
         }
-        keepFoldedContent(previous: previous, document: &document)
         current = document
 
         // Typing within lines that kept their kinds changes nothing drawn: no marker to
@@ -113,6 +135,9 @@ struct RichEditor: View {
         // Not now: this runs while the text system is still committing the edit, and
         // replacing the text underneath it mid-commit crashes it. Next turn of the run loop
         // the edit is done; if more typing has landed by then, that edit is handled instead.
+        // (Carrying the change onto newer text was tried: replacing the text while the
+        // keyboard is partway through a word corrupts it, which is far worse than a line
+        // that keeps its old style until the next structural edit.)
         DispatchQueue.main.async {
             guard text == new else { return }
             redraw(document, caret: place)
@@ -128,6 +153,8 @@ struct RichEditor: View {
     }
 
     private func save(_ document: RichDocument) {
+        if document == saved { return }
+        saved = document
         let markdown = document.markdown
         written = markdown
         if markdown != self.markdown { self.markdown = markdown }
@@ -184,15 +211,125 @@ struct RichEditor: View {
             document.blocks[line].indent = was.indent
             document.blocks[line + 1].kind = kind
             document.blocks[line + 1].indent = was.indent
-        case .heading:
+        case .heading(_, let toggle):
             document.blocks[line].kind = was.kind
-            document.blocks[line].folded = was.folded
             document.blocks[line + 1].kind = .paragraph
             document.blocks[line + 1].indent = 0
+            if toggle, let folded = was.folded {
+                // Return on a folded toggle opens it and starts a line inside, the way Notion
+                // does, instead of a line after everything it holds.
+                document.blocks[line].folded = nil
+                document.blocks.insert(contentsOf: folded, at: line + 2)
+            } else {
+                document.blocks[line].folded = was.folded
+            }
         case .paragraph:
             document.blocks[line + 1].indent = was.indent
         }
         return RichText.Place(line: line + 1, offset: 0)
+    }
+
+    /// Markdown typed at the start of a line becomes that kind of line as soon as its space
+    /// is typed, the way Notion and Notes do it: "- " a bullet, "1. " a numbered item,
+    /// "[] " a checkbox, "# " to "### " a heading, "> " a quote. Only on the space that
+    /// completes the pattern, so text that merely starts that way is left alone.
+    private static let shortcuts: [(pattern: String, kind: RichDocument.Kind)] = [
+        ("### ", .heading(level: 3, toggle: false)), ("## ", .heading(level: 2, toggle: false)),
+        ("# ", .heading(level: 1, toggle: false)), ("[ ] ", .check(done: false)), ("[] ", .check(done: false)),
+        ("[x] ", .check(done: true)), ("- ", .bullet), ("* ", .bullet), ("> ", .quote),
+    ]
+
+    private func applyShortcut(previous: RichDocument, document: inout RichDocument) -> RichText.Place? {
+        guard let line = previous.blocks.indices.first(where: { previous.blocks[$0] != document.blocks[$0] }) else { return nil }
+        let before = previous.blocks[line], after = document.blocks[line]
+        guard after.kind == .paragraph, before.kind == .paragraph else { return nil }
+        let typed = after.text
+        var matched: (length: Int, kind: RichDocument.Kind)?
+        if let found = Self.shortcuts.first(where: { typed.hasPrefix($0.pattern) }) {
+            matched = (found.pattern.count, found.kind)
+        } else if let number = typed.firstMatch(of: #/^[0-9]{1,3}[.)] /#) {
+            matched = (number.output.count, .numbered)
+        }
+        guard let matched else { return nil }
+        // The space that finished the pattern is the character just typed.
+        let spaceAt = typed.index(typed.startIndex, offsetBy: matched.length - 1)
+        var withoutSpace = typed
+        withoutSpace.remove(at: spaceAt)
+        guard withoutSpace == before.text else { return nil }
+
+        document.blocks[line].kind = matched.kind
+        if case .heading = matched.kind { document.blocks[line].indent = 0 }
+        document.blocks[line].runs = Self.dropping(matched.length, from: after.runs)
+        return RichText.Place(line: line, offset: 0)
+    }
+
+    private static func dropping(_ count: Int, from runs: [RichDocument.Run]) -> [RichDocument.Run] {
+        var remaining = count
+        var out: [RichDocument.Run] = []
+        for run in runs {
+            if remaining >= run.text.count {
+                remaining -= run.text.count
+                continue
+            }
+            out.append(RichDocument.Run(String(run.text.dropFirst(remaining)), run.style))
+            remaining = 0
+        }
+        return out
+    }
+
+    // MARK: - Tapping markers
+
+    /// A caret placed on a line's marker: a checkbox ticks, a toggle's arrow folds or opens,
+    /// and anything else puts the caret at the start of the words, so nothing gets typed in
+    /// among the bullets and numbers.
+    private func caretMoved() {
+        guard case .insertionPoint(let point) = selection.indices(in: text),
+              let document = current,
+              let (line, start) = lineStart(containing: point),
+              line < document.blocks.count
+        else { return }
+        let block = document.blocks[line]
+        let length = lineLength(from: start)
+        let lead = length - block.text.count
+        let offset = text.characters.distance(from: start, to: point)
+        guard lead > 0, offset < lead else { return }
+
+        var updated = document
+        switch block.kind {
+        case .check(let done):
+            updated.blocks[line].kind = .check(done: !done)
+            Haptics.picked()
+            redraw(updated, caret: RichText.Place(line: line, offset: block.text.count))
+        case .heading(_, true):
+            toggleFold(line: line)
+        default:
+            selection = AttributedTextSelection(insertionPoint: text.characters.index(start, offsetBy: lead))
+        }
+    }
+
+    /// The line a position is on, and where that line starts.
+    private func lineStart(containing point: AttributedString.Index) -> (Int, AttributedString.Index)? {
+        var line = 0
+        var start = text.startIndex
+        var index = text.startIndex
+        while index < point, index < text.endIndex {
+            if text.characters[index] == "\n" {
+                line += 1
+                start = text.characters.index(after: index)
+            }
+            index = text.characters.index(after: index)
+        }
+        return (line, start)
+    }
+
+    private func lineLength(from start: AttributedString.Index) -> Int {
+        var count = 0
+        var index = start
+        while index < text.endIndex, text.characters[index] != "\n" {
+            count += 1
+            index = text.characters.index(after: index)
+        }
+        return count
     }
 
     /// Words folded under a toggle heading live on the heading's characters. If the heading
@@ -226,7 +363,6 @@ struct RichEditor: View {
 
     /// The lines the selection touches.
     private var selectedLines: ClosedRange<Int> {
-        let document = RichText.document(from: text)
         let ranges = selectedRanges
         let start: AttributedString.Index
         let end: AttributedString.Index
@@ -240,8 +376,8 @@ struct RichEditor: View {
             start = text.endIndex
             end = text.endIndex
         }
-        let a = RichText.place(of: min(start, text.endIndex), in: text, document: document).line
-        let b = RichText.place(of: min(end, text.endIndex), in: text, document: document).line
+        let a = lineStart(containing: min(start, text.endIndex))?.0 ?? 0
+        let b = lineStart(containing: min(end, text.endIndex))?.0 ?? a
         return min(a, b)...max(a, b)
     }
 
@@ -252,9 +388,16 @@ struct RichEditor: View {
         selection.typingAttributes(in: text)[RichText.RunStyleKey.self] ?? RichDocument.Style()
     }
 
+    /// The line the caret is on, from the document the editor already holds. The toolbar
+    /// asks on every keystroke, so this counts lines rather than re-reading the entry.
     var lineHere: RichDocument.Block? {
-        let document = RichText.document(from: text)
-        let line = selectedLines.lowerBound
+        guard let document = current else { return nil }
+        let point: AttributedString.Index
+        switch selection.indices(in: text) {
+        case .insertionPoint(let at): point = at
+        case .ranges(let set): point = set.ranges.first?.lowerBound ?? text.endIndex
+        }
+        guard let (line, _) = lineStart(containing: min(point, text.endIndex)) else { return nil }
         return line < document.blocks.count ? document.blocks[line] : nil
     }
 
@@ -352,6 +495,18 @@ struct RichEditor: View {
         }
     }
 
+    /// Turns the "/" line into `kind`, empty and ready to type in.
+    func replaceSlash(with kind: RichDocument.Kind) {
+        guard var document = current else { return }
+        let line = selectedLines.lowerBound
+        guard line < document.blocks.count, document.blocks[line].text == "/" else { return }
+        document.blocks[line].runs = []
+        document.blocks[line].kind = kind
+        if case .heading = kind { document.blocks[line].indent = 0 }
+        redraw(document, caret: RichText.Place(line: line, offset: 0))
+        Haptics.picked()
+    }
+
     func indent(_ by: Int) {
         changeLines { block in
             if case .heading = block.kind { return }
@@ -368,8 +523,11 @@ struct RichEditor: View {
 
     /// Folds or unfolds the toggle heading the caret is on.
     func toggleFold() {
-        var document = RichText.document(from: text)
-        let line = selectedLines.lowerBound
+        toggleFold(line: selectedLines.lowerBound)
+    }
+
+    private func toggleFold(line: Int) {
+        var document = current ?? RichText.document(from: text)
         guard line < document.blocks.count, case .heading(let level, true) = document.blocks[line].kind else { return }
         if let folded = document.blocks[line].folded {
             document.blocks[line].folded = nil
@@ -405,6 +563,46 @@ private struct FormattingBar: View {
     var body: some View {
         let style = editor.styleHere
         let line = editor.lineHere
+        if line?.text == "/" {
+            blockPicker
+        } else {
+            tools(style: style, line: line)
+        }
+    }
+
+    /// Notion's slash menu, in the toolbar: "/" alone on a line offers what the line can
+    /// become, and picking one replaces the slash.
+    private var blockPicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                pick("Heading 1", "textformat.size.larger", .heading(level: 1, toggle: false))
+                pick("Heading 2", "textformat.size", .heading(level: 2, toggle: false))
+                pick("Heading 3", "textformat.size.smaller", .heading(level: 3, toggle: false))
+                pick("Toggle", "chevron.right.circle", .heading(level: 2, toggle: true))
+                pick("Checklist", "checklist", .check(done: false))
+                pick("Bullets", "list.bullet", .bullet)
+                pick("Numbers", "list.number", .numbered)
+                pick("Quote", "text.quote", .quote)
+            }
+            .padding(.horizontal, 8)
+        }
+    }
+
+    private func pick(_ title: String, _ symbol: String, _ kind: RichDocument.Kind) -> some View {
+        Button {
+            editor.replaceSlash(with: kind)
+        } label: {
+            Label(title, systemImage: symbol)
+                .font(.system(size: 14, weight: .semibold))
+                .padding(.horizontal, 10)
+                .frame(height: 32)
+                .background(Brand.violet.opacity(0.15), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Brand.ink)
+    }
+
+    private func tools(style: RichDocument.Style, line: RichDocument.Block?) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 2) {
                 Menu {
