@@ -58,6 +58,12 @@ final class PhotoBackfillCoordinator {
         var reachedDay: String?
         /// When the fill started, so what it added can be found and shown.
         var startedAt: Date?
+        /// Why items weren't copied. None of them is lost: only copies are recorded, so each
+        /// is tried again on the next fill.
+        var timedOut = 0
+        var unavailable = 0
+        /// Set when the fill paused itself because Photos stopped handing anything over.
+        var pausedReason: String?
     }
 
     /// What the last fill did, kept so a fill cut off by the app closing can say afterwards
@@ -70,6 +76,38 @@ final class PhotoBackfillCoordinator {
     private func remember(_ outcome: Outcome) {
         if let data = try? JSONEncoder().encode(outcome) {
             UserDefaults.standard.set(data, forKey: Self.lastRunKey)
+        }
+    }
+
+    /// One batch, with a second try after a pause if nothing at all came through.
+    private func runBatch(
+        _ batch: [PhotoBackfill.Day], prefix: String, done: inout Int, total: Int,
+        outcome: inout Outcome, report: BackgroundWork.Report
+    ) async -> Bool {
+        await waitForUnlockedLibrary()
+        let before = outcome, doneBefore = done
+        var result = await fill(batch, prefix: prefix, done: &done, total: total, outcome: &outcome, report: report)
+        guard result.copied == 0, result.failed >= 10 else { return true }
+        // Nothing in the whole batch came through. That's Photos refusing, not forty
+        // bad photos: wait, then try the batch once more rather than racing through
+        // the rest of the library marking everything failed.
+        try? await Task.sleep(for: .seconds(30))
+        await waitForUnlockedLibrary()
+        outcome = before
+        done = doneBefore
+        result = await fill(batch, prefix: prefix, done: &done, total: total, outcome: &outcome, report: report)
+        if result.copied == 0, result.failed >= 10 {
+            outcome.pausedReason = "Photos stopped handing over photos, usually because iCloud downloads are failing or the phone is short on space. Everything copied so far is saved."
+            return false
+        }
+        return true
+    }
+
+    /// While the phone is locked, iOS seals the photo library and every request fails. Wait
+    /// for it to unlock rather than marking a whole library as unreadable.
+    private func waitForUnlockedLibrary() async {
+        while !UIApplication.shared.isProtectedDataAvailable, !stopRequested {
+            try? await Task.sleep(for: .seconds(3))
         }
     }
 
@@ -266,12 +304,12 @@ final class PhotoBackfillCoordinator {
                 if self.stopRequested { break }
                 batch.append(day)
                 if batch.reduce(0, { $0 + $1.assets.count }) >= Self.batchSize {
-                    await self.fill(batch, prefix: prefix, done: &done, total: total, outcome: &outcome, report: report)
+                    guard await self.runBatch(batch, prefix: prefix, done: &done, total: total, outcome: &outcome, report: report) else { break }
                     batch = []
                 }
             }
-            if !batch.isEmpty, !self.stopRequested {
-                await self.fill(batch, prefix: prefix, done: &done, total: total, outcome: &outcome, report: report)
+            if !batch.isEmpty, !self.stopRequested, outcome.pausedReason == nil {
+                _ = await self.runBatch(batch, prefix: prefix, done: &done, total: total, outcome: &outcome, report: report)
             }
             outcome.remaining = total - done
             outcome.stopped = outcome.remaining > 0
@@ -297,7 +335,8 @@ final class PhotoBackfillCoordinator {
         total: Int,
         outcome: inout Outcome,
         report: BackgroundWork.Report
-    ) async {
+    ) async -> (copied: Int, failed: Int) {
+        var copied = 0, failed = 0
         phase = .working(done: done, total: total, day: days[0].day)
         // What each day already has, so the same photo or video isn't added twice.
         var existingByDay: [CalendarDay: [EntryDraft]] = [:]
@@ -326,7 +365,12 @@ final class PhotoBackfillCoordinator {
                 done += 1
                 report(done, total, "\(done) of \(total)")
                 guard case .ready(let adopted) = file else {
-                    if case .duplicate = file { outcome.duplicates += 1 } else { outcome.unreadable += 1 }
+                    switch file {
+                    case .duplicate: outcome.duplicates += 1
+                    case .timedOut: outcome.timedOut += 1; failed += 1
+                    case .unavailable: outcome.unavailable += 1; failed += 1
+                    default: outcome.unreadable += 1; failed += 1
+                    }
                     continue
                 }
                 do {
@@ -343,6 +387,7 @@ final class PhotoBackfillCoordinator {
                     }
                     try store.record(adopted, kind: asset.isVideo ? .video : .photo, to: target, saving: false)
                     outcome.added += 1
+                    copied += 1
                 } catch {
                     fileStore.delete(relativePaths: [adopted.relativePath])
                     outcome.unreadable += 1
@@ -356,6 +401,7 @@ final class PhotoBackfillCoordinator {
         outcome.remaining = total - done
         outcome.reachedDay = days.last?.day.rawValue
         remember(outcome)
+        return (copied, failed)
     }
 
     /// What a fill added, newest first, as values for the screen. Found by when it was
@@ -446,7 +492,7 @@ final class PhotoBackfillCoordinator {
         options.deliveryMode = .highQualityFormat
         options.resizeMode = .fast
         options.isNetworkAccessAllowed = true
-        let image: UIImage? = await withTimeLimit(seconds: 20, onTimeout: ImageBox(nil)) { finish in
+        let image: UIImage? = await withTimeLimit(seconds: 20, onTimeout: ImageBox(nil, timedOut: true)) { (finish: @escaping @Sendable (ImageBox) -> Void) in
             let request = PHImageManager.default().requestImage(
                 for: asset, targetSize: CGSize(width: 64, height: 64), contentMode: .aspectFill, options: options
             ) { image, info in
@@ -480,6 +526,12 @@ final class PhotoBackfillCoordinator {
         case ready(AdoptedFile)
         case duplicate
         case unreadable
+        /// The request ran past its time limit (usually an iCloud download).
+        case timedOut
+        /// Photos handed back nothing (the library locked, or the item unavailable).
+        case unavailable
+        /// Written to the temporary file, not yet in the store.
+        case written
     }
 
     /// Phone-friendly copies of a day's items, four at a time, adopted into the store and in
@@ -526,10 +578,12 @@ final class PhotoBackfillCoordinator {
         defer { try? FileManager.default.removeItem(at: temporary) }
 
         if asset.isVideo {
-            guard await exportVideo(item, to: temporary) else { return .unreadable }
+            let result = await exportVideo(item, to: temporary)
+            if case .written = result {} else { return result }
         } else {
-            guard await writePhoto(item, to: temporary) else { return .unreadable }
-            if let print = fingerprint(of: temporary), known.photos.contains(where: { $0.distance(to: print) < 10 }) {
+            let result = await writePhoto(item, to: temporary)
+            if case .written = result {} else { return result }
+            if let print = fingerprint(of: temporary), known.matchesPhoto(print, takenAt: item.creationDate, strict: true) {
                 return .duplicate
             }
         }
@@ -542,7 +596,8 @@ final class PhotoBackfillCoordinator {
     /// What a day's entries already hold, to recognise the same photo or video coming in
     /// again (from an earlier import of the same day, say).
     struct Known: Sendable {
-        var photos: [PhotoDateFinder.Fingerprint] = []
+        /// Each photo's look and, when its file says, when it was taken.
+        var photos: [(print: PhotoDateFinder.Fingerprint, takenAt: Date?)] = []
         /// A video's length and its opening frame. Length alone matches too easily; the frame
         /// alone misses a video that opens on black.
         var videos: [(seconds: Double, frame: PhotoDateFinder.Fingerprint?)] = []
@@ -561,13 +616,31 @@ final class PhotoBackfillCoordinator {
                 }
             }
             guard !photos.isEmpty, let print = await PhotoBackfillCoordinator.quickFingerprint(of: asset) else { return false }
-            return photos.contains { $0.distance(to: print) < 12 }
+            return matchesPhoto(print, takenAt: asset.creationDate, strict: false)
+        }
+
+        /// The same photo, not merely a similar one: it has to look alike and have been taken
+        /// at the same moment. Looks alone matched the frames of a run of near-identical
+        /// shots, and left real photos out as "already in an entry".
+        func matchesPhoto(_ print: PhotoDateFinder.Fingerprint, takenAt date: Date?, strict: Bool) -> Bool {
+            photos.contains { existing in
+                let distance = existing.print.distance(to: print)
+                if let a = existing.takenAt, let b = date {
+                    return abs(a.timeIntervalSince(b)) < 1.5 && distance < (strict ? 10 : 12)
+                }
+                // No date to go on: only a near-exact likeness counts.
+                return distance < 4
+            }
         }
     }
 
     nonisolated private static func known(photos: [URL], videos: [URL]) async -> Known {
         var known = Known()
-        known.photos = await Task.detached { photos.compactMap(fingerprint(of:)) }.value
+        known.photos = await Task.detached {
+            photos.compactMap { url in
+                fingerprint(of: url).map { ($0, CaptureDateReader.captureDate(ofImageAt: url)) }
+            }
+        }.value
         for url in videos {
             let asset = AVURLAsset(url: url)
             guard let duration = try? await asset.load(.duration), duration.isNumeric else { continue }
@@ -587,13 +660,13 @@ final class PhotoBackfillCoordinator {
     /// iCloud, Photos can then fetch a smaller copy instead of downloading every full-size
     /// original only to shrink it, which was most of the time a large fill took. The date and
     /// place come from the library's own record of the photo.
-    nonisolated private static func writePhoto(_ asset: PHAsset, to url: URL) async -> Bool {
+    nonisolated private static func writePhoto(_ asset: PHAsset, to url: URL) async -> Prepared {
         let options = PHImageRequestOptions()
         options.isNetworkAccessAllowed = true
         options.deliveryMode = .highQualityFormat
         options.resizeMode = .fast
         options.version = .current
-        let result: UIImage? = await withTimeLimit(seconds: 90, onTimeout: ImageBox(nil)) { finish in
+        let box: ImageBox = await withTimeLimit(seconds: 90, onTimeout: ImageBox(nil, timedOut: true)) { finish in
             let request = PHImageManager.default().requestImage(
                 for: asset, targetSize: CGSize(width: 2048, height: 2048),
                 contentMode: .aspectFit, options: options
@@ -603,10 +676,12 @@ final class PhotoBackfillCoordinator {
                 finish(ImageBox(image))
             }
             return { PHImageManager.default().cancelImageRequest(request) }
-        }.image
+        }
+        if box.timedOut { return .timedOut }
+        let result = box.image
         guard let image = result, let cgImage = image.cgImage,
               let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil)
-        else { return false }
+        else { return result == nil ? .unavailable : .unreadable }
 
         var properties: [CFString: Any] = [
             kCGImageDestinationLossyCompressionQuality: 0.82,
@@ -636,7 +711,7 @@ final class PhotoBackfillCoordinator {
             ]
         }
         CGImageDestinationAddImage(destination, cgImage, properties as CFDictionary)
-        return CGImageDestinationFinalize(destination)
+        return CGImageDestinationFinalize(destination) ? .written : .unreadable
     }
 
     nonisolated private static func exifOrientation(_ orientation: UIImage.Orientation) -> CGImagePropertyOrientation {
@@ -657,6 +732,7 @@ final class PhotoBackfillCoordinator {
     /// at a time, start to finish.
     private struct ExportBox: @unchecked Sendable {
         let session: AVAssetExportSession?
+        var timedOut = false
     }
 
     /// 1080p HEVC, downloading from iCloud if need be.
@@ -664,13 +740,13 @@ final class PhotoBackfillCoordinator {
     /// Two plain steps rather than one nested callback: the nested version (a session from
     /// Photos' callback, exported inside it) sent the Swift compiler into a loop it never
     /// came out of, which hung every build.
-    nonisolated private static func exportVideo(_ asset: PHAsset, to url: URL) async -> Bool {
+    nonisolated private static func exportVideo(_ asset: PHAsset, to url: URL) async -> Prepared {
         let options = PHVideoRequestOptions()
         options.isNetworkAccessAllowed = true
         options.version = .current
         options.deliveryMode = .highQualityFormat
         // Getting the video ready, which for one kept in iCloud means downloading it.
-        let box: ExportBox = await withTimeLimit(seconds: 180, onTimeout: ExportBox(session: nil)) { finish in
+        let box: ExportBox = await withTimeLimit(seconds: 180, onTimeout: ExportBox(session: nil, timedOut: true)) { finish in
             let request = PHImageManager.default().requestExportSession(
                 forVideo: asset, options: options, exportPreset: AVAssetExportPresetHEVC1920x1080
             ) { session, _ in
@@ -678,7 +754,8 @@ final class PhotoBackfillCoordinator {
             }
             return { PHImageManager.default().cancelImageRequest(request) }
         }
-        guard let session = box.session else { return false }
+        if box.timedOut { return .timedOut }
+        guard let session = box.session else { return .unavailable }
         nonisolated(unsafe) let exporting = session
         session.outputURL = url
         session.outputFileType = .mov
@@ -688,7 +765,8 @@ final class PhotoBackfillCoordinator {
             exporting.exportAsynchronously { finish(true) }
             return { exporting.cancelExport() }
         }
-        return done && session.status == .completed
+        if !done { return .timedOut }
+        return session.status == .completed ? .written : .unreadable
     }
 
     nonisolated private static func fingerprint(of url: URL) -> PhotoDateFinder.Fingerprint? {
@@ -737,5 +815,9 @@ private final class Once<T: Sendable>: @unchecked Sendable {
 /// An image handed back from a Photos callback, used by one task at a time.
 private struct ImageBox: @unchecked Sendable {
     let image: UIImage?
-    init(_ image: UIImage?) { self.image = image }
+    var timedOut = false
+    init(_ image: UIImage?, timedOut: Bool = false) {
+        self.image = image
+        self.timedOut = timedOut
+    }
 }

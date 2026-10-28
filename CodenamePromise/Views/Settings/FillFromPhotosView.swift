@@ -146,6 +146,7 @@ struct FillFromPhotosView: View {
 
             case .done(let outcome) where outcome.stopped:
                 stoppedSummary(outcome, unplanned: false)
+                notCopiedYet(outcome)
                 addedPreview(outcome)
                 Section {
                     Button("Done") { filler.reset() }
@@ -161,9 +162,9 @@ struct FillFromPhotosView: View {
                         row("Saved before the earlier stop", last.added)
                     }
                     if outcome.duplicates > 0 { row("Already in an entry, left out", outcome.duplicates) }
-                    if outcome.unreadable > 0 { row("Couldn't be read", outcome.unreadable) }
                     Button("Done") { filler.reset() }
                 }
+                notCopiedYet(outcome)
                 addedPreview(outcome)
 
             case .failed(let message):
@@ -226,6 +227,9 @@ struct FillFromPhotosView: View {
             if outcome.newEntries > 0 { row("New entries", outcome.newEntries) }
             if outcome.duplicates > 0 { row("Already in an entry, left out", outcome.duplicates) }
             if outcome.remaining > 0 { row("Still to fill in", outcome.remaining) }
+            if let reason = outcome.pausedReason {
+                Text(reason).font(.footnote).foregroundStyle(.secondary)
+            }
             if let day = outcome.reachedDay.flatMap(CalendarDay.init(rawValue:)) {
                 HStack {
                     Text("Filled in up to")
@@ -235,6 +239,28 @@ struct FillFromPhotosView: View {
             }
         } footer: {
             Text("Everything listed as saved is in your journal. Filling in again skips it and carries on with the rest.")
+        }
+    }
+
+    /// Items a fill tried and couldn't copy, and why. None is lost: only copies are
+    /// recorded, so the next fill tries each of them again.
+    @ViewBuilder
+    private func notCopiedYet(_ outcome: PhotoBackfillCoordinator.Outcome) -> some View {
+        let total = outcome.timedOut + outcome.unavailable + outcome.unreadable
+        if total > 0 {
+            Section {
+                row("Not copied yet", total)
+                if outcome.timedOut > 0 { row("Took too long to download from iCloud", outcome.timedOut) }
+                if outcome.unavailable > 0 { row("Photos didn't hand them over", outcome.unavailable) }
+                if outcome.unreadable > 0 { row("Couldn't be converted", outcome.unreadable) }
+                Button("Fill in again") {
+                    filler.reset()
+                    Task { await filler.scan() }
+                }
+                .fontWeight(.semibold)
+            } footer: {
+                Text("These are still in your Photos library and nothing is lost. Filling in again tries each one again and skips everything already copied. It goes best plugged in, on Wi-Fi, with DumpNotes open.")
+            }
         }
     }
 
