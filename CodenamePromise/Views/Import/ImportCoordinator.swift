@@ -1,6 +1,7 @@
 import CodenamePromiseCore
 import Observation
 import OSLog
+import Photos
 import PhotosUI
 import SwiftUI
 import UIKit
@@ -176,20 +177,38 @@ final class ImportCoordinator {
                 guard let movie = try await item.loadTransferable(type: PickedMovie.self) else {
                     return nil
                 }
-                let date = await CaptureDateReader.captureDate(ofVideoAt: movie.url)
+                var date = await CaptureDateReader.captureDate(ofVideoAt: movie.url)
+                if date == nil { date = photosDate(of: item, fileName: movie.url) }
                 let name = try sessions.adopt(fileAt: movie.url, id: id, into: session)
                 return ImportSession.Item(id: id, filename: name, kind: .video, capturedAt: date)
             }
             guard let image = try await item.loadTransferable(type: PickedImageFile.self) else {
                 return nil
             }
-            let date = CaptureDateReader.captureDate(ofImageAt: image.url)
+            var date = CaptureDateReader.captureDate(ofImageAt: image.url)
+            if date == nil { date = photosDate(of: item, fileName: image.url) }
             let name = try sessions.adopt(fileAt: image.url, id: id, into: session)
             return ImportSession.Item(id: id, filename: name, kind: .photo, capturedAt: date)
         } catch {
             log.error("could not read a picked item: \(error.localizedDescription)")
             return nil
         }
+    }
+
+    /// For a file that holds no date of its own (a Mac screenshot, a saved image): the date
+    /// Photos shows for it, then a date in its name.
+    ///
+    /// Photos' own date needs library access. It's only read if already granted (the
+    /// "photos from that day" feature asks for it); importing never asks on its own, so a
+    /// picker that needs no permission doesn't start needing one.
+    private nonisolated static func photosDate(of item: PhotosPickerItem, fileName url: URL) -> Date? {
+        if let id = item.itemIdentifier,
+           [.authorized, .limited].contains(PHPhotoLibrary.authorizationStatus(for: .readWrite)),
+           let asset = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject,
+           let date = asset.creationDate {
+            return date
+        }
+        return CaptureDateReader.captureDate(fromFileName: url.deletingPathExtension().lastPathComponent)
     }
 
     // MARK: - Review

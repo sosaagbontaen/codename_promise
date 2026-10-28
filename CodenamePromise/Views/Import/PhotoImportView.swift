@@ -120,7 +120,9 @@ struct PhotoImportView: View {
             PhotosPicker(
                 selection: $selections,
                 maxSelectionCount: nil,
-                matching: .any(of: [.images, .videos])
+                matching: .any(of: [.images, .videos]),
+                // Lets the import ask Photos for an item's date when its file has none.
+                photoLibrary: .shared()
             ) {
                 Text("Choose photos")
             }
@@ -212,7 +214,9 @@ struct PhotoImportView: View {
                 PhotosPicker(
                     selection: $moreSelections,
                     maxSelectionCount: nil,
-                    matching: .any(of: [.images, .videos])
+                    matching: .any(of: [.images, .videos]),
+                    // Lets the import ask Photos for an item's date when its file has none.
+                    photoLibrary: .shared()
                 ) {
                     Label("Add more photos", systemImage: "plus.circle")
                 }

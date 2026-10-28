@@ -287,6 +287,9 @@ final class CaptureModel {
         case .video: date = await CaptureDateReader.captureDate(ofVideoAt: item.url)
         case .audio, .text: date = nil
         }
+        if date == nil, item.kind != .text {
+            date = CaptureDateReader.captureDate(fromFileName: item.url.deletingPathExtension().lastPathComponent)
+        }
         if date == nil, !item.owned {
             date = (try? item.url.resourceValues(forKeys: [.creationDateKey]))?.creationDate
         }

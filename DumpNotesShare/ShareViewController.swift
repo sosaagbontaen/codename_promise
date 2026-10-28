@@ -252,19 +252,26 @@ final class ShareModel {
 
     /// Brings one shared item into the staging folder and reads the day it was taken.
     nonisolated private static func prepare(_ provider: NSItemProvider, kind: Capture.Kind, into folder: URL) async -> Prepared? {
-        guard let url = await copy(provider, kind: kind, into: folder) else { return nil }
-        let taken: Date? = kind == .video
+        guard let (url, lentName) = await copy(provider, kind: kind, into: folder) else { return nil }
+        var taken: Date? = kind == .video
             ? await CaptureDateReader.captureDate(ofVideoAt: url)
             : CaptureDateReader.captureDate(ofImageAt: url)
+        // A Mac screenshot holds no date inside; its name does. Photos usually passes the
+        // original name along, either as the suggested name or as the lent file's own.
+        if taken == nil {
+            taken = [provider.suggestedName, lentName].compactMap { $0 }
+                .lazy.compactMap { CaptureDateReader.captureDate(fromFileName: $0) }.first
+        }
         return Prepared(url: url, kind: kind, taken: taken)
     }
 
     /// Takes the shared file before the callback returns, because the system deletes the
     /// file it lent as soon as it does. Moved rather than copied: the file is ours to take,
     /// and a move on the same disk is instant where copying a long video is not.
-    nonisolated private static func copy(_ provider: NSItemProvider, kind: Capture.Kind, into folder: URL) async -> URL? {
+    /// Returns the staged file and the name the file was lent under.
+    nonisolated private static func copy(_ provider: NSItemProvider, kind: Capture.Kind, into folder: URL) async -> (URL, String?)? {
         let type = type(for: kind)
-        let fromFile: URL? = await withCheckedContinuation { continuation in
+        let fromFile: (URL, String?)? = await withCheckedContinuation { continuation in
             _ = provider.loadFileRepresentation(forTypeIdentifier: type.identifier) { url, _ in
                 guard let url else { return continuation.resume(returning: nil) }
                 let ext = url.pathExtension.isEmpty ? (type.preferredFilenameExtension ?? "dat") : url.pathExtension
@@ -276,7 +283,7 @@ final class ShareModel {
                         // Lent read-only or from another volume: fall back to a copy.
                         try FileManager.default.copyItem(at: url, to: target)
                     }
-                    continuation.resume(returning: target)
+                    continuation.resume(returning: (target, url.lastPathComponent))
                 } catch {
                     continuation.resume(returning: nil)
                 }
@@ -291,7 +298,7 @@ final class ShareModel {
                 guard let data else { return continuation.resume(returning: nil) }
                 let ext = UIImage(data: data) != nil && data.starts(with: [0x89, 0x50]) ? "png" : "jpg"
                 let target = folder.appendingPathComponent("\(UUID().uuidString).\(ext)")
-                continuation.resume(returning: (try? data.write(to: target)) != nil ? target : nil)
+                continuation.resume(returning: (try? data.write(to: target)) != nil ? (target, nil) : nil)
             }
         }
     }

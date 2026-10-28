@@ -217,10 +217,13 @@ public final class CaptureIngestor {
     }
 
     private func takenOn(_ url: URL, kind: MediaKind) async -> CalendarDay? {
-        let date: Date?
+        var date: Date?
         switch kind {
         case .photo: date = CaptureDateReader.captureDate(ofImageAt: url)
         case .video: date = await CaptureDateReader.captureDate(ofVideoAt: url)
+        }
+        if date == nil {
+            date = CaptureDateReader.captureDate(fromFileName: url.deletingPathExtension().lastPathComponent, timeZone: timeZone)
         }
         return date.map { CalendarDay(date: $0, timeZone: timeZone) }
     }
