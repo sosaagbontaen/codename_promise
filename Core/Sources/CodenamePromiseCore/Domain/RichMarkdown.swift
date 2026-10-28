@@ -181,7 +181,8 @@ extension RichDocument {
         for marker in ["#", "- ", "* ", "> ", "+ "] where text.hasPrefix(marker) {
             return "\\" + text
         }
-        if let first = text.firstIndex(of: "."), text[..<first].allSatisfy(\.isNumber), first > text.startIndex,
+        // "2." and "2)" both read as a numbered item, so both are escaped.
+        if let first = text.firstIndex(where: { $0 == "." || $0 == ")" }), text[..<first].allSatisfy(\.isNumber), first > text.startIndex,
            text[text.index(after: first)...].hasPrefix(" ") {
             return "\\" + text
         }

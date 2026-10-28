@@ -67,6 +67,7 @@ struct RichMarkdownTests {
             .init(runs: [Run("- not a bullet")]),
             .init(runs: [Run("# not a heading")]),
             .init(runs: [Run("12. not a list")]),
+            .init(runs: [Run("2) not a list either")]),
         ])
         roundTrips(doc)
         #expect(Doc(markdown: doc.markdown).blocks.allSatisfy { $0.kind == .paragraph })
