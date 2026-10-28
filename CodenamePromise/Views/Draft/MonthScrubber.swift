@@ -95,14 +95,19 @@ struct MonthScrubber: View {
             let anchor = dragging ? (active ?? currentIndex) : currentIndex
 
             ZStack(alignment: .topTrailing) {
-                // The months, only while a finger is on the handle.
+                // The months, only while a finger is on the handle. A short journal lists them
+                // all; a long one lists its years, and opens the one under the finger into
+                // its months.
                 if dragging {
-                    labels(height: height) { index in
-                        compact
-                            ? handleCenter + CGFloat(index - anchor) * monthSpacing
-                            : center(of: index, height: height)
+                    if compact {
+                        labels(height: height) { index in
+                            handleCenter + CGFloat(index - anchor) * monthSpacing
+                        }
+                        .transition(.opacity)
+                    } else {
+                        yearLabels(height: height, fingerY: handleCenter)
+                            .transition(.opacity)
                     }
-                    .transition(.opacity)
                 }
 
                 // The handle, flush with the edge like a scroll bar. Awake, it becomes a tab you
@@ -232,6 +237,114 @@ struct MonthScrubber: View {
         .frame(height: height, alignment: .topTrailing)
         .padding(.trailing, 44)
         .allowsHitTesting(false)
+    }
+
+    // MARK: - Years
+
+    /// A year and the months of it the journal has, as indices into `months`.
+    private struct YearSpan: Identifiable {
+        let year: String
+        let range: ClosedRange<Int>
+        var id: String { year }
+    }
+
+    /// Months come newest first, so a year is a run of neighbours.
+    private var years: [YearSpan] {
+        var spans: [YearSpan] = []
+        for (index, month) in months.enumerated() {
+            let year = String(month.id.prefix(4))
+            if let last = spans.last, last.year == year {
+                spans[spans.count - 1] = YearSpan(year: year, range: last.range.lowerBound...index)
+            } else {
+                spans.append(YearSpan(year: year, range: index...index))
+            }
+        }
+        return spans
+    }
+
+    private let yearMonthSpacing: CGFloat = 26
+
+    /// Years down the edge, each where its months are on the track, and beside the finger
+    /// the months of the year it's in, the one it would land on named in full.
+    ///
+    /// A journal of a decade has over a hundred months: one label each was either a blur or
+    /// a sample that skipped most of them. Years are few enough to read at a glance, and
+    /// opening only the year being passed through shows every month of it, right where the
+    /// thumb is.
+    private func yearLabels(height: CGFloat, fingerY: CGFloat) -> some View {
+        let spans = years
+        let current = active.flatMap { index in spans.first { $0.range.contains(index) } }
+        // Years too close to the one above are skipped so labels never overlap; the finger
+        // still passes through them, and their months open as it does.
+        var shown: [YearSpan] = []
+        var lastY = -CGFloat.infinity
+        for span in spans {
+            let y = yearCenter(span, height: height)
+            if y - lastY >= rowHeight + 2 || span.year == current?.year {
+                shown.append(span)
+                lastY = y
+            }
+        }
+        return ZStack(alignment: .topTrailing) {
+            Color.clear.frame(width: 1, height: height)
+
+            ForEach(shown) { span in
+                let isCurrent = span.year == current?.year
+                Text(span.year)
+                    .font(.system(size: isCurrent ? 13 : 11, weight: .bold))
+                    .foregroundStyle(isCurrent ? .white : Brand.ink.opacity(0.85))
+                    .monospacedDigit()
+                    .fixedSize()
+                    .padding(.horizontal, 8)
+                    .frame(height: rowHeight)
+                    .background {
+                        if isCurrent { Capsule().fill(Brand.violet) } else { Capsule().fill(.ultraThinMaterial) }
+                    }
+                    .shadow(color: .black.opacity(0.25), radius: 3, y: 1)
+                    .offset(y: yearCenter(span, height: height) - rowHeight / 2)
+            }
+            .padding(.trailing, 44)
+
+            if let current, let active {
+                monthsOpened(current, active: active, height: height, fingerY: fingerY)
+                    .padding(.trailing, 104)
+            }
+        }
+        .frame(height: height, alignment: .topTrailing)
+        .allowsHitTesting(false)
+    }
+
+    /// The months of one year in a short column centred on the finger, kept on screen.
+    private func monthsOpened(_ span: YearSpan, active: Int, height: CGFloat, fingerY: CGFloat) -> some View {
+        let indices = Array(span.range)
+        let place = CGFloat(indices.firstIndex(of: active) ?? 0)
+        let total = CGFloat(indices.count - 1) * yearMonthSpacing
+        // Centred on the finger, then nudged so the whole column stays on screen.
+        var top = fingerY - place * yearMonthSpacing
+        top = min(max(top, rowHeight / 2), max(height - rowHeight / 2 - total, rowHeight / 2))
+        return ZStack(alignment: .topTrailing) {
+            Color.clear.frame(width: 1, height: height)
+            ForEach(indices, id: \.self) { index in
+                let isActive = index == active
+                Text(isActive ? months[index].full : String(months[index].short.prefix(3)))
+                    .font(.system(size: isActive ? 14 : 11, weight: isActive ? .bold : .semibold))
+                    .foregroundStyle(isActive ? .white : Brand.ink.opacity(0.8))
+                    .fixedSize()
+                    .padding(.horizontal, isActive ? 12 : 8)
+                    .frame(height: rowHeight)
+                    .background {
+                        if isActive { Capsule().fill(Brand.violet) } else { Capsule().fill(.ultraThinMaterial) }
+                    }
+                    .shadow(color: .black.opacity(0.25), radius: 3, y: 1)
+                    .offset(y: top + CGFloat(index - span.range.lowerBound) * yearMonthSpacing - rowHeight / 2)
+            }
+        }
+        .frame(height: height, alignment: .topTrailing)
+    }
+
+    /// Where a year sits on the track: the middle of its months.
+    private func yearCenter(_ span: YearSpan, height: CGFloat) -> CGFloat {
+        (center(of: span.range.lowerBound, height: height) + center(of: span.range.upperBound, height: height)) / 2
     }
 
     /// Where along the track a month sits: the middle of its share of the height, the same
