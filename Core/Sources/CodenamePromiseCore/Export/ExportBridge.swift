@@ -108,6 +108,8 @@ extension DraftStore {
         /// Additions (see `JournalImporter.ParsedEntry.addsAttachments`) for entries that
         /// aren't on this phone yet. Left alone: importing their year brings everything.
         public var additionsWaiting = 0
+        /// Entries already here that an update brought up to date.
+        public var updated = 0
         /// Markdown files that could not be read at all.
         public var unreadable: [String] = []
 
@@ -190,6 +192,19 @@ extension DraftStore {
                         state.entriesDone += 1
                         state.filesDone += files.count
                         continue
+                    }
+                    draft = target
+                } else if parsed.updatesContent, let id = parsed.id, existing.contains(id),
+                          let target = try self.draft(id: id) {
+                    // A newer version of an entry already here. Its words win, but nothing on
+                    // the phone is lost: lines only the phone has stay, at the end.
+                    let merged = JournalImporter.merging(phone: target.content.rawText, incoming: parsed.rawText)
+                    if merged != target.content.rawText {
+                        try updateRawText(merged, for: target)
+                        report.updated += 1
+                    }
+                    if (target.content.title ?? "").trimmingCharacters(in: .whitespaces).isEmpty, let title = parsed.title {
+                        try updateTitle(title, for: target)
                     }
                     draft = target
                 } else if let id = parsed.id, existing.contains(id) {

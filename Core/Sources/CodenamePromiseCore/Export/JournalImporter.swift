@@ -41,6 +41,10 @@ public struct JournalImporter: Sendable {
         /// entry with its id, if that entry is already here. It never creates one and never
         /// changes its words. Used to bring photos to entries imported before they existed.
         public var addsAttachments = false
+        /// "updates: content": a newer version of an entry that may already be here. If it
+        /// is, its words become these, keeping any line the phone has that these don't (see
+        /// `merging(phone:incoming:)`), and its photos are added to. If not, it's a new entry.
+        public var updatesContent = false
 
         public init(
             id: UUID?, entryDateKey: String, title: String?, rawText: String,
@@ -128,6 +132,29 @@ public struct JournalImporter: Sendable {
         }
     }
 
+    /// The text an updated entry ends up with: the incoming version, plus every line the
+    /// phone has that the incoming version doesn't contain, at the end.
+    ///
+    /// So an update can never take words away. A line counts as contained when its words,
+    /// ignoring case, punctuation and markup, appear in the incoming text in order, which
+    /// tolerates the same sentence re-wrapped or re-formatted. Running the same update twice
+    /// changes nothing the second time.
+    public static func merging(phone: String, incoming: String) -> String {
+        func words(_ text: Substring) -> String {
+            text.lowercased().unicodeScalars
+                .map { CharacterSet.alphanumerics.contains($0) ? String($0) : " " }
+                .joined()
+                .split(separator: " ").joined(separator: " ")
+        }
+        let haystack = " " + words(Substring(incoming)) + " "
+        let kept = phone.split(separator: "\n", omittingEmptySubsequences: false).filter { line in
+            let needle = words(line)
+            return !needle.isEmpty && !haystack.contains(" " + needle + " ")
+        }
+        guard !kept.isEmpty else { return incoming }
+        return incoming + "\n\n" + kept.joined(separator: "\n")
+    }
+
     /// Every entry file in a folder, newest-first by day.
     ///
     /// `README.md` is skipped by name: the exporter writes it as a note to a human, and it
@@ -194,6 +221,7 @@ public struct JournalImporter: Sendable {
             untranscribedAudio: sections.audio
         )
         entry.addsAttachments = front["adds"]?.lowercased() == "attachments"
+        entry.updatesContent = front["updates"]?.lowercased() == "content"
         return entry
     }
 

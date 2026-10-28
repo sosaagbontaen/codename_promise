@@ -243,6 +243,46 @@ struct JournalImportTests {
         #expect(try store.draft(id: here.id)?.media.count == 1)
     }
 
+    @Test("merging keeps every phone line the update doesn't contain")
+    func mergingNeverDropsWords() {
+        let incoming = "Went to **church** with mom.\n- Lunch at the buffet\n- Long nap"
+        // Same words, different wrapping and markup: nothing to keep.
+        #expect(JournalImporter.merging(phone: "Went to church with mom.\nLunch at the buffet", incoming: incoming) == incoming)
+        // A line written on the phone after importing survives, once.
+        let merged = JournalImporter.merging(phone: "Went to church with mom.\nCalled Aaron later.", incoming: incoming)
+        #expect(merged == incoming + "\n\nCalled Aaron later.")
+        #expect(JournalImporter.merging(phone: merged, incoming: incoming) == merged, "running it again changes nothing")
+    }
+
+    @Test("an update replaces an imported entry's words, keeps phone-only lines, and adds photos")
+    func updatesMergeIntoExistingEntries() async throws {
+        let store = try makeStore()
+        let files = try MediaFileStore(root: tempDirectory())
+        let entry = try store.createDraft(entryDate: CalendarDay(rawValue: "2025-03-23")!)
+        try store.updateRawText("Church with mom.\nWrote this on the phone.", for: entry)
+        let fresh = UUID()
+
+        let folder = tempDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder.appendingPathComponent("media/n"), withIntermediateDirectories: true)
+        try Data("notion photo".utf8).write(to: folder.appendingPathComponent("media/n/IMG_3714.jpg"))
+        for (id, name) in [(entry.id, "a"), (fresh, "b")] {
+            let md = "---\nid: \(id.uuidString)\ndate: 2025-03-23\nupdates: content\ntitle: WWWT 3/23/25\n---\n\n# WWWT 3/23/25\n\nChurch with mom. Healing conversation first.\n\n## Attachments\n\n![p](media/n/IMG_3714.jpg)\n"
+            try md.write(to: folder.appendingPathComponent("\(name).md"), atomically: true, encoding: .utf8)
+        }
+
+        let report = try await store.importJournal(from: folder, fileStore: files)
+        #expect(report.updated == 1)
+        #expect(report.added == 1, "an update for an entry that isn't here comes in as new")
+        let updated = try #require(try store.draft(id: entry.id))
+        #expect(updated.content.rawText == "Church with mom. Healing conversation first.\n\nWrote this on the phone.")
+        #expect(updated.content.title == "WWWT 3/23/25", "an untitled entry takes the title")
+        #expect(updated.media.count == 1)
+
+        let again = try await store.importJournal(from: folder, fileStore: files)
+        #expect(again.updated == 0 && again.added == 0 && again.attachments == 0, "a second run changes nothing")
+    }
+
     @Test("progress counts every entry and file")
     func reportsProgress() async throws {
         let source = try makeStore()
