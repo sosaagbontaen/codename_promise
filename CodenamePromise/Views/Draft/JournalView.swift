@@ -693,12 +693,15 @@ struct JournalView: View {
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) { trashAction(entry.id) }
                     }
                 } header: {
+                    // The scroll target is the header rather than the section: a List takes a
+                    // section's id as its first row's, so jumping to a month landed just under
+                    // its title with the title scrolled out of sight.
                     Text(month.label)
                         .font(Type.label(17, .semibold))
                         .foregroundStyle(Brand.ink)
                         .textCase(nil)
+                        .id(month.key)
                 }
-                .id(month.key)
             }
             Color.clear.frame(height: 70).listRowBackground(Color.clear)
         }

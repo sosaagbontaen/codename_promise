@@ -97,6 +97,11 @@ struct RichMarkdownTests {
         #expect(Doc.plainText(ofMarkdown: markdown) == "Day\n- Ran five miles\n- [x] called mom")
     }
 
+    @Test func wordsDropListMarks() {
+        let markdown = "- [x] Buy stamps\n- milk\n1. first\n## Day"
+        #expect(Doc.words(ofMarkdown: markdown) == "Buy stamps\nmilk\nfirst\nDay")
+    }
+
     @Test func unmatchedMarkersStayLiteral() {
         let doc = Doc(markdown: "5 * 3 and a lone ** here")
         #expect(doc.blocks.first?.text == "5 * 3 and a lone ** here")

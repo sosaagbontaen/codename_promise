@@ -219,7 +219,7 @@ struct RecentlyDeletedView: View {
             let goes = (draft.deletedAt ?? now).addingTimeInterval(DraftStore.trashRetention)
             let left = max(0, Int(ceil(goes.timeIntervalSince(now) / 86_400)))
             // The first line is Markdown, so read it as text rather than show "# " or tags.
-            let firstLine = RichDocument.plainText(ofMarkdown: draft.content.rawText)
+            let firstLine = RichDocument.words(ofMarkdown: draft.content.rawText)
                 .split(whereSeparator: \.isNewline)
                 .lazy
                 .map { $0.trimmingCharacters(in: .whitespaces) }

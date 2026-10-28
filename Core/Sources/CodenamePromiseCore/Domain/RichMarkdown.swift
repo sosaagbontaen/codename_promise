@@ -123,6 +123,13 @@ extension RichDocument {
     public static func plainText(ofMarkdown markdown: String) -> String {
         RichDocument(markdown: markdown).plainText
     }
+
+    /// Just the words, one line per line, with no list dashes or checkbox marks: for a title
+    /// or a preview, where "- [x] Buy stamps" should read "Buy stamps". `plainText` keeps
+    /// the marks because Arrange reads lists as lists.
+    public static func words(ofMarkdown markdown: String) -> String {
+        flatten(RichDocument(markdown: markdown).blocks).map(\.text).joined(separator: "\n")
+    }
 }
 
 // MARK: - Writing Markdown
