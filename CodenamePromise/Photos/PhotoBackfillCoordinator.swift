@@ -201,10 +201,11 @@ final class PhotoBackfillCoordinator {
     ) async {
         phase = .working(done: done, total: total, day: day.day)
         let existing: [EntryDraft] = (try? store.drafts(on: day.day)) ?? []
-        // Pictures the day already has, so the same photo isn't added twice.
-        let photos: [MediaItem] = existing.flatMap(\.orderedMedia).filter { $0.kind == .photo }
-        let paths: [URL] = photos.map { fileStore.url(for: $0.relativePath) }
-        let known: [PhotoDateFinder.Fingerprint] = await Task.detached { paths.compactMap(Self.fingerprint(of:)) }.value
+        // What the day already has, so the same photo or video isn't added twice.
+        let media: [MediaItem] = existing.flatMap(\.orderedMedia)
+        let photoPaths: [URL] = media.filter { $0.kind == .photo }.map { fileStore.url(for: $0.relativePath) }
+        let videoPaths: [URL] = media.filter { $0.kind == .video }.map { fileStore.url(for: $0.relativePath) }
+        let known: Known = await Self.known(photos: photoPaths, videos: videoPaths)
 
         var entry: EntryDraft? = existing.max { $0.updatedAt < $1.updatedAt }
         let prepared: [(PhotoBackfill.Asset, Prepared)] = await Self.prepare(day.assets, into: fileStore, alongside: known)
@@ -290,7 +291,7 @@ final class PhotoBackfillCoordinator {
 
     /// A fingerprint from the library's own small thumbnail, which is on the phone even when
     /// the original is only in iCloud, so checking thousands of photos stays quick.
-    nonisolated private static func thumbnailFingerprint(of asset: PHAsset) -> PhotoDateFinder.Fingerprint? {
+    nonisolated static func thumbnailFingerprint(of asset: PHAsset) -> PhotoDateFinder.Fingerprint? {
         let options = PHImageRequestOptions()
         options.isSynchronous = true
         // High quality at this size is still the small thumbnail kept on the phone; the fast
@@ -320,7 +321,7 @@ final class PhotoBackfillCoordinator {
     nonisolated private static func prepare(
         _ assets: [PhotoBackfill.Asset],
         into fileStore: MediaFileStore,
-        alongside known: [PhotoDateFinder.Fingerprint]
+        alongside known: Known
     ) async -> [(PhotoBackfill.Asset, Prepared)] {
         await withTaskGroup(of: (Int, Prepared).self) { group -> [(PhotoBackfill.Asset, Prepared)] in
             var results = [Prepared](repeating: .unreadable, count: assets.count)
@@ -344,11 +345,14 @@ final class PhotoBackfillCoordinator {
     nonisolated private static func copy(
         _ asset: PhotoBackfill.Asset,
         into fileStore: MediaFileStore,
-        alongside known: [PhotoDateFinder.Fingerprint]
+        alongside known: Known
     ) async -> Prepared {
         guard let item = PHAsset.fetchAssets(withLocalIdentifiers: [asset.id], options: nil).firstObject else {
             return .unreadable
         }
+        // Checked from the library's small thumbnail first, before anything is downloaded
+        // from iCloud or encoded: a duplicate costs a glance, not a copy.
+        if known.has(item, isVideo: asset.isVideo) { return .duplicate }
         let temporary = FileManager.default.temporaryDirectory
             .appendingPathComponent("backfill-\(UUID().uuidString).\(asset.isVideo ? "mov" : "jpg")")
         defer { try? FileManager.default.removeItem(at: temporary) }
@@ -357,7 +361,7 @@ final class PhotoBackfillCoordinator {
             guard await exportVideo(item, to: temporary) else { return .unreadable }
         } else {
             guard let data = photoData(item), writeJPEG(from: data, to: temporary) else { return .unreadable }
-            if let print = fingerprint(of: temporary), known.contains(where: { $0.distance(to: print) < 10 }) {
+            if let print = fingerprint(of: temporary), known.photos.contains(where: { $0.distance(to: print) < 10 }) {
                 return .duplicate
             }
         }
@@ -365,6 +369,47 @@ final class PhotoBackfillCoordinator {
             return .unreadable
         }
         return .ready(adopted)
+    }
+
+    /// What a day's entries already hold, to recognise the same photo or video coming in
+    /// again (from an earlier import of the same day, say).
+    struct Known: Sendable {
+        var photos: [PhotoDateFinder.Fingerprint] = []
+        /// A video's length and its opening frame. Length alone matches too easily; the frame
+        /// alone misses a video that opens on black.
+        var videos: [(seconds: Double, frame: PhotoDateFinder.Fingerprint?)] = []
+
+        func has(_ asset: PHAsset, isVideo: Bool) -> Bool {
+            if isVideo {
+                let sameLength = videos.filter { abs($0.seconds - asset.duration) < 0.35 }
+                guard !sameLength.isEmpty else { return false }
+                let frame = PhotoBackfillCoordinator.thumbnailFingerprint(of: asset)
+                return sameLength.contains { existing in
+                    guard let a = existing.frame, let b = frame else {
+                        // No frame to compare: only an exact match on length counts.
+                        return abs(existing.seconds - asset.duration) < 0.05
+                    }
+                    return a.distance(to: b) < 25
+                }
+            }
+            guard !photos.isEmpty, let print = PhotoBackfillCoordinator.thumbnailFingerprint(of: asset) else { return false }
+            return photos.contains { $0.distance(to: print) < 12 }
+        }
+    }
+
+    nonisolated private static func known(photos: [URL], videos: [URL]) async -> Known {
+        var known = Known()
+        known.photos = await Task.detached { photos.compactMap(fingerprint(of:)) }.value
+        for url in videos {
+            let asset = AVURLAsset(url: url)
+            guard let duration = try? await asset.load(.duration), duration.isNumeric else { continue }
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 128, height: 128)
+            let frame = (try? await generator.image(at: .zero).image).flatMap { PhotoDateFinder.Fingerprint(image: $0) }
+            known.videos.append((duration.seconds, frame))
+        }
+        return known
     }
 
     /// The photo as Photos shows it (edits included), downloading from iCloud if need be.
