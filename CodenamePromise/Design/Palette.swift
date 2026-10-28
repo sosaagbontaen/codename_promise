@@ -27,6 +27,20 @@ enum Brand {
     static let violetDeep = Color(light: 0x5033D6, dark: 0x6C4CFF)
     static let night = Color(light: 0x0F1115, dark: 0x0F1115)
 
+    /// Behind every other month in the journal, so where one month ends and the next begins
+    /// reads at a glance rather than only when a month's title scrolls past. Faint enough
+    /// that photos still carry the page.
+    static let monthBand = Color(light: 0xEFEBFF, dark: 0x1D1930)
+    static let monthBandRow = Color(light: 0xF6F3FF, dark: 0x2A2440)
+
+    /// Whether a month ("2026-08") takes the band. From the month itself rather than its
+    /// position, so a month keeps its colour as new ones arrive above it.
+    static func isBanded(monthKey: String) -> Bool {
+        let parts = monthKey.split(separator: "-").compactMap { Int($0) }
+        guard parts.count >= 2 else { return false }
+        return (parts[0] * 12 + parts[1]) % 2 == 1
+    }
+
     /// Kept for the call sites that still ask for it; it is a flat accent now.
     static let gradient = violet
 

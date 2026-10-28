@@ -674,7 +674,7 @@ struct JournalView: View {
                             ListEntryRow(summary: entry, art: art(entry), fileStore: services.files, selecting: selecting)
                         }
                         .listRowInsets(EdgeInsets())
-                        .listRowBackground(Brand.surface)
+                        .listRowBackground(Brand.isBanded(monthKey: month.key) ? Brand.monthBandRow : Brand.surface)
                         // Swipe right to delete, as asked, and left too, as iOS has taught.
                         // Either way it goes to Recently Deleted, so a slip costs nothing.
                         .swipeActions(edge: .leading, allowsFullSwipe: true) { trashAction(entry.id) }
@@ -731,6 +731,14 @@ struct JournalView: View {
                 }
             }
             .padding(.top, 6)
+            .padding(.bottom, 4)
+            .padding(.vertical, Brand.isBanded(monthKey: month.key) ? 8 : 0)
+            .background {
+                if Brand.isBanded(monthKey: month.key) {
+                    // Edge to edge, past the page's side margins, so it reads as a band.
+                    Brand.monthBand.padding(.horizontal, -18)
+                }
+            }
             .id(month.key)
         }
     }
