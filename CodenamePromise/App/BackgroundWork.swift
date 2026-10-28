@@ -38,10 +38,20 @@ enum BackgroundWork {
             nil
         }
 
+        // If iOS ends the task (it decides when), coming back to the app asks for a new one,
+        // so leaving again is covered rather than the rest of the import running unseen.
+        nonisolated(unsafe) let renewing = continued
+        let observer = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { renewing?.renewIfNeeded() }
+        }
+
         await work { done, total, detail in
             continued?.update(done: done, total: total, detail: detail)
         }
 
+        NotificationCenter.default.removeObserver(observer)
         continued?.finish()
         UIApplication.shared.endBackgroundTask(backgroundTask)
         UIApplication.shared.isIdleTimerDisabled = false
@@ -57,13 +67,29 @@ enum BackgroundWork {
 @MainActor
 private final class ContinuedTask {
     private let title: String
+    private let prefix: String
     private var task: AnyObject?
+    /// The system ended the last task before the work was done.
+    private var expired = false
     private var last: (done: Int, total: Int, detail: String) = (0, 0, "Starting\u{2026}")
     private var finished = false
 
     @available(iOS 26.0, *)
     init(title: String, prefix: String) {
         self.title = title
+        self.prefix = prefix
+        submit()
+    }
+
+    /// Asks again after the system ended the previous task, if there's still work going.
+    func renewIfNeeded() {
+        guard expired, !finished, #available(iOS 26.0, *) else { return }
+        expired = false
+        submit()
+    }
+
+    @available(iOS 26.0, *)
+    private func submit() {
         // A fresh identifier each time: one can be registered only once per launch.
         let identifier = "\(prefix).\(UUID().uuidString.prefix(8))"
         let registered = BGTaskScheduler.shared.register(forTaskWithIdentifier: identifier, using: .main) { [weak self] task in
@@ -81,9 +107,9 @@ private final class ContinuedTask {
             return
         }
         let request = BGContinuedProcessingTaskRequest(identifier: identifier, title: title, subtitle: last.detail)
-        // Now or not at all: the work is already running, so a task queued for later would
-        // only show progress for something that has moved on.
         request.strategy = .fail
+        // Now or not at all (set above): the work is already running, so a task queued for
+        // later would only show progress for something that has moved on.
         do {
             try BGTaskScheduler.shared.submit(request)
         } catch {
@@ -96,8 +122,13 @@ private final class ContinuedTask {
         task = continued
         continued.expirationHandler = { [weak self] in
             nonisolated(unsafe) let continued = continued
-            // The system needed the time back. What's done is saved; the next run resumes.
-            MainActor.assumeIsolated { self?.task = nil }
+            // The system needed the time back. What's done is saved, the work carries on when
+            // the app is next open, and a new task is asked for then.
+            continued.updateTitle(continued.title, subtitle: "Paused. Open DumpNotes to carry on.")
+            MainActor.assumeIsolated {
+                self?.task = nil
+                self?.expired = true
+            }
             continued.setTaskCompleted(success: false)
         }
         if finished {

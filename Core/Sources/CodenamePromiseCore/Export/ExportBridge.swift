@@ -144,13 +144,12 @@ extension DraftStore {
         var state = JournalImportProgress(readTotal: names.count)
         progress(state)
         var reading = JournalImporter.Reading()
-        for start in stride(from: 0, to: names.count, by: 8) {
-            let batch = Array(names[start..<min(start + 8, names.count)])
-            for (name, entry) in zip(batch, await JournalImporter.readEntries(named: batch, in: directory)) {
-                if let entry { reading.entries.append(entry) } else { reading.unreadable.append(name) }
-            }
-            state.readDone += batch.count
+        let read = await readEntries(named: names, in: directory) {
+            state.readDone += 1
             progress(state)
+        }
+        for (name, entry) in zip(names, read) {
+            if let entry { reading.entries.append(entry) } else { reading.unreadable.append(name) }
         }
         reading.entries.sort { $0.entryDateKey > $1.entryDateKey }
         var report = ImportReport(unreadable: reading.unreadable)
@@ -260,6 +259,30 @@ extension DraftStore {
     }
 
     static let unfinishedImportKey = "journalImport.unfinishedEntries"
+
+    /// Reads entry files eight at a time, counting each as it arrives. The count matters as
+    /// much as the speed: iOS ends a background task whose progress stops moving, and on a
+    /// slow iCloud download a whole batch can take long enough to look stalled.
+    private func readEntries(named names: [String], in directory: URL, each: () -> Void) async -> [JournalImporter.ParsedEntry?] {
+        await withTaskGroup(of: (Int, JournalImporter.ParsedEntry?).self) { group -> [JournalImporter.ParsedEntry?] in
+            var results = [JournalImporter.ParsedEntry?](repeating: nil, count: names.count)
+            var next = 0
+            func start() {
+                guard next < names.count else { return }
+                let index = next
+                next += 1
+                let url = directory.appendingPathComponent(names[index])
+                group.addTask { (index, JournalImporter.coordinatedRead(url)) }
+            }
+            for _ in 0..<8 { start() }
+            while let (index, entry) = await group.next() {
+                results[index] = entry
+                each()
+                start()
+            }
+            return results
+        }
+    }
 
     /// Copies files into the store a few at a time, off the main actor, in the order given.
     /// Nil for a file that isn't there or couldn't be read.

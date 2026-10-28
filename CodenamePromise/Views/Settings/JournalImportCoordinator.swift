@@ -27,6 +27,30 @@ final class JournalImportCoordinator {
     init(store: DraftStore, fileStore: MediaFileStore) {
         self.store = store
         self.fileStore = fileStore
+        // An import iOS closed the app in the middle of. It finishes by itself rather than
+        // waiting to be noticed: running it again is safe (it skips what's in and completes
+        // the entry it was on). A moment's wait so the app is on screen, which the Live
+        // Activity needs.
+        if let folder = Self.interruptedFolder() {
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(1))
+                self?.start(folder)
+            }
+        }
+    }
+
+    /// The folder of an import that never finished, kept as a bookmark because access to a
+    /// folder picked in Files doesn't otherwise survive the app closing.
+    private static let inProgressKey = "journalImport.inProgressFolder"
+
+    private static func interruptedFolder() -> URL? {
+        guard let data = UserDefaults.standard.data(forKey: inProgressKey) else { return nil }
+        var stale = false
+        guard let url = try? URL(resolvingBookmarkData: data, bookmarkDataIsStale: &stale) else {
+            UserDefaults.standard.removeObject(forKey: inProgressKey)
+            return nil
+        }
+        return url
     }
 
     var isWorking: Bool {
@@ -50,6 +74,11 @@ final class JournalImportCoordinator {
         // explicitly, and closed even when the import throws.
         let scoped = folder.startAccessingSecurityScopedResource()
         defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
+        if let bookmark = try? folder.bookmarkData() {
+            UserDefaults.standard.set(bookmark, forKey: Self.inProgressKey)
+        }
+        // Cleared however it ends, finished or failed; only being closed mid-way leaves it.
+        defer { UserDefaults.standard.removeObject(forKey: Self.inProgressKey) }
 
         await BackgroundWork.run(title: "Importing \(folder.lastPathComponent)") { report in
             do {

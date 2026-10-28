@@ -99,7 +99,7 @@ public struct JournalImporter: Sendable {
         }
     }
 
-    private static func coordinatedRead(_ url: URL) -> ParsedEntry? {
+    public static func coordinatedRead(_ url: URL) -> ParsedEntry? {
         var entry: ParsedEntry?
         var error: NSError?
         NSFileCoordinator().coordinate(readingItemAt: url, options: [.withoutChanges], error: &error) { url in
