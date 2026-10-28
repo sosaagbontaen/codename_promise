@@ -1,3 +1,4 @@
+import SwiftData
 import UIKit
 import AVFoundation
 import CodenamePromiseCore
@@ -55,6 +56,8 @@ final class PhotoBackfillCoordinator {
         var remaining = 0
         /// The latest day it had finished, for saying how far it got.
         var reachedDay: String?
+        /// When the fill started, so what it added can be found and shown.
+        var startedAt: Date?
     }
 
     /// What the last fill did, kept so a fill cut off by the app closing can say afterwards
@@ -249,6 +252,7 @@ final class PhotoBackfillCoordinator {
         let prefix = TitleSuggestion.prefix(from: titles)
         var outcome = Outcome()
         outcome.remaining = total
+        outcome.startedAt = Date()
         stopRequested = false
         remember(outcome)
         phase = .working(done: 0, total: total, day: plan[0].day)
@@ -354,6 +358,18 @@ final class PhotoBackfillCoordinator {
         remember(outcome)
     }
 
+    /// What a fill added, newest first, as values for the screen. Found by when it was
+    /// recorded, which also covers a fill that was cut off and never reported back.
+    func added(by outcome: Outcome, limit: Int = 300) -> [MediaItem] {
+        guard let start = outcome.startedAt else { return [] }
+        var descriptor = FetchDescriptor<MediaItem>(
+            predicate: #Predicate { $0.createdAt >= start },
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        descriptor.fetchLimit = limit
+        return (try? store.context.fetch(descriptor)) ?? []
+    }
+
     // MARK: - Similar shots
 
     func setKeep(_ assetId: String, _ keep: Bool, in groupId: String) {
@@ -423,6 +439,25 @@ final class PhotoBackfillCoordinator {
 
     /// A fingerprint from the library's own small thumbnail, which is on the phone even when
     /// the original is only in iCloud, so checking thousands of photos stays quick.
+    /// The same as `thumbnailFingerprint`, without blocking a thread and with a time limit,
+    /// for use while filling in, where one stuck request must not stall the rest.
+    nonisolated static func quickFingerprint(of asset: PHAsset) async -> PhotoDateFinder.Fingerprint? {
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .highQualityFormat
+        options.resizeMode = .fast
+        options.isNetworkAccessAllowed = true
+        let image: UIImage? = await withTimeLimit(seconds: 20, onTimeout: ImageBox(nil)) { finish in
+            let request = PHImageManager.default().requestImage(
+                for: asset, targetSize: CGSize(width: 64, height: 64), contentMode: .aspectFill, options: options
+            ) { image, info in
+                if (info?[PHImageResultIsDegradedKey] as? Bool) == true { return }
+                finish(ImageBox(image))
+            }
+            return { PHImageManager.default().cancelImageRequest(request) }
+        }.image
+        return image?.cgImage.flatMap { PhotoDateFinder.Fingerprint(image: $0) }
+    }
+
     nonisolated static func thumbnailFingerprint(of asset: PHAsset) -> PhotoDateFinder.Fingerprint? {
         let options = PHImageRequestOptions()
         options.isSynchronous = true
@@ -485,7 +520,7 @@ final class PhotoBackfillCoordinator {
         }
         // Checked from the library's small thumbnail first, before anything is downloaded
         // from iCloud or encoded: a duplicate costs a glance, not a copy.
-        if known.has(item, isVideo: asset.isVideo) { return .duplicate }
+        if await known.has(item, isVideo: asset.isVideo) { return .duplicate }
         let temporary = FileManager.default.temporaryDirectory
             .appendingPathComponent("backfill-\(UUID().uuidString).\(asset.isVideo ? "mov" : "jpg")")
         defer { try? FileManager.default.removeItem(at: temporary) }
@@ -493,7 +528,7 @@ final class PhotoBackfillCoordinator {
         if asset.isVideo {
             guard await exportVideo(item, to: temporary) else { return .unreadable }
         } else {
-            guard writePhoto(item, to: temporary) else { return .unreadable }
+            guard await writePhoto(item, to: temporary) else { return .unreadable }
             if let print = fingerprint(of: temporary), known.photos.contains(where: { $0.distance(to: print) < 10 }) {
                 return .duplicate
             }
@@ -512,11 +547,11 @@ final class PhotoBackfillCoordinator {
         /// alone misses a video that opens on black.
         var videos: [(seconds: Double, frame: PhotoDateFinder.Fingerprint?)] = []
 
-        func has(_ asset: PHAsset, isVideo: Bool) -> Bool {
+        func has(_ asset: PHAsset, isVideo: Bool) async -> Bool {
             if isVideo {
                 let sameLength = videos.filter { abs($0.seconds - asset.duration) < 0.35 }
                 guard !sameLength.isEmpty else { return false }
-                let frame = PhotoBackfillCoordinator.thumbnailFingerprint(of: asset)
+                let frame = await PhotoBackfillCoordinator.quickFingerprint(of: asset)
                 return sameLength.contains { existing in
                     guard let a = existing.frame, let b = frame else {
                         // No frame to compare: only an exact match on length counts.
@@ -525,7 +560,7 @@ final class PhotoBackfillCoordinator {
                     return a.distance(to: b) < 25
                 }
             }
-            guard !photos.isEmpty, let print = PhotoBackfillCoordinator.thumbnailFingerprint(of: asset) else { return false }
+            guard !photos.isEmpty, let print = await PhotoBackfillCoordinator.quickFingerprint(of: asset) else { return false }
             return photos.contains { $0.distance(to: print) < 12 }
         }
     }
@@ -552,18 +587,23 @@ final class PhotoBackfillCoordinator {
     /// iCloud, Photos can then fetch a smaller copy instead of downloading every full-size
     /// original only to shrink it, which was most of the time a large fill took. The date and
     /// place come from the library's own record of the photo.
-    nonisolated private static func writePhoto(_ asset: PHAsset, to url: URL) -> Bool {
+    nonisolated private static func writePhoto(_ asset: PHAsset, to url: URL) async -> Bool {
         let options = PHImageRequestOptions()
-        options.isSynchronous = true
         options.isNetworkAccessAllowed = true
         options.deliveryMode = .highQualityFormat
         options.resizeMode = .fast
         options.version = .current
-        var result: UIImage?
-        PHImageManager.default().requestImage(
-            for: asset, targetSize: CGSize(width: 2048, height: 2048),
-            contentMode: .aspectFit, options: options
-        ) { image, _ in result = image }
+        let result: UIImage? = await withTimeLimit(seconds: 90, onTimeout: ImageBox(nil)) { finish in
+            let request = PHImageManager.default().requestImage(
+                for: asset, targetSize: CGSize(width: 2048, height: 2048),
+                contentMode: .aspectFit, options: options
+            ) { image, info in
+                // A degraded preview can arrive first; only the real one counts.
+                if (info?[PHImageResultIsDegradedKey] as? Bool) == true { return }
+                finish(ImageBox(image))
+            }
+            return { PHImageManager.default().cancelImageRequest(request) }
+        }.image
         guard let image = result, let cgImage = image.cgImage,
               let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil)
         else { return false }
@@ -629,24 +669,73 @@ final class PhotoBackfillCoordinator {
         options.isNetworkAccessAllowed = true
         options.version = .current
         options.deliveryMode = .highQualityFormat
-        let box: ExportBox = await withCheckedContinuation { (continuation: CheckedContinuation<ExportBox, Never>) in
-            PHImageManager.default().requestExportSession(
+        // Getting the video ready, which for one kept in iCloud means downloading it.
+        let box: ExportBox = await withTimeLimit(seconds: 180, onTimeout: ExportBox(session: nil)) { finish in
+            let request = PHImageManager.default().requestExportSession(
                 forVideo: asset, options: options, exportPreset: AVAssetExportPresetHEVC1920x1080
             ) { session, _ in
-                continuation.resume(returning: ExportBox(session: session))
+                finish(ExportBox(session: session))
             }
+            return { PHImageManager.default().cancelImageRequest(request) }
         }
         guard let session = box.session else { return false }
+        nonisolated(unsafe) let exporting = session
         session.outputURL = url
         session.outputFileType = .mov
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            session.exportAsynchronously { continuation.resume() }
+        // Encoding takes about as long as the video plays; well past that, it's stuck.
+        let limit = max(180, asset.duration * 4)
+        let done: Bool = await withTimeLimit(seconds: limit, onTimeout: false) { finish in
+            exporting.exportAsynchronously { finish(true) }
+            return { exporting.cancelExport() }
         }
-        return session.status == .completed
+        return done && session.status == .completed
     }
 
     nonisolated private static func fingerprint(of url: URL) -> PhotoDateFinder.Fingerprint? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
         return PhotoDateFinder.Fingerprint(source: source)
     }
+}
+
+/// Waits for a callback-based request, but no longer than `seconds`. If time runs out, the
+/// request is cancelled (with the closure `start` returns) and `onTimeout` is the answer.
+///
+/// For Photos requests that can hang: a download from iCloud that never finishes would
+/// otherwise hold up a fill forever, and iOS ends a long task whose progress stops moving.
+private func withTimeLimit<T: Sendable>(
+    seconds: Double,
+    onTimeout: T,
+    _ start: (_ finish: @escaping @Sendable (T) -> Void) -> (@Sendable () -> Void)
+) async -> T {
+    let once = Once<T>()
+    return await withCheckedContinuation { (continuation: CheckedContinuation<T, Never>) in
+        once.continuation = continuation
+        let cancel = start { value in once.resume(value) }
+        DispatchQueue.global().asyncAfter(deadline: .now() + seconds) {
+            if once.resume(onTimeout) { cancel() }
+        }
+    }
+}
+
+/// Resumes a continuation exactly once, from whichever side gets there first.
+private final class Once<T: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var done = false
+    var continuation: CheckedContinuation<T, Never>?
+
+    @discardableResult
+    func resume(_ value: T) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !done, let continuation else { return false }
+        done = true
+        continuation.resume(returning: value)
+        return true
+    }
+}
+
+/// An image handed back from a Photos callback, used by one task at a time.
+private struct ImageBox: @unchecked Sendable {
+    let image: UIImage?
+    init(_ image: UIImage?) { self.image = image }
 }

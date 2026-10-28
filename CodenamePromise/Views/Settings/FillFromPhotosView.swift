@@ -5,12 +5,22 @@ import SwiftUI
 /// it found, and copies only when asked.
 struct FillFromPhotosView: View {
     let filler: PhotoBackfillCoordinator
+    @Environment(AppServices.self) private var services
+    @State private var viewing: ViewingAdded?
+
+    private struct ViewingAdded: Identifiable {
+        let items: [MediaItem]
+        let id: UUID
+    }
 
     var body: some View {
         List {
             switch filler.phase {
             case .idle:
-                if let last = filler.interrupted { stoppedSummary(last, unplanned: true) }
+                if let last = filler.interrupted {
+                    stoppedSummary(last, unplanned: true)
+                    addedPreview(last)
+                }
                 Section {
                     Button {
                         Task { await filler.scan() }
@@ -121,8 +131,8 @@ struct FillFromPhotosView: View {
                             .font(.footnote.monospacedDigit())
                             .foregroundStyle(.secondary)
                         if filler.alreadyIn > 0 {
-                            Text("\((filler.alreadyIn + done).formatted()) of \((filler.alreadyIn + total).formatted()) in your journal, counting what was already there")
-                                .font(.footnote.monospacedDigit())
+                            Text("\(filler.alreadyIn.formatted()) were already in your journal from before, so they're skipped.")
+                                .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
                         Text(dayLabel(day))
@@ -136,6 +146,7 @@ struct FillFromPhotosView: View {
 
             case .done(let outcome) where outcome.stopped:
                 stoppedSummary(outcome, unplanned: false)
+                addedPreview(outcome)
                 Section {
                     Button("Done") { filler.reset() }
                 }
@@ -153,6 +164,7 @@ struct FillFromPhotosView: View {
                     if outcome.unreadable > 0 { row("Couldn't be read", outcome.unreadable) }
                     Button("Done") { filler.reset() }
                 }
+                addedPreview(outcome)
 
             case .failed(let message):
                 Section {
@@ -162,6 +174,11 @@ struct FillFromPhotosView: View {
                 }
             }
         }
+        .fullScreenCover(item: $viewing) { viewing in
+            if let files = services.files {
+                MediaViewer(items: viewing.items, fileStore: files, selection: viewing.id)
+            }
+        }
         .navigationTitle("Fill in from Photos")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -169,6 +186,35 @@ struct FillFromPhotosView: View {
     private func similarLabel(_ summary: PhotoBackfillCoordinator.Summary) -> String {
         let noun = summary.similarGroups == 1 ? "run" : "runs"
         return "Review \(summary.similarGroups.formatted()) \(noun) (\(summary.similarPhotos.formatted()) photos)"
+    }
+
+    /// The photos and videos a fill added, newest first, to look at straight away. Tap one
+    /// to see it full screen and swipe through the rest.
+    @ViewBuilder
+    private func addedPreview(_ outcome: PhotoBackfillCoordinator.Outcome) -> some View {
+        let items = filler.added(by: outcome)
+        if !items.isEmpty, let files = services.files {
+            Section {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 3)], spacing: 3) {
+                    ForEach(items, id: \.id) { item in
+                        Button {
+                            viewing = ViewingAdded(items: items, id: item.id)
+                        } label: {
+                            PhotoTile(
+                                thumb: DraftSummary.Thumb(id: item.id, relativePath: item.relativePath, isVideo: item.kind == .video),
+                                fileStore: files, maxPixel: 216
+                            )
+                            .aspectRatio(1, contentMode: .fill)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 4)
+            } header: {
+                Text(items.count < outcome.added ? "Latest \(items.count) added" : "Added")
+            }
+        }
     }
 
     /// What a fill that stopped partway saved, and what's left.
@@ -207,7 +253,7 @@ struct FillFromPhotosView: View {
     }
 
     private func countLabel(_ done: Int, _ total: Int) -> String {
-        "\(done.formatted()) of \(total.formatted()) left to fill in"
+        "Copied \(done.formatted()) of \(total.formatted())"
     }
 
     private var copiesNote: some View {
