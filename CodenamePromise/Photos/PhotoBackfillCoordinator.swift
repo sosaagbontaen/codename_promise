@@ -64,6 +64,30 @@ final class PhotoBackfillCoordinator {
     /// What the scan is doing, for the line under its spinner.
     private(set) var scanNote = ""
     private(set) var groups: [SimilarGroup] = []
+
+    /// What happens to runs of similar shots, chosen once and remembered.
+    enum SimilarRule: String, CaseIterable, Identifiable {
+        /// Every frame comes in, and similar shots aren't even looked for.
+        case keepAll
+        /// One of each run comes in (the favourite, or the first), adjustable in the review.
+        case keepOne
+        var id: String { rawValue }
+        var label: String { self == .keepAll ? "Keep every shot" : "Keep one of each" }
+    }
+
+    private static let ruleKey = "photoBackfill.similarRule"
+
+    var similarRule: SimilarRule {
+        get {
+            access(keyPath: \.similarRule)
+            return SimilarRule(rawValue: UserDefaults.standard.string(forKey: Self.ruleKey) ?? "") ?? .keepAll
+        }
+        set {
+            withMutation(keyPath: \.similarRule) {
+                UserDefaults.standard.set(newValue.rawValue, forKey: Self.ruleKey)
+            }
+        }
+    }
     private var plan: [PhotoBackfill.Day] = []
 
     private let store: DraftStore
@@ -114,8 +138,12 @@ final class PhotoBackfillCoordinator {
         let alreadyIn = (try? store.allMediaIds()) ?? []
         let skipped = leftOut
         plan = PhotoBackfill.plan(assets, alreadyIn: alreadyIn, leftOut: skipped)
-        scanNote = "Checking for runs of similar shots"
-        groups = await Self.similarGroups(in: plan)
+        if similarRule == .keepOne {
+            scanNote = "Checking for runs of similar shots"
+            groups = await Self.similarGroups(in: plan)
+        } else {
+            groups = []
+        }
 
         var summary = Summary()
         let entryDays = Set(((try? store.allDrafts()) ?? []).map(\.entryDateKey))
@@ -153,7 +181,9 @@ final class PhotoBackfillCoordinator {
     func start() {
         guard case .ready = phase, !plan.isEmpty else { return }
         // The frames of each similar run that weren't kept stay out, now and next time.
-        let dropped = Set(groups.flatMap { group in group.assets.map(\.id).filter { !group.keep.contains($0) } })
+        let dropped: Set<String> = similarRule == .keepAll ? [] : Set(groups.flatMap { group in
+            group.assets.map(\.id).filter { !group.keep.contains($0) }
+        })
         leftOut = leftOut.union(dropped)
         let plan = self.plan.compactMap { day -> PhotoBackfill.Day? in
             var day = day

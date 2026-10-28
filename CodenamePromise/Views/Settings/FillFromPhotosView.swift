@@ -66,22 +66,29 @@ struct FillFromPhotosView: View {
                 } footer: {
                     Text("Photos that are the same picture as one an entry already has are recognised and left out as it goes.")
                 }
-                if summary.similarGroups > 0 {
-                    Section {
+                Section {
+                    Picker("Similar shots", selection: Binding(
+                        get: { filler.similarRule },
+                        set: { rule in
+                            filler.similarRule = rule
+                            // Looking for similar shots only happens when one of each is
+                            // wanted, so switching to it looks again.
+                            if rule == .keepOne { Task { await filler.scan() } }
+                        }
+                    )) {
+                        ForEach(PhotoBackfillCoordinator.SimilarRule.allCases) { Text($0.label).tag($0) }
+                    }
+                    if filler.similarRule == .keepOne && summary.similarGroups > 0 {
                         NavigationLink {
                             SimilarShotsView(filler: filler)
                         } label: {
                             Label(similarLabel(summary), systemImage: "square.stack.3d.down.right")
                         }
-                        Toggle("Keep every shot", isOn: Binding(
-                            get: { filler.keepsEverything },
-                            set: { $0 ? filler.keepEverything() : filler.keepOneEach() }
-                        ))
-                    } header: {
-                        Text("Similar shots")
-                    } footer: {
-                        Text("Runs of photos taken seconds apart that look alike. One from each comes in unless you choose otherwise; review them to pick, or keep every shot. Ones left out stay in your library, just not in your journal.")
                     }
+                } footer: {
+                    Text(filler.similarRule == .keepAll
+                         ? "Every photo comes in, including runs of near-identical shots taken seconds apart."
+                         : "Of each run of near-identical shots taken seconds apart, one comes in: your favourite, or the first. Review them to choose differently. The rest stay in your library.")
                 }
                 if summary.days > 0 {
                     Section {
