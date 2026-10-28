@@ -120,6 +120,11 @@ struct FillFromPhotosView: View {
                         Text(countLabel(done, total))
                             .font(.footnote.monospacedDigit())
                             .foregroundStyle(.secondary)
+                        if filler.alreadyIn > 0 {
+                            Text("\((filler.alreadyIn + done).formatted()) of \((filler.alreadyIn + total).formatted()) in your journal, counting what was already there")
+                                .font(.footnote.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
                         Text(dayLabel(day))
                             .font(.footnote)
                             .foregroundStyle(.secondary)
@@ -202,7 +207,7 @@ struct FillFromPhotosView: View {
     }
 
     private func countLabel(_ done: Int, _ total: Int) -> String {
-        "\(done.formatted()) of \(total.formatted())"
+        "\(done.formatted()) of \(total.formatted()) left to fill in"
     }
 
     private var copiesNote: some View {

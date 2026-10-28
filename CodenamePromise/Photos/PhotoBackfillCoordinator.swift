@@ -88,6 +88,9 @@ final class PhotoBackfillCoordinator {
     /// What the scan is doing, for the line under its spinner.
     private(set) var scanNote = ""
     private(set) var groups: [SimilarGroup] = []
+    /// Photos and videos already in the journal when this fill started, so progress on a
+    /// fill that picked up partway reads as the whole library, not as starting from nothing.
+    private(set) var alreadyIn = 0
 
     /// What happens to runs of similar shots, chosen once and remembered.
     enum SimilarRule: String, CaseIterable, Identifiable {
@@ -186,6 +189,7 @@ final class PhotoBackfillCoordinator {
         }
         summary.leftOut = assets.filter { skipped.contains($0.id) }.count
         summary.alreadyIn = assets.count - plan.reduce(0) { $0 + $1.assets.count } - summary.leftOut
+        self.alreadyIn = summary.alreadyIn
         summary.similarGroups = groups.count
         summary.similarPhotos = groups.reduce(0) { $0 + $1.assets.count }
         phase = .ready(summary)

@@ -125,11 +125,16 @@ private final class ContinuedTask {
             // The system needed the time back. What's done is saved, the work carries on when
             // the app is next open, and a new task is asked for then.
             continued.updateTitle(continued.title, subtitle: "Paused. Open DumpNotes to carry on.")
-            MainActor.assumeIsolated {
-                self?.task = nil
-                self?.expired = true
-            }
             continued.setTaskCompleted(success: false)
+            // Called on a background queue, not the main one: asserting the main actor here
+            // crashed the app every time iOS ended the task. Hop over instead.
+            nonisolated(unsafe) let owner = self
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    owner?.task = nil
+                    owner?.expired = true
+                }
+            }
         }
         if finished {
             continued.setTaskCompleted(success: true)
