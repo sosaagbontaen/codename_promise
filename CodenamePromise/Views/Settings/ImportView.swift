@@ -40,8 +40,10 @@ struct ImportView: View {
                     case .working(let progress):
                         VStack(alignment: .leading, spacing: 8) {
                             ProgressView(value: progress.fraction)
-                            Text(progress.entriesTotal == 0
-                                 ? "Reading the folder\u{2026}"
+                            Text(progress.readTotal == 0
+                                 ? "Opening the folder\u{2026}"
+                                 : progress.isReading
+                                 ? "Getting entries from iCloud: \(progress.readDone) of \(progress.readTotal)"
                                  : "\(progress.entriesDone) of \(progress.entriesTotal) entries, \(progress.filesDone) of \(progress.filesTotal) photos and videos")
                                 .font(.footnote.monospacedDigit())
                                 .foregroundStyle(.secondary)

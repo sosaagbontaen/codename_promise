@@ -132,11 +132,27 @@ extension DraftStore {
         fileStore: MediaFileStore,
         progress: (JournalImportProgress) -> Void = { _ in }
     ) async throws -> ImportReport {
-        // Reading the folder touches every file, which for iCloud Drive can mean downloading
-        // it, so none of that happens on the main actor.
-        let reading = try await Task.detached(priority: .userInitiated) {
-            try JournalImporter().read(directory: directory)
-        }.value
+        // A folder in iCloud Drive is often mostly not on the phone yet. Everything is asked
+        // for at once, so photos download while the entries are still being read, instead of
+        // each file waiting its turn.
+        Task.detached(priority: .utility) { JournalImporter.startDownloading(directory) }
+
+        // Reading the entries can mean downloading each one, so it happens off the main actor,
+        // several at a time, with the count shown as it goes. Without this the bar sat empty
+        // for the minute or more a year of entries took to arrive.
+        let names = try await Task.detached { try JournalImporter().entryFileNames(in: directory) }.value
+        var state = JournalImportProgress(readTotal: names.count)
+        progress(state)
+        var reading = JournalImporter.Reading()
+        for start in stride(from: 0, to: names.count, by: 8) {
+            let batch = Array(names[start..<min(start + 8, names.count)])
+            for (name, entry) in zip(batch, await JournalImporter.readEntries(named: batch, in: directory)) {
+                if let entry { reading.entries.append(entry) } else { reading.unreadable.append(name) }
+            }
+            state.readDone += batch.count
+            progress(state)
+        }
+        reading.entries.sort { $0.entryDateKey > $1.entryDateKey }
         var report = ImportReport(unreadable: reading.unreadable)
 
         // Trashed entries count too, or importing would bring back a second copy of one.
@@ -147,17 +163,18 @@ extension DraftStore {
         var unfinished = Set(defaults.stringArray(forKey: Self.unfinishedImportKey) ?? [])
         func remember() { defaults.set(Array(unfinished), forKey: Self.unfinishedImportKey) }
 
-        var state = JournalImportProgress(
-            entriesTotal: reading.entries.count,
-            filesTotal: reading.entries.reduce(0) { $0 + $1.attachments.count + $1.untranscribedAudio.count }
-        )
+        state.entriesTotal = reading.entries.count
+        state.filesTotal = reading.entries.reduce(0) { $0 + $1.attachments.count + $1.untranscribedAudio.count }
         progress(state)
 
         for parsed in reading.entries {
             let files = parsed.attachments + parsed.untranscribedAudio
+            // Files already counted for this entry as they were copied; the rest (already
+            // here, or skipped with the entry) are counted when it's done.
+            var counted = 0
             defer {
                 state.entriesDone += 1
-                state.filesDone += files.count
+                state.filesDone += files.count - counted
                 progress(state)
             }
 
@@ -193,7 +210,12 @@ extension DraftStore {
             let wanted = files
                 .map { (relative: $0, id: InboxScanner.stableUUID("\(draft.id.uuidString)|\($0)")) }
                 .filter { !have.contains($0.id) }
-            for (relative, adopted) in await Self.adopt(wanted, from: directory, into: fileStore) {
+            let copied = await adopt(wanted, from: directory, into: fileStore) {
+                counted += 1
+                state.filesDone += 1
+                progress(state)
+            }
+            for (relative, adopted) in copied {
                 guard let adopted else {
                     report.missingAttachments.append(relative)
                     continue
@@ -222,10 +244,11 @@ extension DraftStore {
     /// Each read is coordinated, which is what makes iCloud Drive download a file that's only
     /// in the cloud before handing it over. A plain copy can find nothing there, and an
     /// attachment that was only waiting to download would be reported as missing.
-    nonisolated private static func adopt(
+    private func adopt(
         _ wanted: [(relative: String, id: UUID)],
         from directory: URL,
-        into fileStore: MediaFileStore
+        into fileStore: MediaFileStore,
+        each: () -> Void
     ) async -> [(String, AdoptedFile?)] {
         guard !wanted.isEmpty else { return [] }
         let results = await withTaskGroup(of: (Int, AdoptedFile?).self) { group -> [AdoptedFile?] in
@@ -242,6 +265,7 @@ extension DraftStore {
             for _ in 0..<4 { start() }
             while let (index, adopted) = await group.next() {
                 results[index] = adopted
+                each()
                 start()
             }
             return results
@@ -261,21 +285,33 @@ extension DraftStore {
 
 /// How far a journal import has got, for a progress bar.
 public struct JournalImportProgress: Sendable, Equatable {
+    /// Entry files read from the folder so far, which for iCloud Drive means downloaded.
+    public var readDone = 0
+    public var readTotal = 0
     public var entriesDone = 0
     public var entriesTotal = 0
     public var filesDone = 0
     public var filesTotal = 0
 
-    public init(entriesDone: Int = 0, entriesTotal: Int = 0, filesDone: Int = 0, filesTotal: Int = 0) {
+    public init(readDone: Int = 0, readTotal: Int = 0, entriesDone: Int = 0, entriesTotal: Int = 0,
+                filesDone: Int = 0, filesTotal: Int = 0) {
+        self.readDone = readDone
+        self.readTotal = readTotal
         self.entriesDone = entriesDone
         self.entriesTotal = entriesTotal
         self.filesDone = filesDone
         self.filesTotal = filesTotal
     }
 
-    /// Entries and files together, so a year of text alone still moves the bar.
+    /// Whether it's still reading the folder's entries in.
+    public var isReading: Bool { entriesTotal == 0 && readDone < readTotal }
+
+    /// The first tenth of the bar is reading the entries; the rest is bringing them in, with
+    /// entries and files together, so a year of text alone still moves it.
     public var fraction: Double {
+        let reading = readTotal == 0 ? 0 : Double(readDone) / Double(readTotal)
         let total = entriesTotal + filesTotal
-        return total == 0 ? 0 : Double(entriesDone + filesDone) / Double(total)
+        let adding = total == 0 ? 0 : Double(entriesDone + filesDone) / Double(total)
+        return 0.1 * reading + 0.9 * adding
     }
 }

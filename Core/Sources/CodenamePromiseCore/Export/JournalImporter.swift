@@ -63,6 +63,67 @@ public struct JournalImporter: Sendable {
 
     public init() {}
 
+    /// The entry files in a folder, by name.
+    ///
+    /// Includes ones iCloud Drive hasn't downloaded yet, which can be listed under a hidden
+    /// placeholder name (".2025-03-04 Walk.md.icloud") rather than their own.
+    public func entryFileNames(in directory: URL) throws -> [String] {
+        try FileManager.default.contentsOfDirectory(atPath: directory.path)
+            .map { name -> String in
+                guard name.hasPrefix("."), name.hasSuffix(".icloud") else { return name }
+                return String(name.dropFirst().dropLast(".icloud".count))
+            }
+            .filter { $0.lowercased().hasSuffix(".md") && $0.lowercased() != "readme.md" }
+            .sorted()
+    }
+
+    /// Reads entry files a few at a time, each with a coordinated read so iCloud Drive
+    /// downloads it first. In the order given; nil for a file that couldn't be read.
+    public static func readEntries(named names: [String], in directory: URL) async -> [ParsedEntry?] {
+        await withTaskGroup(of: (Int, ParsedEntry?).self) { group -> [ParsedEntry?] in
+            var results = [ParsedEntry?](repeating: nil, count: names.count)
+            var next = 0
+            func start() {
+                guard next < names.count else { return }
+                let index = next
+                next += 1
+                let url = directory.appendingPathComponent(names[index])
+                group.addTask { (index, Self.coordinatedRead(url)) }
+            }
+            for _ in 0..<8 { start() }
+            while let (index, entry) = await group.next() {
+                results[index] = entry
+                start()
+            }
+            return results
+        }
+    }
+
+    private static func coordinatedRead(_ url: URL) -> ParsedEntry? {
+        var entry: ParsedEntry?
+        var error: NSError?
+        NSFileCoordinator().coordinate(readingItemAt: url, options: [.withoutChanges], error: &error) { url in
+            entry = (try? String(contentsOf: url, encoding: .utf8)).flatMap(Self.parse)
+        }
+        return entry
+    }
+
+    /// Asks iCloud Drive to start downloading everything under a folder, without waiting.
+    /// Downloads then run alongside the import instead of one by one as each file is read.
+    public static func startDownloading(_ directory: URL) {
+        let manager = FileManager.default
+        guard let walker = manager.enumerator(at: directory, includingPropertiesForKeys: nil) else { return }
+        for case let url as URL in walker {
+            var target = url
+            let name = url.lastPathComponent
+            if name.hasPrefix("."), name.hasSuffix(".icloud") {
+                target = url.deletingLastPathComponent()
+                    .appendingPathComponent(String(name.dropFirst().dropLast(".icloud".count)))
+            }
+            try? manager.startDownloadingUbiquitousItem(at: target)
+        }
+    }
+
     /// Every entry file in a folder, newest-first by day.
     ///
     /// `README.md` is skipped by name: the exporter writes it as a note to a human, and it

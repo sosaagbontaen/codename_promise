@@ -226,9 +226,14 @@ struct JournalImportTests {
         _ = try await makeStore().importJournal(from: folder, fileStore: try MediaFileStore(root: tempDirectory())) {
             seen.append($0)
         }
-        #expect(seen.first == JournalImportProgress(entriesTotal: 2, filesTotal: 2))
-        #expect(seen.last == JournalImportProgress(entriesDone: 2, entriesTotal: 2, filesDone: 2, filesTotal: 2))
+        // Reading the folder shows before anything is added, so the bar moves from the start.
+        #expect(seen.first == JournalImportProgress(readTotal: 2))
+        #expect(seen.contains { $0.readDone == 2 && $0.entriesDone == 0 })
+        #expect(seen.last == JournalImportProgress(
+            readDone: 2, readTotal: 2, entriesDone: 2, entriesTotal: 2, filesDone: 2, filesTotal: 2))
         #expect(seen.last?.fraction == 1)
+        // Never goes backwards.
+        #expect(zip(seen, seen.dropFirst()).allSatisfy { $0.fraction <= $1.fraction })
     }
 
     /// Import must never be able to lose what is already here.

@@ -55,10 +55,12 @@ final class JournalImportCoordinator {
             do {
                 let result = try await store.importJournal(from: folder, fileStore: fileStore) { progress in
                     phase = .working(progress)
+                    // In thousandths, so the Live Activity's bar matches the one on screen.
                     report(
-                        progress.entriesDone + progress.filesDone,
-                        progress.entriesTotal + progress.filesTotal,
-                        "\(progress.entriesDone) of \(progress.entriesTotal) entries"
+                        Int(progress.fraction * 1000), 1000,
+                        progress.isReading
+                            ? "Getting entries: \(progress.readDone) of \(progress.readTotal)"
+                            : "\(progress.entriesDone) of \(progress.entriesTotal) entries, \(progress.filesDone) of \(progress.filesTotal) photos"
                     )
                 }
                 Haptics.picked()
