@@ -57,7 +57,7 @@ struct SettingsView: View {
                     row(.backup, "Backup", services.isBackedUp ? "On, to iCloud" : "This iPhone only") {
                         SettingsIcon.iCloud
                     }
-                    row(.export, "Export journal", "square.and.arrow.up.fill", Brand.Mode.extra, nil)
+                    row(.export, "Import and export", "arrow.up.arrow.down", Brand.Mode.extra, nil)
                     row(.photos, "Fill in from Photos", "photo.on.rectangle.angled", Brand.Mode.photo, nil)
                     row(.trash, "Recently Deleted", "trash.fill", Color(uiColor: .systemGray), trashStatus)
                 }
@@ -241,7 +241,7 @@ struct SettingsView: View {
         case .names: "Dictionary"
         case .sync: "Notion"
         case .reminders: "Reminders"
-        case .export: "Export journal"
+        case .export: "Import and export"
         case .help: "Help and feedback"
         case .trash: "Recently Deleted"
         case .photos: "Fill in from Photos"

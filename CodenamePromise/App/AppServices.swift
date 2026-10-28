@@ -153,6 +153,10 @@ final class AppServices {
         // reclaimed in the background or force-quit. Brought back rather than silently
         // abandoned with its photos still on disk.
         ready?.imports.restore()
+
+        // Thumbnails for whatever came in since they were last made, quietly, so the journal
+        // draws from disk rather than decoding photos as it scrolls.
+        warmThumbnails()
     }
 
     private var ready: Ready? {
@@ -168,6 +172,14 @@ final class AppServices {
     var imports: ImportCoordinator? { ready?.imports }
     var journalImport: JournalImportCoordinator? { ready?.journalImport }
     var photoBackfill: PhotoBackfillCoordinator? { ready?.photoBackfill }
+
+    /// The model container, for work done on a context of its own off the main actor.
+    private var container: ModelContainer? { ready?.store.context.container }
+
+    func warmThumbnails() {
+        guard let container, let files else { return }
+        ThumbnailWarmer.warm(container: container, files: files)
+    }
     var apiClient: APIClient? { ready?.client }
 
     /// `nil` when there is no backend at all, which the settings screen presents as

@@ -188,6 +188,8 @@ final class PhotoBackfillCoordinator {
         UserDefaults.standard.removeObject(forKey: Self.inProgressKey)
         self.plan = []
         phase = .done(outcome)
+        // Thumbnails for everything that just arrived, made in the background.
+        ThumbnailWarmer.warm(container: store.context.container, files: fileStore)
     }
 
     /// One day: copies its items and files them into the day's entry, starting one if need be.

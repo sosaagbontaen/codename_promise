@@ -99,28 +99,27 @@ struct JournalView: View {
     var body: some View {
         NavigationStack(path: $path) {
             Group {
-                if mode == .list {
-                    // A real List here, for the one thing only it does well: swiping a row.
-                    listMode
-                } else {
                     ScrollViewReader { proxy in
                         ScrollView {
                             Group {
-                                if mode == .calendar {
-                                    VStack(alignment: .leading, spacing: 18) {
-                                        notices
-                                        calendar
-                                        dayEntries
-                                    }
-                                } else {
-                                    // Lazy, so only the months on screen are built. A plain
-                                    // stack built every month of eight years up front, each
-                                    // time the grid appeared.
-                                    LazyVStack(alignment: .leading, spacing: 18) {
-                                        notices
-                                        gridByMonth
+                            if mode == .calendar {
+                                VStack(alignment: .leading, spacing: 18) {
+                                    notices
+                                    calendar
+                                    dayEntries
+                                }
+                            } else {
+                                // Lazy, so only the months on screen are built, and each
+                                // month's header stays at the top until the next one's
+                                // pushes it off.
+                                LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                                    notices
+                                    switch mode {
+                                    case .list: listByMonth
+                                    default: gridByMonth
                                     }
                                 }
+                            }
                             }
                             .padding(.horizontal, 18)
                             .padding(.bottom, 96)
@@ -128,13 +127,13 @@ struct JournalView: View {
                         .onChange(of: anchor) { _, id in keep(id, in: proxy) }
                         .onChange(of: selecting) { _, _ in keep(anchor, in: proxy) }
                         // One scroll handle, not two: the month scrubber stands in for it.
-                        .scrollIndicators(mode == .grid && showsScrubber ? .hidden : .automatic)
+                        .scrollIndicators(mode != .calendar && showsScrubber ? .hidden : .automatic)
                         .modifier(ScrollProgress(tracker: scrollTracker))
                         .overlay(alignment: .trailing) {
-                            if mode == .grid { scrubber(proxy) }
+                            if mode != .calendar { scrubber(proxy) }
                         }
+
                     }
-                }
             }
             .background(Brand.ground)
             // Pinned above whatever is scrolling, in every view: the title and view switcher,
@@ -348,8 +347,18 @@ struct JournalView: View {
     }
 
     /// Wraps an entry's look in the gestures every view shares.
+    ///
+    /// The id is for the grid only, where the lazy stack uses it to place a jump quickly
+    /// (without it, jumping eight years back took half a minute). In the List it does the
+    /// opposite: an explicit id on every row made the List build all of them up front,
+    /// which took most of a minute in a journal of a few thousand entries.
+    @ViewBuilder
     private func entryButton<Label: View>(_ entry: DraftSummary, @ViewBuilder label: () -> Label) -> some View {
-        entryButtonBody(entry, label: label).id(entry.id)
+        if mode == .list {
+            entryButtonBody(entry, label: label)
+        } else {
+            entryButtonBody(entry, label: label).id(entry.id)
+        }
     }
 
     private func entryButtonBody<Label: View>(_ entry: DraftSummary, @ViewBuilder label: () -> Label) -> some View {
@@ -669,74 +678,41 @@ struct JournalView: View {
 
     // MARK: - List
 
-    private var listMode: some View {
-        // The header sits above the List rather than in it, so it lands exactly where it
-        // does in the other two views and doesn't jump when switching between them.
-        return VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 18) {
-                notices
-            }
-            .padding(.horizontal, 18)
-        ScrollViewReader { proxy in
-        List {
-            ForEach(months, id: \.key) { month in
-                Section {
-                    ForEach(month.entries) { entry in
+    /// The list: a lazy stack like the grid, under the same pinned month headers.
+    ///
+    /// It was a SwiftUI List, kept for swipe-to-delete. A List prepares every row before it
+    /// shows any, and with a few thousand entries that took over a minute; this builds only
+    /// the rows on screen. The swipe is `SwipeToTrash`.
+    private var listByMonth: some View {
+        ForEach(months, id: \.key) { month in
+            let band = Brand.isBanded(monthKey: month.key) ? Brand.monthBandRow : Brand.surface
+            Section {
+                VStack(spacing: 0) {
+                    ForEach(Array(month.entries.enumerated()), id: \.element.id) { index, entry in
                         entryButton(entry) {
                             ListEntryRow(summary: entry, art: art(entry), fileStore: services.files, selecting: selecting)
+                                .background(band)
                         }
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Brand.isBanded(monthKey: month.key) ? Brand.monthBandRow : Brand.surface)
-                        // Swipe right to delete, as asked, and left too, as iOS has taught.
-                        // Either way it goes to Recently Deleted, so a slip costs nothing.
-                        .swipeActions(edge: .leading, allowsFullSwipe: true) { trashAction(entry.id) }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) { trashAction(entry.id) }
+                        .modifier(SwipeToTrash(enabled: !selecting, began: { swallowNextTap = true }) { trash([entry.id]) })
+                        if index < month.entries.count - 1 {
+                            Divider().padding(.leading, 78).background(band)
+                        }
                     }
-                } header: {
-                    // The scroll target is the header rather than the section: a List takes a
-                    // section's id as its first row's, so jumping to a month landed just under
-                    // its title with the title scrolled out of sight.
-                    Text(month.label)
-                        .font(Type.label(17, .semibold))
-                        .foregroundStyle(Brand.ink)
-                        .textCase(nil)
-                        .id(month.key)
                 }
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .padding(.bottom, 14)
+            } header: {
+                monthHeader(month.label, background: Brand.ground)
+                    .id(month.key)
             }
-            Color.clear.frame(height: 70).listRowBackground(Color.clear)
-        }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .listSectionSpacing(14)
-        .contentMargins(.top, 0, for: .scrollContent)
-        .overlay(alignment: .trailing) { scrubber(proxy) }
-        .onChange(of: anchor) { _, id in keep(id, in: proxy) }
-        .onChange(of: selecting) { _, _ in keep(anchor, in: proxy) }
-        .scrollIndicators(showsScrubber ? .hidden : .automatic)
-        .modifier(ScrollProgress(tracker: scrollTracker))
-        }
         }
     }
-
-    private func trashAction(_ id: UUID) -> some View {
-        Button(role: .destructive) {
-            trash([id])
-        } label: {
-            Label("Delete", systemImage: "trash")
-        }
-        // Red, not the app's violet: it's a delete, even one that can be undone.
-        .tint(.red)
-    }
-
-    // MARK: - Grid
 
     private var gridByMonth: some View {
         let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
         return ForEach(months, id: \.key) { month in
-            VStack(alignment: .leading, spacing: 8) {
-                Text(month.label)
-                    .font(Type.label(17, .semibold))
-                    .foregroundStyle(Brand.ink)
+            let band = Brand.isBanded(monthKey: month.key) ? Brand.monthBand : Brand.ground
+            Section {
                 LazyVGrid(columns: columns, spacing: 10) {
                     ForEach(month.entries) { entry in
                         entryButton(entry) {
@@ -744,18 +720,27 @@ struct JournalView: View {
                         }
                     }
                 }
+                .padding(.bottom, 16)
+                // Edge to edge, past the page's side margins, so it reads as a band.
+                .background { band.padding(.horizontal, -18) }
+            } header: {
+                monthHeader(month.label, background: band)
+                    .id(month.key)
             }
-            .padding(.top, 6)
-            .padding(.bottom, 4)
-            .padding(.vertical, Brand.isBanded(monthKey: month.key) ? 8 : 0)
-            .background {
-                if Brand.isBanded(monthKey: month.key) {
-                    // Edge to edge, past the page's side margins, so it reads as a band.
-                    Brand.monthBand.padding(.horizontal, -18)
-                }
-            }
-            .id(month.key)
         }
+    }
+
+    /// A month's title, drawn on its own ground so it reads cleanly when pinned over entries.
+    private func monthHeader(_ label: String, background: Color) -> some View {
+        Text(label)
+            .font(Type.label(17, .semibold))
+            .foregroundStyle(Brand.ink)
+            .textCase(nil)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 10)
+            .background(background)
+            .padding(.horizontal, mode == .grid ? -18 : 0)
     }
 
     private var showsScrubber: Bool { months.count > 1 }
@@ -1271,5 +1256,57 @@ private struct ScrollProgress: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+/// Swipe a row either way to move it to Recently Deleted, the way List rows do, for rows
+/// that aren't in a List. A red band with a bin opens behind it as it goes; past a third of
+/// the way it lets go into the trash, short of that it springs back. Only clearly sideways
+/// drags count, so scrolling past a row never catches on it.
+private struct SwipeToTrash: ViewModifier {
+    let enabled: Bool
+    /// Told when a swipe starts, so the row's tap, which a sideways drag doesn't cancel,
+    /// doesn't also open the entry when the finger lifts.
+    let began: () -> Void
+    let trash: () -> Void
+    @State private var offset: CGFloat = 0
+    @State private var width: CGFloat = 1
+
+    func body(content: Content) -> some View {
+        content
+            .offset(x: offset)
+            .background(alignment: offset >= 0 ? .leading : .trailing) {
+                if offset != 0 {
+                    Color.red
+                        .overlay(alignment: offset >= 0 ? .leading : .trailing) {
+                            Image(systemName: "trash.fill")
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 22)
+                        }
+                        .frame(width: abs(offset))
+                }
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = max($0, 1) }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 20)
+                    .onChanged { value in
+                        guard enabled, abs(value.translation.width) > abs(value.translation.height) * 1.5 else { return }
+                        if offset == 0 { began() }
+                        offset = value.translation.width
+                    }
+                    .onEnded { value in
+                        guard enabled, offset != 0 else { return }
+                        if abs(offset) > width / 3 || abs(value.predictedEndTranslation.width) > width * 0.8 {
+                            withAnimation(.easeOut(duration: 0.18)) { offset = offset > 0 ? width : -width }
+                            Haptics.committed()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                                trash()
+                                offset = 0
+                            }
+                        } else {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { offset = 0 }
+                        }
+                    }
+            )
     }
 }

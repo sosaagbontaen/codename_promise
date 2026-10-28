@@ -125,11 +125,59 @@ final class ThumbnailCache {
         await acquireSlot()
         defer { releaseSlot() }
         guard let wanted = waiters[key], !wanted.isEmpty else { return nil }
-        return await Task.detached(priority: .utility) {
-            isVideo
+        return await Task.detached(priority: .userInitiated) {
+            // Made once, then kept on disk: reading back a small saved thumbnail is a few
+            // milliseconds, where decoding a 2048-pixel original is tens of them. Without this
+            // every launch decoded every photo scrolled past again, which is what left a
+            // freshly imported journal blank for a minute.
+            if let saved = Self.saved(key) { return saved }
+            let image = isVideo
                 ? await Self.videoFrame(url, maxPixel: maxPixel)
                 : Self.downsample(url, maxPixel: maxPixel)
+            if let image { Self.save(image, key: key) }
+            return image
         }.value
+    }
+
+    // MARK: - On disk
+
+    /// Thumbnails kept between launches, in Caches: iOS may clear it when space runs low, and
+    /// then they're made again as needed. Keyed by attachment id and size; an attachment's
+    /// bytes never change under its id, so a saved thumbnail never goes stale.
+    private nonisolated static let folder: URL? = {
+        guard let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
+        let folder = caches.appendingPathComponent("Thumbnails", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder
+    }()
+
+    private nonisolated static func file(_ key: String) -> URL? {
+        folder?.appendingPathComponent(key + ".jpg")
+    }
+
+    private nonisolated static func saved(_ key: String) -> UIImage? {
+        guard let url = file(key), let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
+        else { return nil }
+        return UIImage(cgImage: image)
+    }
+
+    private nonisolated static func save(_ image: UIImage, key: String) {
+        guard let url = file(key), let data = image.jpegData(compressionQuality: 0.8) else { return }
+        try? data.write(to: url, options: .atomic)
+    }
+
+    /// Makes and saves thumbnails ahead of time, quietly, so the journal draws straight from
+    /// disk. Run after an import: thousands of new photos otherwise wait to be decoded until
+    /// somebody scrolls to them.
+    nonisolated static func prepare(_ items: [(id: UUID, url: URL, isVideo: Bool)], maxPixel: CGFloat) async {
+        for item in items {
+            if Task.isCancelled { return }
+            let key = "\(item.id.uuidString)-\(Int(maxPixel))"
+            guard let target = file(key), !FileManager.default.fileExists(atPath: target.path) else { continue }
+            let image = item.isVideo ? await videoFrame(item.url, maxPixel: maxPixel) : downsample(item.url, maxPixel: maxPixel)
+            if let image { save(image, key: key) }
+        }
     }
 
     private func acquireSlot() async {

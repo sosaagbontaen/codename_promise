@@ -114,6 +114,8 @@ final class JournalImportCoordinator {
                 }
                 Haptics.picked()
                 phase = .done(total)
+        // Thumbnails for everything that just arrived, made in the background.
+        ThumbnailWarmer.warm(container: store.context.container, files: fileStore)
             } catch {
                 Haptics.failed()
                 phase = .failed(error.localizedDescription)
