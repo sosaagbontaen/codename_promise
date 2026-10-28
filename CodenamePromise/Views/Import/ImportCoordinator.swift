@@ -124,7 +124,8 @@ final class ImportCoordinator {
         var done = 0
         staging = (0, total)
 
-        await keepingAwake {
+        await BackgroundWork.run(title: "Importing photos") { report in
+            report(0, total, "Reading 0 of \(total)")
             await withTaskGroup(of: ImportSession.Item?.self) { group in
                 var iterator = items.makeIterator()
 
@@ -139,6 +140,7 @@ final class ImportCoordinator {
                 while let result = await group.next() {
                     done += 1
                     staging = (done, total)
+                    report(done, total, "Reading \(done) of \(total)")
                     if let result, var current = session {
                         current.items.append(result)
                         session = current
@@ -252,10 +254,11 @@ final class ImportCoordinator {
         let applier = ImportApplier(store: store, fileStore: fileStore, sessions: sessions)
         applying = (0, current.remaining.count)
 
-        await keepingAwake {
+        await BackgroundWork.run(title: "Adding photos to your journal") { report in
             do {
                 let outcome = try await applier.apply(&current) { done, total in
                     self.applying = (done, total)
+                    report(done, total, "\(done) of \(total) added")
                 }
                 lastOutcome = outcome
                 session = current
@@ -302,25 +305,5 @@ final class ImportCoordinator {
         } catch {
             log.error("could not save the import: \(error.localizedDescription)")
         }
-    }
-
-    /// Keeps the screen on while a long import runs, and asks for time to finish cleanly if
-    /// the person leaves anyway.
-    ///
-    /// The screen matters most. Auto-lock fires after thirty seconds to five minutes of no
-    /// touches, and five hundred photos takes longer than that — so without this, the lock
-    /// screen was what ended nearly every large import. Holding it open while there is real
-    /// work in flight, and only then, is what video export and file transfer apps do.
-    ///
-    /// The background task is the second line: if the app is left mid-import it buys the
-    /// half-minute iOS allows, which is enough to finish what is in flight and write it down.
-    private func keepingAwake(_ work: () async -> Void) async {
-        UIApplication.shared.isIdleTimerDisabled = true
-        let task = UIApplication.shared.beginBackgroundTask(withName: "photo-import") {
-            log.info("background time ran out mid-import; progress is saved")
-        }
-        await work()
-        UIApplication.shared.endBackgroundTask(task)
-        UIApplication.shared.isIdleTimerDisabled = false
     }
 }

@@ -101,6 +101,12 @@
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 
+	<!-- Long imports keep running after the app is left, shown as a Live Activity.
+	     See BackgroundWork. Each run submits a fresh identifier under this prefix. -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.codenamepromise.journal.import.*</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

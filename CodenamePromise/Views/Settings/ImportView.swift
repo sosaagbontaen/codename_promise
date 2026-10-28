@@ -11,20 +11,16 @@ import SwiftUI
 /// can send somewhere; iOS has no public API for reading one back, and rather than take a
 /// dependency for it, this asks for the uncompressed folder. Files does that with one tap,
 /// and the copy says so instead of leaving somebody to discover it.
+///
+/// The import itself belongs to `JournalImportCoordinator`, so closing this screen or leaving
+/// the app doesn't stop it.
 struct ImportView: View {
-    let store: DraftStore
-    let fileStore: MediaFileStore
+    let importer: JournalImportCoordinator
 
     @Environment(\.dismiss) private var dismiss
-    @State private var phase: Phase = .idle
     @State private var picking = false
 
-    enum Phase: Equatable {
-        case idle
-        case working
-        case done(DraftStore.ImportReport)
-        case failed(String)
-    }
+    private var phase: JournalImportCoordinator.Phase { importer.phase }
 
     var body: some View {
         NavigationStack {
@@ -38,10 +34,17 @@ struct ImportView: View {
                             Label("Choose a journal folder", systemImage: "folder.badge.plus")
                         }
 
-                    case .working:
-                        HStack(spacing: 10) {
-                            ProgressView().controlSize(.small)
-                            Text("Reading it in\u{2026}")
+                    case .working(let progress):
+                        VStack(alignment: .leading, spacing: 8) {
+                            ProgressView(value: progress.fraction)
+                            Text(progress.entriesTotal == 0
+                                 ? "Reading the folder\u{2026}"
+                                 : "\(progress.entriesDone) of \(progress.entriesTotal) entries, \(progress.filesDone) of \(progress.filesTotal) photos and videos")
+                                .font(.footnote.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                            Text("You can close this or leave the app. The import keeps going, with its progress on the Lock Screen.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
                         }
 
                     case .done(let report):
@@ -61,7 +64,10 @@ struct ImportView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(phase == .idle ? "Cancel" : "Done") { dismiss() }
+                    Button(phase == .idle ? "Cancel" : "Done") {
+                        importer.reset()
+                        dismiss()
+                    }
                 }
             }
             .fileImporter(
@@ -71,10 +77,10 @@ struct ImportView: View {
             ) { result in
                 switch result {
                 case .success(let urls):
-                    if let url = urls.first { run(url) }
-                case .failure(let error):
+                    if let url = urls.first { importer.start(url) }
+                case .failure:
                     // Cancelling is a `.failure` on some paths and is not an error.
-                    phase = .failed(error.localizedDescription)
+                    break
                 }
             }
         }
@@ -120,22 +126,5 @@ struct ImportView: View {
             Text(value).foregroundStyle(tint).monospacedDigit()
         }
         .font(.subheadline)
-    }
-
-    private func run(_ folder: URL) {
-        phase = .working
-        // A folder from the document picker lives outside the sandbox and has to be opened
-        // explicitly, and closed even when the read throws.
-        let scoped = folder.startAccessingSecurityScopedResource()
-        defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
-
-        do {
-            let report = try store.importJournal(from: folder, fileStore: fileStore)
-            Haptics.picked()
-            phase = .done(report)
-        } catch {
-            Haptics.failed()
-            phase = .failed(error.localizedDescription)
-        }
     }
 }

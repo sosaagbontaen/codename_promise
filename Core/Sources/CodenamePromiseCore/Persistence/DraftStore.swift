@@ -57,6 +57,11 @@ public final class DraftStore {
         public var isEmpty: Bool { draftIds.isEmpty && !structural }
     }
 
+    /// Where a journal import notes the entries it has started but not finished, so an
+    /// interrupted one is completed next time rather than skipped. Tests give each store
+    /// its own.
+    public var importBookkeeping: UserDefaults = .standard
+
     /// Goes up by one on every save that changed anything.
     public private(set) var revision = 0
     private var log: [(revision: Int, ids: Set<UUID>, structural: Bool)] = []
@@ -392,6 +397,14 @@ public final class DraftStore {
         id: UUID = UUID()
     ) throws -> MediaItem {
         let adopted = try fileStore.adopt(fileAt: sourceURL, id: id)
+        return try record(adopted, kind: kind, to: draft)
+    }
+
+    /// Records a file already adopted into the store as one of the draft's attachments, and
+    /// commits. For callers that copy the bytes off the main actor first (ADR-007: bytes
+    /// first, row second).
+    @discardableResult
+    public func record(_ adopted: AdoptedFile, kind: MediaKind, to draft: EntryDraft) throws -> MediaItem {
         let item = MediaItem(
             id: adopted.id,
             kind: kind,

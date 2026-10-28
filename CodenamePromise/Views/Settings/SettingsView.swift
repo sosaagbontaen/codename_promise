@@ -102,8 +102,8 @@ struct SettingsView: View {
                 }
             }
             .sheet(isPresented: $showingImport) {
-                if let store = services.store, let files = services.files {
-                    ImportView(store: store, fileStore: files)
+                if let importer = services.journalImport {
+                    ImportView(importer: importer)
                 }
             }
             .sheet(isPresented: $showingFeedback) { FeedbackView() }

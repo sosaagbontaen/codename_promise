@@ -12,7 +12,10 @@ import Testing
 struct JournalImportTests {
 
     private func makeStore() throws -> DraftStore {
-        DraftStore(container: try ModelContainerFactory.makeInMemoryContainer())
+        let store = DraftStore(container: try ModelContainerFactory.makeInMemoryContainer())
+        // Tests run in parallel; each import keeps its own note of unfinished entries.
+        store.importBookkeeping = UserDefaults(suiteName: "import-tests-\(UUID().uuidString)")!
+        return store
     }
 
     private func tempDirectory() -> URL {
@@ -120,7 +123,7 @@ struct JournalImportTests {
     // MARK: - The round trip
 
     @Test("an exported journal imports back with its words intact")
-    func roundTrip() throws {
+    func roundTrip() async throws {
         let source = try makeStore()
         let draft = try source.createDraft(entryDate: CalendarDay(rawValue: "2026-08-14")!)
         try source.updateTitle("The sea", for: draft)
@@ -133,7 +136,7 @@ struct JournalImportTests {
 
         // A different device: a new store that has never seen any of this.
         let destination = try makeStore()
-        let report = try destination.importJournal(from: folder, fileStore: files)
+        let report = try await destination.importJournal(from: folder, fileStore: files)
 
         #expect(report.added == 1)
         let restored = try #require(try destination.allDrafts().first)
@@ -144,7 +147,7 @@ struct JournalImportTests {
 
     /// The failure that would make import unusable: run it twice and get two journals.
     @Test("importing the same folder twice does not duplicate anything")
-    func importIsIdempotent() throws {
+    func importIsIdempotent() async throws {
         let source = try makeStore()
         for day in ["2026-08-12", "2026-08-13"] {
             let draft = try source.createDraft(entryDate: CalendarDay(rawValue: day)!)
@@ -157,17 +160,79 @@ struct JournalImportTests {
         _ = try source.exportAll(to: folder, fileStore: files)
 
         let destination = try makeStore()
-        #expect(try destination.importJournal(from: folder, fileStore: files).added == 2)
+        #expect(try await destination.importJournal(from: folder, fileStore: files).added == 2)
 
-        let second = try destination.importJournal(from: folder, fileStore: files)
+        let second = try await destination.importJournal(from: folder, fileStore: files)
         #expect(second.added == 0)
         #expect(second.alreadyPresent == 2)
         #expect(try destination.allDrafts().count == 2, "two runs must not make four entries")
     }
 
+    /// An import cut off partway (the app closed, iOS ended it) has made an entry without all
+    /// of its photos. Running it again must finish that entry, not skip it as already here.
+    @Test("an interrupted import finishes the entry it was on")
+    func interruptedImportResumes() async throws {
+        let source = try makeStore()
+        let files = try MediaFileStore(root: tempDirectory())
+        let draft = try source.createDraft(entryDate: CalendarDay(rawValue: "2026-08-12")!)
+        try source.updateRawText("Beach day.", for: draft)
+        for name in ["a", "b"] {
+            let photo = tempDirectory().appendingPathExtension("jpg")
+            try Data("photo \(name)".utf8).write(to: photo)
+            try source.attachMedia(from: photo, kind: .photo, to: draft, fileStore: files)
+        }
+        let folder = tempDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        _ = try source.exportAll(to: folder, fileStore: files)
+
+        let destination = try makeStore()
+        let destinationFiles = try MediaFileStore(root: tempDirectory())
+        _ = try await destination.importJournal(from: folder, fileStore: destinationFiles)
+        let imported = try #require(try destination.draft(id: draft.id))
+        #expect(imported.media.count == 2)
+
+        // As if the first run had stopped after one photo.
+        let lost = try #require(imported.orderedMedia.last)
+        try destination.removeMedia(id: lost.id, from: imported, fileStore: destinationFiles)
+        destination.importBookkeeping.set([draft.id.uuidString], forKey: "journalImport.unfinishedEntries")
+
+        let second = try await destination.importJournal(from: folder, fileStore: destinationFiles)
+        #expect(second.alreadyPresent == 0)
+        #expect(second.attachments == 1, "only the missing photo comes in")
+        #expect(try destination.draft(id: draft.id)?.media.count == 2)
+
+        // Finished now, so a third run leaves it alone.
+        let third = try await destination.importJournal(from: folder, fileStore: destinationFiles)
+        #expect(third.alreadyPresent == 1)
+        #expect(third.attachments == 0)
+    }
+
+    @Test("progress counts every entry and file")
+    func reportsProgress() async throws {
+        let source = try makeStore()
+        let files = try MediaFileStore(root: tempDirectory())
+        for day in ["2026-08-12", "2026-08-13"] {
+            let draft = try source.createDraft(entryDate: CalendarDay(rawValue: day)!)
+            let photo = tempDirectory().appendingPathExtension("jpg")
+            try Data("photo \(day)".utf8).write(to: photo)
+            try source.attachMedia(from: photo, kind: .photo, to: draft, fileStore: files)
+        }
+        let folder = tempDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        _ = try source.exportAll(to: folder, fileStore: files)
+
+        var seen: [JournalImportProgress] = []
+        _ = try await makeStore().importJournal(from: folder, fileStore: try MediaFileStore(root: tempDirectory())) {
+            seen.append($0)
+        }
+        #expect(seen.first == JournalImportProgress(entriesTotal: 2, filesTotal: 2))
+        #expect(seen.last == JournalImportProgress(entriesDone: 2, entriesTotal: 2, filesDone: 2, filesTotal: 2))
+        #expect(seen.last?.fraction == 1)
+    }
+
     /// Import must never be able to lose what is already here.
     @Test("import adds and never touches what is already on the device")
-    func importIsAdditive() throws {
+    func importIsAdditive() async throws {
         let store = try makeStore()
         let mine = try store.createDraft(entryDate: CalendarDay(rawValue: "2026-01-01")!)
         try store.updateRawText("Written on this phone.", for: mine)
@@ -181,7 +246,7 @@ struct JournalImportTests {
         let files = try MediaFileStore(root: tempDirectory())
         _ = try other.exportAll(to: folder, fileStore: files)
 
-        _ = try store.importJournal(from: folder, fileStore: files)
+        _ = try await store.importJournal(from: folder, fileStore: files)
 
         let texts = try store.allDrafts().map(\.content.rawText).sorted()
         #expect(texts == ["Written on this phone.", "Written somewhere else."])
@@ -189,7 +254,7 @@ struct JournalImportTests {
 
     /// Rule 3, and the one that matters most: a missing photo must not cost the writing.
     @Test("an entry whose attachment is gone still arrives with its text")
-    func missingAttachmentDoesNotLoseWords() throws {
+    func missingAttachmentDoesNotLoseWords() async throws {
         let folder = tempDirectory()
         defer { try? FileManager.default.removeItem(at: folder) }
         try Data("""
@@ -209,7 +274,7 @@ struct JournalImportTests {
 
         let store = try makeStore()
         let files = try MediaFileStore(root: tempDirectory())
-        let report = try store.importJournal(from: folder, fileStore: files)
+        let report = try await store.importJournal(from: folder, fileStore: files)
 
         #expect(report.added == 1)
         #expect(report.missingAttachments == ["media/2026-08-14/gone.jpg"])
@@ -217,7 +282,7 @@ struct JournalImportTests {
     }
 
     @Test("one unreadable file does not abandon the rest")
-    func oneBadFileIsSurvivable() throws {
+    func oneBadFileIsSurvivable() async throws {
         let folder = tempDirectory()
         defer { try? FileManager.default.removeItem(at: folder) }
         try Data("this is not an entry".utf8)
@@ -225,7 +290,7 @@ struct JournalImportTests {
         try Data("---\ndate: 2026-08-14\n---\n\nFine.".utf8)
             .write(to: folder.appendingPathComponent("good.md"))
 
-        let report = try makeStore().importJournal(
+        let report = try await makeStore().importJournal(
             from: folder, fileStore: MediaFileStore(root: tempDirectory())
         )
         #expect(report.added == 1)
@@ -233,7 +298,7 @@ struct JournalImportTests {
     }
 
     @Test("the exporter's own README is not mistaken for an entry")
-    func readmeIsIgnored() throws {
+    func readmeIsIgnored() async throws {
         let store = try makeStore()
         let draft = try store.createDraft(entryDate: CalendarDay(rawValue: "2026-08-14")!)
         try store.updateRawText("Words.", for: draft)
@@ -243,7 +308,7 @@ struct JournalImportTests {
         let files = try MediaFileStore(root: tempDirectory())
         _ = try store.exportAll(to: folder, fileStore: files)
 
-        let report = try makeStore().importJournal(from: folder, fileStore: files)
+        let report = try await makeStore().importJournal(from: folder, fileStore: files)
         #expect(report.unreadable.isEmpty, "README.md is a note to a human, not a failure")
         #expect(report.added == 1)
     }
@@ -251,7 +316,7 @@ struct JournalImportTests {
     // MARK: - Exporting a subset
 
     @Test("only the chosen entries are written")
-    func exportsASubset() throws {
+    func exportsASubset() async throws {
         let store = try makeStore()
         var ids: [UUID] = []
         for day in ["2026-08-12", "2026-08-13", "2026-08-14"] {
@@ -268,7 +333,7 @@ struct JournalImportTests {
         )
 
         #expect(summary.entries == 2)
-        let days = try makeStore()
+        let days = try await makeStore()
             .importJournal(from: folder, fileStore: files)
         #expect(days.added == 2)
     }

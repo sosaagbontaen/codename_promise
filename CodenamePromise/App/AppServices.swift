@@ -22,6 +22,8 @@ final class AppServices {
         let sync: SyncCoordinator
         /// Lives as long as the app, not as long as the import sheet. See `ImportCoordinator`.
         let imports: ImportCoordinator
+        /// The same, for bringing back an exported journal. See `JournalImportCoordinator`.
+        let journalImport: JournalImportCoordinator
         let connection: any NotionConnectionService
         /// Kept so Settings can test the connection without rebuilding one.
         let client: APIClient
@@ -135,6 +137,7 @@ final class AppServices {
                         fileStore: files,
                         sessions: try ImportSessionStore.makeDefault()
                     ),
+                    journalImport: JournalImportCoordinator(store: store, fileStore: files),
                     connection: HTTPNotionConnectionService(client: client),
                     client: client
                 )
@@ -160,6 +163,7 @@ final class AppServices {
     var organising: OrganisingCoordinator? { ready?.organising }
     var sync: SyncCoordinator? { ready?.sync }
     var imports: ImportCoordinator? { ready?.imports }
+    var journalImport: JournalImportCoordinator? { ready?.journalImport }
     var apiClient: APIClient? { ready?.client }
 
     /// `nil` when there is no backend at all, which the settings screen presents as
