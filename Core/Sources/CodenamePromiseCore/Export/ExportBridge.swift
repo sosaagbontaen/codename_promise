@@ -113,6 +113,10 @@ extension DraftStore {
         /// Markdown files that could not be read at all.
         public var unreadable: [String] = []
 
+        public init(unreadable: [String] = []) {
+            self.unreadable = unreadable
+        }
+
         public var isCompleteRecord: Bool {
             missingAttachments.isEmpty && unreadable.isEmpty
         }

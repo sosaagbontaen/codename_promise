@@ -34,11 +34,15 @@ struct ImportView: View {
                         Button {
                             picking = true
                         } label: {
-                            Label("Choose a journal folder", systemImage: "folder.badge.plus")
+                            Label("Choose journal folders", systemImage: "folder.badge.plus")
                         }
 
                     case .working(let progress):
                         VStack(alignment: .leading, spacing: 8) {
+                            if let folder = importer.folder, folder.of > 1 {
+                                Text("\(folder.name), \(folder.number) of \(folder.of)")
+                                    .font(.subheadline.weight(.semibold))
+                            }
                             ProgressView(value: progress.fraction)
                             Text(progress.readTotal == 0
                                  ? "Opening the folder\u{2026}"
@@ -68,7 +72,7 @@ struct ImportView: View {
                             .foregroundStyle(Brand.failed)
                     }
                 } footer: {
-                    Text("Pick the folder an export produced. If you have the zip, uncompress it in Files first, then choose the folder inside.\n\nFastest for a big journal: plug this iPhone into your Mac, open it in Finder, and drag the folders onto DumpNotes under Files. Then choose them here from On My iPhone, DumpNotes. Nothing has to download from iCloud.\n\nNothing already on this phone is changed or removed. An entry that is already here is left alone, so importing the same folder twice is safe.")
+                    Text("Pick the folders an export produced, as many as you like, or the one folder that holds them all. Each is imported in turn. If you have the zip, uncompress it in Files first, then choose the folder inside.\n\nFastest for a big journal: plug this iPhone into your Mac, open it in Finder, and drag the folders onto DumpNotes under Files. Then choose them here from On My iPhone, DumpNotes. Nothing has to download from iCloud.\n\nNothing on this phone is removed. An entry already here is skipped, or brought up to date when the folder has a newer version, keeping anything you have written in it since. Importing the same folders twice is safe.")
                 }
                 // What came in, so an import is something you can look through rather than a
                 // number. Each opens the entry.
@@ -111,11 +115,11 @@ struct ImportView: View {
             .fileImporter(
                 isPresented: $picking,
                 allowedContentTypes: [.folder],
-                allowsMultipleSelection: false
+                allowsMultipleSelection: true
             ) { result in
                 switch result {
                 case .success(let urls):
-                    if let url = urls.first { importer.start(url) }
+                    importer.start(urls)
                 case .failure:
                     // Cancelling is a `.failure` on some paths and is not an error.
                     break
@@ -143,6 +147,9 @@ struct ImportView: View {
         }
         if report.attachments > 0 {
             row("Photos and recordings", "\(report.attachments)", Brand.muted)
+        }
+        if report.updated > 0 {
+            row("Brought up to date", "\(report.updated)", Brand.muted)
         }
         if report.additionsWaiting > 0 {
             // Not a problem: those entries' year hasn't been imported, and it brings them.
