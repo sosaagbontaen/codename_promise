@@ -103,12 +103,6 @@ struct JournalView: View {
     var body: some View {
         NavigationStack(path: $path) {
             Group {
-                if searching, let search = services.search, let store = services.store, let files = services.files {
-                    SearchResultsView(search: search, store: store, fileStore: files,
-                                      query: query, filter: searchFilter) { id, words in
-                        path.append(OpeningDraft(id: id, highlight: words))
-                    }
-                } else {
                     ScrollViewReader { proxy in
                         ScrollView {
                             Group {
@@ -144,6 +138,18 @@ struct JournalView: View {
                         }
 
                     }
+            }
+            .accessibilityHidden(searching)
+            // Laid over the journal rather than swapped in for it: the journal keeps its
+            // place for when search closes, and the header above stays the same view, which
+            // its opening animation depends on.
+            .overlay {
+                if searching, let search = services.search, let store = services.store, let files = services.files {
+                    SearchResultsView(search: search, store: store, fileStore: files,
+                                      query: query, filter: searchFilter) { id, words in
+                        path.append(OpeningDraft(id: id, highlight: words))
+                    }
+                    .transition(.opacity)
                 }
             }
             .background(Brand.ground)
@@ -153,13 +159,10 @@ struct JournalView: View {
                 Group {
                     if selecting {
                         selectionHeader
-                    } else if searching {
-                        JournalSearchBar(query: $query, filter: $searchFilter) {
-                            withAnimation(.easeInOut(duration: 0.2)) { searching = false }
-                            query = ""
-                            searchFilter = SearchFilter()
+                    } else if services.search != nil {
+                        JournalSearchBar(isOpen: $searching, query: $query, filter: $searchFilter) {
+                            modeSwitcher
                         }
-                        .transition(.opacity.combined(with: .move(edge: .trailing)))
                     } else {
                         header
                     }
@@ -243,21 +246,11 @@ struct JournalView: View {
 
     // MARK: - Header
 
+    /// Without search (its index couldn't be opened), just the wordmark and the views.
     private var header: some View {
         HStack {
             Wordmark(size: 26)
             Spacer()
-            if services.search != nil {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { searching = true }
-                } label: {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(Brand.ink)
-                        .frame(width: 36, height: 32)
-                }
-                .accessibilityLabel("Search")
-            }
             modeSwitcher
         }
         .padding(.top, 8)
