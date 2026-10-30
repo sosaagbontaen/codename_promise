@@ -39,7 +39,21 @@ public final class InboxDrainer {
         // Listing the folder is file system work, possibly against iCloud Drive, so it runs
         // off the main thread. Only filing, which touches the journal, comes back to it.
         let scanner = self.scanner
-        let scan = await Task.detached(priority: .utility) { scanner.scan(inbox) }.value
+        var scan = await Task.detached(priority: .utility) { scanner.scan(inbox) }.value
+
+        // A capture folder iCloud knows about but hasn't downloaded lists as empty: on the
+        // phone it showed in the Files app with a download button, and the inbox read it as
+        // still arriving and never asked for it, so it waited forever. Asking for each such
+        // folder downloads its contents; then the inbox looks again.
+        if !scan.arriving.isEmpty {
+            let folders = scan.arriving
+            await withTaskGroup(of: Void.self) { group in
+                for folder in folders {
+                    group.addTask { await Self.refreshListing(of: folder) }
+                }
+            }
+            scan = await Task.detached(priority: .utility) { scanner.scan(inbox) }.value
+        }
         report.waiting = scan.arriving.count + scan.notDownloaded.count
 
         // Asking is harmless for a folder that isn't in iCloud Drive; it just fails.
