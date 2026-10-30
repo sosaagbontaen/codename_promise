@@ -105,13 +105,27 @@ struct SearchResultsView: View {
 
     // MARK: - Sections
 
+    /// How far photo reading has got, and a way to finish it in one go.
     private var readingProgress: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ProgressView(value: Double(search.photosRead), total: Double(search.photosTotal))
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                ProgressView(value: Double(search.photosRead), total: Double(search.photosTotal))
+                    .tint(Brand.violet)
+                Text(search.finishing
+                     ? "Reading \(search.photosRead.formatted()) of \(search.photosTotal.formatted()) photos. You can leave the app."
+                     : "\(search.photosRead.formatted()) of \(search.photosTotal.formatted()) photos searchable so far")
+                    .font(Type.caption(12))
+                    .foregroundStyle(Brand.muted)
+            }
+            if !search.finishing {
+                Button("Finish now") {
+                    Task { await search.finishNow() }
+                }
+                .font(Type.label(13, .semibold))
+                .buttonStyle(.borderedProminent)
                 .tint(Brand.violet)
-            Text("Reading photos: \(search.photosRead.formatted()) of \(search.photosTotal.formatted()). Photos not read yet won't show up in results.")
-                .font(Type.caption(12))
-                .foregroundStyle(Brand.muted)
+                .controlSize(.small)
+            }
         }
     }
 

@@ -86,17 +86,25 @@ final class SearchCoordinator {
         }
     }
 
+    /// True while "Finish now" is running the rest as one job.
+    private(set) var finishing = false
+
     /// Reads every photo and video not read yet. One pass at a time.
     private func readPhotos() {
         guard photoPass == nil else { return }
+        photoPass = startPass(width: 3, priority: .utility)
+    }
+
+    private func startPass(width: Int, priority: TaskPriority) -> Task<Void, Never> {
         readingPhotos = true
         let container = store.context.container
         let index = index
         let fileStore = fileStore
         let changed = journalChanged
         _ = changed.take()
-        photoPass = Task.detached(priority: .background) { [weak self] in
-            await Self.readPhotos(container: container, index: index, fileStore: fileStore, changed: changed) { read, total in
+        return Task.detached(priority: priority) { [weak self] in
+            await Self.readPhotos(container: container, index: index, fileStore: fileStore,
+                                  changed: changed, width: width) { read, total in
                 self?.photosRead = read
                 self?.photosTotal = total
             }
@@ -107,17 +115,42 @@ final class SearchCoordinator {
         }
     }
 
+    /// Reads everything left as one job: more photos at once, at full priority, the screen
+    /// kept on, and its progress on the Lock Screen so it carries on when the app is left.
+    func finishNow() async {
+        guard !finishing else { return }
+        finishing = true
+        defer { finishing = false }
+        // The everyday pass makes way rather than running beside it.
+        photoPass?.cancel()
+        await photoPass?.value
+        await BackgroundWork.run(title: "Reading photos for search") { report in
+            let pass = startPass(width: 4, priority: .userInitiated)
+            photoPass = pass
+            let watcher = Task { @MainActor in
+                while !Task.isCancelled {
+                    report(photosRead, max(photosTotal, 1),
+                           "\(photosRead.formatted()) of \(photosTotal.formatted()) photos read")
+                    try? await Task.sleep(for: .seconds(1))
+                }
+            }
+            await pass.value
+            watcher.cancel()
+        }
+    }
+
     nonisolated private static func readPhotos(
         container: ModelContainer,
         index: SearchIndex,
         fileStore: MediaFileStore,
         changed: Flag,
+        width: Int,
         progress: @escaping @MainActor (Int, Int) -> Void
     ) async {
         planning: while !Task.isCancelled {
             let context = ModelContext(container)
             guard let items = try? context.fetch(FetchDescriptor<MediaItem>()) else { return }
-            struct Pending { let id: UUID; let draftId: UUID; let day: String; let url: URL; let isVideo: Bool }
+            struct Pending: Sendable { let id: UUID; let draftId: UUID; let day: String; let url: URL; let isVideo: Bool }
             let all: [Pending] = items.compactMap { item in
                 guard let draft = item.draft else { return nil }
                 return Pending(id: item.id, draftId: draft.id, day: draft.entryDateKey,
@@ -147,38 +180,55 @@ final class SearchCoordinator {
             // run out of time while Vision loads its models.
             var queue = waiting[...]
             var retried = Set<UUID>()
-            while let item = queue.popFirst() {
-                if Task.isCancelled { break }
-                switch await PhotoReader.read(item.url, isVideo: item.isVideo) {
-                case .read(let reading):
-                    stalledInARow = 0
-                    batch.append(.init(id: item.id, draftId: item.draftId, day: item.day,
-                                       words: reading.words, labels: reading.labels, complete: reading.complete))
-                case .unreadable:
-                    // Not downloaded from iCloud yet, most likely. Not recorded, so the next
-                    // pass tries it again.
-                    break
-                case .timedOut:
-                    stalledInARow += 1
-                    if retried.insert(item.id).inserted {
-                        queue.append(item)
-                        continue
+            var replan = false
+            // Several photos at once: Vision spends much of each one waiting on the Neural
+            // Engine, so a few in flight keep it busy.
+            await withTaskGroup(of: (Pending, PhotoReader.Outcome).self) { group in
+                var inFlight = 0
+                func launch() {
+                    while inFlight < width, let item = queue.popFirst() {
+                        inFlight += 1
+                        group.addTask { (item, await PhotoReader.read(item.url, isVideo: item.isVideo)) }
                     }
                 }
-                // Vision stalling on photo after photo is Vision, not the photos: stop and try
-                // again next launch rather than spend the battery waiting on it.
-                if stalledInARow >= 3 { break }
-                done += 1
-                if batch.count >= 24 {
-                    await index.indexMedia(batch)
-                    batch.removeAll()
-                    await progress(done, all.count)
+                launch()
+                while let (item, outcome) = await group.next() {
+                    inFlight -= 1
+                    if Task.isCancelled { group.cancelAll(); return }
+                    switch outcome {
+                    case .read(let reading):
+                        stalledInARow = 0
+                        batch.append(.init(id: item.id, draftId: item.draftId, day: item.day,
+                                           words: reading.words, labels: reading.labels, complete: reading.complete))
+                        done += 1
+                    case .unreadable:
+                        // Not downloaded from iCloud yet, most likely. Not recorded, so the
+                        // next pass tries it again.
+                        done += 1
+                    case .timedOut:
+                        stalledInARow += 1
+                        if retried.insert(item.id).inserted { queue.append(item) } else { done += 1 }
+                    }
+                    // Vision stalling on photo after photo is Vision, not the photos: stop and
+                    // try again next launch rather than spend the battery waiting on it.
+                    if stalledInARow >= 3 + width { group.cancelAll(); return }
+                    if batch.count >= 24 {
+                        await index.indexMedia(batch)
+                        batch.removeAll()
+                        await progress(done, all.count)
+                    }
+                    if changed.take() {
+                        // Something was added or moved: plan again, so it's read next.
+                        replan = true
+                        group.cancelAll()
+                        return
+                    }
+                    launch()
                 }
-                if changed.take() {
-                    // Something was added or moved: plan again, so it's read next.
-                    await index.indexMedia(batch)
-                    continue planning
-                }
+            }
+            if replan {
+                await index.indexMedia(batch)
+                continue planning
             }
             await index.indexMedia(batch)
             await progress(done, all.count)
