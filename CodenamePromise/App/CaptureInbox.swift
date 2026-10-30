@@ -95,25 +95,48 @@ enum CaptureInbox {
 
     // MARK: - Filing
 
+    /// What arrived lately and from where, for Settings to list after the notice is gone.
+    static let history = InboxHistory()
+
+    /// What one pass over the inboxes did.
+    struct Pass {
+        var filed = CaptureIngestor.Outcome()
+        /// What the Mac folder held: filed now, still coming down from iCloud, or unreadable.
+        var fromMac = CaptureIngestor.Outcome()
+        var macWaiting = 0
+        var macFailed = 0
+        /// False when no Mac folder is connected or it couldn't be opened.
+        var reachedMac = false
+    }
+
     /// Files everything waiting in both inboxes, then refreshes the index they read.
-    static func drain(store: DraftStore, files: MediaFileStore) async -> CaptureIngestor.Outcome {
+    @discardableResult
+    static func drain(store: DraftStore, files: MediaFileStore) async -> Pass {
         let drainer = InboxDrainer(
             ingestor: CaptureIngestor(store: store, fileStore: files),
             ledger: IngestLedger()
         )
-        var filed = CaptureIngestor.Outcome()
+        var pass = Pass()
 
-        filed += await drainer.drain(appInbox).filed
+        let shared = await drainer.drain(appInbox).filed
+        history.record(shared, from: .shareSheet)
+        pass.filed += shared
         clearAbandonedStaging(in: appInbox)
 
         // The scope has to stay open across the await, so this can't use `withMacFolder`.
         if let mac = resolvedMacFolder() {
-            filed += await drainer.drain(mac.url).filed
+            let report = await drainer.drain(mac.url)
             if mac.scoped { mac.url.stopAccessingSecurityScopedResource() }
+            history.record(report.filed, from: .mac)
+            pass.filed += report.filed
+            pass.fromMac = report.filed
+            pass.macWaiting = report.waiting
+            pass.macFailed = report.failed
+            pass.reachedMac = mac.scoped || debugOverride != nil
         }
 
         await writeIndex(store: store)
-        return filed
+        return pass
     }
 
     /// The share sheet copies into `.staging` before it writes a capture. If iOS ended it
@@ -185,22 +208,26 @@ enum CaptureInbox {
 
     /// "2 photos and a note", for the notice the list shows.
     static func describe(_ outcome: CaptureIngestor.Outcome) -> String {
+        let entries = outcome.entryIds.count
+        return "Added \(list(photos: outcome.photos, videos: outcome.videos, recordings: outcome.recordings, notes: outcome.jots)) from your inbox to \(entries == 1 ? "an entry" : "\(entries) entries")."
+    }
+
+    /// "2 photos and a note"; "nothing" when every count is zero.
+    static func list(photos: Int = 0, videos: Int = 0, media: Int = 0, recordings: Int, notes: Int) -> String {
         var parts: [String] = []
         func add(_ n: Int, _ one: String, _ many: String) {
             guard n > 0 else { return }
             parts.append(n == 1 ? "a \(one)" : "\(n) \(many)")
         }
-        add(outcome.photos, "photo", "photos")
-        add(outcome.videos, "video", "videos")
-        add(outcome.recordings, "recording", "recordings")
-        add(outcome.jots, "note", "notes")
-        let list: String
+        add(photos, "photo", "photos")
+        add(videos, "video", "videos")
+        add(media, "photo or video", "photos and videos")
+        add(recordings, "recording", "recordings")
+        add(notes, "note", "notes")
         switch parts.count {
-        case 0: list = "nothing"
-        case 1: list = parts[0]
-        default: list = parts.dropLast().joined(separator: ", ") + " and " + parts.last!
+        case 0: return "nothing"
+        case 1: return parts[0]
+        default: return parts.dropLast().joined(separator: ", ") + " and " + parts.last!
         }
-        let entries = outcome.entryIds.count
-        return "Added \(list) from your inbox to \(entries == 1 ? "an entry" : "\(entries) entries")."
     }
 }

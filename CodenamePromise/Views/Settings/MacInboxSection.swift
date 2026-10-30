@@ -1,15 +1,27 @@
+import CodenamePromiseCore
+import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Connects the phone to the folder the Mac capture panel writes to.
+/// Connects the phone to the folder the Mac capture panel writes to, and shows what's come
+/// in from it.
 ///
-/// A one-time step. The phone can't go looking in iCloud Drive on its own; picking the folder
-/// here grants it access to that one folder, which it keeps until it's disconnected.
+/// Connecting is a one-time step. The phone can't go looking in iCloud Drive on its own;
+/// picking the folder here grants it access to that one folder, which it keeps until it's
+/// disconnected.
+///
+/// The phone files whatever is in the folder each time DumpNotes opens, and the folder is
+/// emptied as it goes, so by the time anyone taps "Check now" there is usually nothing left
+/// to find. That's why this lists what arrived, rather than only what's waiting.
 struct MacInboxSection: View {
     @Environment(AppServices.self) private var services
     @State private var picking = false
     @State private var connectedName = CaptureInbox.macFolderName
     @State private var problem: String?
+    @State private var checking = false
+    /// What the last "Check now" found, said in a line under the button.
+    @State private var checkResult: String?
+    @State private var arrivals: [InboxHistory.Arrival] = []
 
     var body: some View {
         Section {
@@ -19,12 +31,25 @@ struct MacInboxSection: View {
                 } label: {
                     Label("Mac inbox", systemImage: "laptopcomputer.and.arrow.down")
                 }
-                Button("Check now") {
-                    Task { await services.drainInbox() }
+                Button {
+                    Task { await check() }
+                } label: {
+                    HStack {
+                        Text("Check now")
+                        Spacer()
+                        if checking { ProgressView() }
+                    }
+                }
+                .disabled(checking)
+                if let checkResult {
+                    Text(checkResult)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
                 Button("Disconnect", role: .destructive) {
                     CaptureInbox.disconnectMacFolder()
                     self.connectedName = nil
+                    checkResult = nil
                 }
             } else {
                 Button {
@@ -39,7 +64,7 @@ struct MacInboxSection: View {
         } footer: {
             Text(connectedName == nil
                  ? "Open DumpNotes Capture on your Mac once, then choose its \u{201C}DumpNotes Inbox\u{201D} folder in iCloud Drive."
-                 : "Anything you dump on your Mac shows up here the next time you open DumpNotes.")
+                 : "Anything you dump on your Mac is added to your journal each time you open DumpNotes, so it\u{2019}s usually in before you check.")
         }
         .fileImporter(isPresented: $picking, allowedContentTypes: [.folder]) { result in
             switch result {
@@ -48,7 +73,7 @@ struct MacInboxSection: View {
                     try CaptureInbox.connectMacFolder(url)
                     connectedName = CaptureInbox.macFolderName
                     problem = nil
-                    Task { await services.drainInbox() }
+                    Task { await check() }
                 } catch {
                     problem = "Couldn\u{2019}t connect that folder. Try choosing it again."
                 }
@@ -56,5 +81,94 @@ struct MacInboxSection: View {
                 break
             }
         }
+        .onAppear { arrivals = CaptureInbox.history.arrivals(from: .mac) }
+
+        if connectedName != nil {
+            Section {
+                if arrivals.isEmpty {
+                    Text("Nothing yet. Dumps from your Mac will be listed here once they\u{2019}re in your journal.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(arrivals.prefix(30)) { arrival in
+                        ArrivalRow(arrival: arrival)
+                    }
+                }
+            } header: {
+                Text("Recently from your Mac")
+            }
+        }
+    }
+
+    private func check() async {
+        checking = true
+        defer { checking = false }
+        guard let pass = await services.drainInbox() else {
+            // Another pass was already running; it'll have done the same work.
+            arrivals = CaptureInbox.history.arrivals(from: .mac)
+            return
+        }
+        arrivals = CaptureInbox.history.arrivals(from: .mac)
+        let mac = pass.fromMac
+        var lines: [String] = []
+        if !pass.reachedMac {
+            lines.append("Couldn\u{2019}t open the Mac inbox folder. Try disconnecting and connecting it again.")
+        } else if mac.isEmpty {
+            lines.append("Nothing new waiting.")
+        } else {
+            lines.append("Brought in \(CaptureInbox.list(photos: mac.photos, videos: mac.videos, recordings: mac.recordings, notes: mac.jots)).")
+        }
+        if pass.macWaiting > 0 {
+            lines.append("\(pass.macWaiting) still coming down from iCloud. They\u{2019}ll be added once they arrive.")
+        }
+        if pass.macFailed > 0 {
+            lines.append("\(pass.macFailed) couldn\u{2019}t be read yet and will be tried again.")
+        }
+        checkResult = lines.joined(separator: " ")
+    }
+}
+
+/// One arrival: which entry it went into, when, and what it brought. Opens the entry.
+private struct ArrivalRow: View {
+    let arrival: InboxHistory.Arrival
+    @Environment(AppServices.self) private var services
+
+    var body: some View {
+        if let title {
+            NavigationLink {
+                EntryScreen(id: arrival.entryId)
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).lineLimit(1)
+                    Text("\(when) \u{00B7} \(contents)")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    /// The entry's title, or nothing when it has since been deleted.
+    private var title: String? {
+        guard let draft = try? services.store?.draft(id: arrival.entryId), !draft.isTrashed else { return nil }
+        // Titled the way the journal titles it, so it's recognisably the same entry.
+        return DraftSummary(draft).title
+    }
+
+    /// What it brought, telling photos from videos where they're still in the journal.
+    private var contents: String {
+        let ids = arrival.mediaIds
+        let items = (try? services.store?.context.fetch(FetchDescriptor<MediaItem>(predicate: #Predicate { ids.contains($0.id) }))) ?? []
+        let videos = items.filter { $0.kind == .video }.count
+        let photos = items.count - videos
+        return CaptureInbox.list(photos: photos, videos: videos, media: arrival.media - items.count,
+                                 recordings: arrival.recordings, notes: arrival.notes)
+    }
+
+    private var when: String {
+        let date = arrival.date
+        if Calendar.current.isDateInToday(date) { return "Today, \(date.formatted(date: .omitted, time: .shortened))" }
+        if Calendar.current.isDateInYesterday(date) { return "Yesterday, \(date.formatted(date: .omitted, time: .shortened))" }
+        return date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
     }
 }

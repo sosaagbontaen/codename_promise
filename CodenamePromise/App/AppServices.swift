@@ -231,18 +231,21 @@ final class AppServices {
 
     /// Files whatever the share sheet or the Mac left in the inbox. Runs on launch and every
     /// time the app comes forward, which is when someone who just shared something looks.
-    func drainInbox() async {
-        guard let store, let files, !drainingInbox else { return }
+    @discardableResult
+    func drainInbox() async -> CaptureInbox.Pass? {
+        guard let store, let files, !drainingInbox else { return nil }
         drainingInbox = true
         defer { drainingInbox = false }
-        let filed = await CaptureInbox.drain(store: store, files: files)
-        guard !filed.isEmpty else { return }
+        let pass = await CaptureInbox.drain(store: store, files: files)
+        let filed = pass.filed
+        guard !filed.isEmpty else { return pass }
         // Accumulates until dismissed, so two passes before anyone looks both show up.
         inboxDigest += filed
         inboxNotice = CaptureInbox.describe(inboxDigest)
         backgroundWrites += 1
         // Recordings dropped in from the Mac join the same queue as ones made here.
         if filed.recordings > 0 { await drainTranscriptions() }
+        return pass
     }
 
     func dismissInboxNotice() {
