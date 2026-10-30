@@ -32,6 +32,7 @@ struct MediaViewer: View {
     @AppStorage("viewerLayout") private var layout: Layout = .single
     /// How far the photo has been pulled down, to follow the finger before it closes.
     @State private var pull: CGFloat = 0
+    @State private var pullAxis: Axis?
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -57,7 +58,10 @@ struct MediaViewer: View {
                 }
             }
             .offset(y: pull)
-            .gesture(layout == .single ? pullToClose : nil)
+            // Alongside the pager's own swipe rather than in place of it. As a plain gesture it
+            // could take over a swipe that drifted downward partway through, and the pager,
+            // never told the finger had lifted, was left stuck between two photos.
+            .simultaneousGesture(layout == .single ? pullToClose : nil)
 
             topBar
 
@@ -73,20 +77,26 @@ struct MediaViewer: View {
     }
 
     private var pullToClose: some Gesture {
-                DragGesture(minimumDistance: 20)
-                    .onChanged { value in
-                        // Only a downward pull, so swiping sideways still pages.
-                        if value.translation.height > abs(value.translation.width) {
-                            pull = value.translation.height
-                        }
-                    }
-                    .onEnded { value in
-                        if value.translation.height > 120 {
-                            dismiss()
-                        } else {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { pull = 0 }
-                        }
-                    }
+        DragGesture(minimumDistance: 20)
+            .onChanged { value in
+                // Which way the drag is going is decided once, at its start: a sideways swipe
+                // stays a swipe however it wanders, and only a downward one pulls to close.
+                if pullAxis == nil {
+                    pullAxis = value.translation.height > abs(value.translation.width) ? .vertical : .horizontal
+                }
+                if pullAxis == .vertical {
+                    pull = max(value.translation.height, 0)
+                }
+            }
+            .onEnded { value in
+                let closing = pullAxis == .vertical && value.translation.height > 120
+                pullAxis = nil
+                if closing {
+                    dismiss()
+                } else if pull != 0 {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { pull = 0 }
+                }
+            }
     }
 
     private var topBar: some View {
