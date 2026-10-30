@@ -96,7 +96,7 @@ struct InboxTests {
 
         let first = await h.drainer.drain(h.inbox)
         #expect(first.filed.isEmpty)
-        #expect(first.waiting > 0)
+        #expect(first.waiting == 1, "one capture, however many of its files are missing")
         #expect(try h.store.allDrafts().isEmpty)
 
         try FileManager.default.moveItem(at: held, to: photoURL)

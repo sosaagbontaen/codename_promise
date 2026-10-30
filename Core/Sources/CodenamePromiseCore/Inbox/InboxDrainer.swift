@@ -54,7 +54,15 @@ public final class InboxDrainer {
             }
             scan = await Task.detached(priority: .utility) { scanner.scan(inbox) }.value
         }
-        report.waiting = scan.arriving.count + scan.notDownloaded.count
+        // One per capture: a folder still arriving, plus loose files not inside one. A folder's
+        // own missing files are part of it, not more captures.
+        // Compared by the capture folder's name: paths can differ by a symlink (/var and
+        // /private/var) while naming the same folder.
+        let arrivingNames = Set(scan.arriving.map(\.lastPathComponent))
+        let looseWaiting = scan.notDownloaded.filter { url in
+            !arrivingNames.contains(url.deletingLastPathComponent().lastPathComponent)
+        }
+        report.waiting = scan.arriving.count + looseWaiting.count
 
         // Asking is harmless for a folder that isn't in iCloud Drive; it just fails.
         for url in scan.notDownloaded {
