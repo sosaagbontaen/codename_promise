@@ -31,6 +31,11 @@ public final class InboxDrainer {
 
     public func drain(_ inbox: URL) async -> Report {
         var report = Report()
+        // A folder in iCloud Drive lists only what iOS last fetched of it, which can be
+        // minutes behind: a dump the Mac had finished uploading went unseen, and "Check now"
+        // said nothing was waiting. Asking for the folder through a file coordinator makes
+        // iCloud bring the listing up to date first.
+        await Self.refreshListing(of: inbox)
         // Listing the folder is file system work, possibly against iCloud Drive, so it runs
         // off the main thread. Only filing, which touches the journal, comes back to it.
         let scanner = self.scanner
@@ -58,6 +63,23 @@ public final class InboxDrainer {
         return report
     }
 
+    /// Asks iCloud Drive for the folder's current contents and waits for them, up to
+    /// `timeout`. Harmless for a folder that isn't in iCloud Drive: access is granted at once.
+    /// The limit is there because coordination waits on the file provider, and an inbox
+    /// that can't be refreshed is still worth scanning as it stands.
+    nonisolated static func refreshListing(of folder: URL, timeout: Double = 10) async {
+        try? FileManager.default.startDownloadingUbiquitousItem(at: folder)
+        let coordinator = CoordinatorBox(NSFileCoordinator())
+        let intent = NSFileAccessIntent.readingIntent(with: folder, options: [])
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let once = ResumeOnce(continuation)
+            coordinator.value.coordinate(with: [intent], queue: OperationQueue()) { _ in once.resume() }
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
+                if once.resume() { coordinator.value.cancel() }
+            }
+        }
+    }
+
     /// Deletes through a file coordinator, so iCloud Drive hears about it rather than
     /// re-downloading the folder a moment later.
     static func remove(_ url: URL) {
@@ -65,6 +87,31 @@ public final class InboxDrainer {
         NSFileCoordinator().coordinate(writingItemAt: url, options: .forDeleting, error: &coordinationError) { target in
             try? FileManager.default.removeItem(at: target)
         }
+    }
+}
+
+/// A file coordinator shared between the request and its time limit. It's only ever asked
+/// to coordinate once and to cancel, which it allows from any thread.
+private final class CoordinatorBox: @unchecked Sendable {
+    let value: NSFileCoordinator
+    init(_ value: NSFileCoordinator) { self.value = value }
+}
+
+/// Resumes a continuation once, from whichever side gets there first.
+private final class ResumeOnce: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Never>?
+    init(_ continuation: CheckedContinuation<Void, Never>) { self.continuation = continuation }
+
+    /// True if this call was the one that resumed it.
+    @discardableResult
+    func resume() -> Bool {
+        let pending = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+            defer { continuation = nil }
+            return continuation
+        }
+        pending?.resume()
+        return pending != nil
     }
 }
 

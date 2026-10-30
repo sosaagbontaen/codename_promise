@@ -22,6 +22,7 @@ struct MacInboxSection: View {
     /// What the last "Check now" found, said in a line under the button.
     @State private var checkResult: String?
     @State private var arrivals: [InboxHistory.Arrival] = []
+    @State private var confirmingDisconnect = false
 
     var body: some View {
         Section {
@@ -45,11 +46,6 @@ struct MacInboxSection: View {
                     Text(checkResult)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                }
-                Button("Disconnect", role: .destructive) {
-                    CaptureInbox.disconnectMacFolder()
-                    self.connectedName = nil
-                    checkResult = nil
                 }
             } else {
                 Button {
@@ -96,6 +92,23 @@ struct MacInboxSection: View {
                 }
             } header: {
                 Text("Recently from your Mac")
+            }
+
+            // At the bottom, on its own and confirmed: it sat right under "Check now",
+            // close enough to tap by mistake.
+            Section {
+                Button("Disconnect Mac", role: .destructive) {
+                    confirmingDisconnect = true
+                }
+                .confirmationDialog("Disconnect your Mac?", isPresented: $confirmingDisconnect, titleVisibility: .visible) {
+                    Button("Disconnect", role: .destructive) {
+                        CaptureInbox.disconnectMacFolder()
+                        connectedName = nil
+                        checkResult = nil
+                    }
+                } message: {
+                    Text("Dumps from your Mac will stop coming in until you connect it again. Nothing already in your journal is removed.")
+                }
             }
         }
     }
