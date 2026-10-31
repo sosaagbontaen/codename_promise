@@ -15,6 +15,8 @@ struct SettingsView: View {
     /// False when this is a tab rather than a sheet: a tab has nothing to dismiss.
     var showsDone = true
 
+    /// The pages open under More, for a tap you can feel as each one opens.
+    @State private var path: [Page] = []
     @State private var coordinator: ConnectionCoordinator?
     @State private var authenticator = WebAuthenticator()
     @State private var confirmingDisconnect = false
@@ -47,7 +49,7 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 Section("App") {
                     row(.look, "Appearance", "circle.lefthalf.filled", Brand.violet,
@@ -87,6 +89,7 @@ struct SettingsView: View {
             .background(Brand.ground)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .onChange(of: path.count) { old, new in if new > old { Haptics.tap() } }
             .navigationDestination(for: Page.self) { page in
                 pageView(page)
             }
@@ -325,6 +328,7 @@ struct SettingsView: View {
                 Toggle(isOn: reminderBinding) {
                     Label("Remind me to write", systemImage: "bell")
                 }
+                .sensoryFeedback(.selection, trigger: reminderBinding.wrappedValue)
             } footer: {
                 if !services.reminders.isEnabled { Text(reminderFooter) }
             }
@@ -447,6 +451,7 @@ struct SettingsView: View {
             )) {
                 Label("Back up to iCloud", systemImage: "icloud")
             }
+            .sensoryFeedback(.selection, trigger: backupModeRaw)
 
             if let why = services.backupUnavailable {
                 Label(why, systemImage: "exclamationmark.circle")

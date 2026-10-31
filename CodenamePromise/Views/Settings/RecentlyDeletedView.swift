@@ -43,11 +43,9 @@ struct RecentlyDeletedView: View {
     var body: some View {
         List(selection: $selected) {
             if rows.isEmpty {
-                ContentUnavailableView(
-                    "Nothing here",
-                    systemImage: "trash",
-                    description: Text("Deleted entries stay here for 30 days, then go for good.")
-                )
+                EmptyState("Nothing deleted", message: "Deleted entries stay here for 30 days, then go for good.",
+                           mood: .content, props: [.sparkle])
+                .padding(.vertical, 40)
                 .listRowBackground(Color.clear)
             } else {
                 Section {

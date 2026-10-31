@@ -171,7 +171,7 @@ struct DeletedEntryView: View {
                             player.toggle(recording.id, url: fileStore.url(for: recording.relativePath))
                         } label: {
                             Image(systemName: player.playing == recording.id ? "stop.fill" : "play.fill")
-                                .font(.system(size: 14, weight: .bold))
+                                .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .frame(width: 34, height: 34)
                                 .background(playable ? Brand.Mode.voice : Brand.muted.opacity(0.4), in: Circle())

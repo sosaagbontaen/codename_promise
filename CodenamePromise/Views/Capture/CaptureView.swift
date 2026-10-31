@@ -1496,7 +1496,7 @@ private struct RecordingCapsule: View {
                 togglePause()
             } label: {
                 Image(systemName: recorder.isPaused ? "mic.fill" : "pause.fill")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 40, height: 44)
                     .contentShape(Rectangle())
@@ -1522,7 +1522,7 @@ private struct RecordingCapsule: View {
                 stopRecording()
             } label: {
                 Image(systemName: "stop.fill")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 40, height: 44)
                     .contentShape(Rectangle())

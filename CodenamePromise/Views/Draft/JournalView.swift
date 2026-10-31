@@ -17,7 +17,7 @@ struct JournalView: View {
         var symbol: String {
             switch self {
             case .calendar: "calendar"
-            case .list: "list.bullet"
+            case .list: "list.bullet.rectangle"
             case .grid: "square.grid.2x2"
             }
         }
@@ -48,6 +48,10 @@ struct JournalView: View {
     @State private var month = Self.startOfMonth(Date())
     @State private var selectedDay = CalendarDay.today()
     @State private var path: [OpeningDraft] = []
+    /// For the selected view's capsule, which slides to the one you tap.
+    @Namespace private var modeSpace
+    /// Which way the calendar last moved, so the next month slides in from that side.
+    @State private var monthStep = 1
 
     @State private var showingQuickDump = false
     /// The day the dump sheet opens on, when it was opened for one.
@@ -118,6 +122,14 @@ struct JournalView: View {
                                 // pushes it off.
                                 LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                                     notices
+                                    if drafts.isEmpty, loadedRevision != nil, loadError == nil {
+                                        EmptyState(
+                                            "Your journal starts here",
+                                            message: "Tap + to dump a note, a photo, or a recording.",
+                                            props: [.note, .photo, .mic]
+                                        )
+                                        .padding(.top, 80)
+                                    }
                                     switch mode {
                                     case .list: listByMonth
                                     default: gridByMonth
@@ -261,17 +273,26 @@ struct JournalView: View {
         HStack(spacing: 2) {
             ForEach(Mode.allCases, id: \.self) { option in
                 Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { mode = option }
+                    guard mode != option else { return }
+                    Haptics.switched()
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.78)) { mode = option }
                 } label: {
+                    // Three pieces, each with its own motion: the capsule slides across, the
+                    // icon it lands on fills in, and that icon gives a small bounce.
                     Image(systemName: option.symbol)
+                        .symbolVariant(mode == option ? .fill : .none)
+                        .symbolEffect(.bounce.down, value: mode == option)
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(mode == option ? .white : Brand.muted)
                         .frame(width: 38, height: 32)
                         .background {
-                            if mode == option { Capsule().fill(Brand.violet) }
+                            if mode == option {
+                                Capsule().fill(Brand.violet)
+                                    .matchedGeometryEffect(id: "mode", in: modeSpace)
+                            }
                         }
                 }
-                .buttonStyle(.pressable)
+                .buttonStyle(PressableStyle(scale: 0.9, haptic: false))
                 .accessibilityLabel(option.label)
                 .accessibilityAddTraits(mode == option ? .isSelected : [])
             }
@@ -497,14 +518,23 @@ struct JournalView: View {
     private var addButton: some View {
         Button {
             dumpDay = mode == .calendar ? selectedDay : nil
+            Haptics.committed()
             showingQuickDump = true
         } label: {
+            // The plus turns a quarter on its way to the sheet and back when it closes, and
+            // the circle swells a little behind it, so the sheet looks like it came out of
+            // the button rather than from nowhere.
             Image(systemName: "plus")
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundStyle(.white)
+                .rotationEffect(.degrees(showingQuickDump ? 90 : 0))
                 .frame(width: 54, height: 54)
                 .background(Brand.violet, in: Circle())
+                .scaleEffect(showingQuickDump ? 1.12 : 1)
+                .shadow(color: Brand.violet.opacity(0.35), radius: showingQuickDump ? 14 : 8, y: 4)
+                .animation(.spring(response: 0.38, dampingFraction: 0.62), value: showingQuickDump)
         }
+        .buttonStyle(PressableStyle(scale: 0.9, haptic: false))
         .accessibilityLabel("Dump something")
         .padding(.trailing, 20)
         .padding(.bottom, 16)
@@ -526,12 +556,13 @@ struct JournalView: View {
                         }
                     }
                 } label: {
-                    Image(systemName: filter == .all
-                          ? "line.3.horizontal.decrease.circle"
-                          : "line.3.horizontal.decrease.circle.fill")
+                    Image(systemName: "line.3.horizontal.decrease.circle")
+                        .symbolVariant(filter == .all ? .none : .fill)
+                        .contentTransition(.symbolEffect(.replace))
                         .foregroundStyle(filter == .all ? Brand.ink : Brand.violet)
                 }
                 .accessibilityLabel("Filter days")
+                .onChange(of: filter) { Haptics.picked() }
                 .padding(.trailing, 14)
                 Button { shiftMonth(-1) } label: { Image(systemName: "chevron.left") }
                     .accessibilityLabel("Previous month")
@@ -555,14 +586,26 @@ struct JournalView: View {
                         .foregroundStyle(Brand.muted)
                         .frame(height: 20)
                 }
-                ForEach(Array(monthCells.enumerated()), id: \.offset) { _, day in
-                    if let day {
-                        dayCell(day)
-                    } else {
-                        Color.clear.frame(height: 42)
+            }
+            // The days slide in from the side you moved toward; the weekdays above stay put.
+            ZStack(alignment: .top) {
+                LazyVGrid(columns: columns, spacing: 6) {
+                    ForEach(Array(monthCells.enumerated()), id: \.offset) { _, day in
+                        if let day {
+                            dayCell(day)
+                        } else {
+                            Color.clear.frame(height: 42)
+                        }
                     }
                 }
+                .id(month)
+                .transition(.asymmetric(
+                    insertion: .move(edge: monthStep > 0 ? .trailing : .leading).combined(with: .opacity),
+                    removal: .move(edge: monthStep > 0 ? .leading : .trailing).combined(with: .opacity)
+                ))
             }
+            .clipped()
+            .padding(.top, -6)
         }
         .gesture(
             DragGesture(minimumDistance: 30).onEnded { value in
@@ -583,8 +626,8 @@ struct JournalView: View {
         let marked = matches(day, kind: kind)
         let showsMissing = filter == .missing
         return Button {
-            selectedDay = day
             Haptics.picked()
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { selectedDay = day }
         } label: {
             Text(day.representativeDate().formatted(.dateTime.day()))
                 .font(Type.label(16, marked || isSelected || isToday ? .semibold : .regular))
@@ -598,7 +641,9 @@ struct JournalView: View {
                 .frame(width: 38, height: 38)
                 .background {
                     if isSelected {
+                        // Slides from the day you were on to the one you tapped.
                         Circle().fill(Brand.violet)
+                            .matchedGeometryEffect(id: "selectedDay", in: modeSpace)
                     } else if marked && showsMissing {
                         Circle().strokeBorder(Brand.muted, style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
                     } else if marked {
@@ -675,15 +720,15 @@ struct JournalView: View {
     }
 
     private var emptyDay: some View {
-        VStack(spacing: 10) {
-            Text("No entries yet")
-                .font(Type.label(16, .semibold))
-                .foregroundStyle(Brand.ink)
-            if selectedDay <= CalendarDay.today() {
-                Text("Add a note, photo, or memory from this day.")
-                    .font(Type.body(14))
-                    .foregroundStyle(Brand.muted)
-                    .multilineTextAlignment(.center)
+        let past = selectedDay <= CalendarDay.today()
+        return EmptyState(
+            title: past ? "Nothing from this day yet" : "This day hasn\u{2019}t happened yet",
+            message: past ? "Add a note, photo, or memory from it." : nil,
+            mood: past ? .waiting : .content,
+            props: past ? [.note, .photo, .mic] : [],
+            mascotWidth: 120
+        ) {
+            if past {
                 Button {
                     dumpDay = selectedDay
                     showingQuickDump = true
@@ -695,11 +740,10 @@ struct JournalView: View {
                         .foregroundStyle(.white)
                         .background(Brand.violet, in: Capsule())
                 }
-                .padding(.top, 4)
+                .buttonStyle(.pressablePrimary)
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 26)
+        .padding(.vertical, 18)
     }
 
     // MARK: - List
@@ -813,7 +857,9 @@ struct JournalView: View {
 
     private func shiftMonth(_ by: Int) {
         if let next = Calendar.current.date(byAdding: .month, value: by, to: month) {
-            withAnimation(.easeInOut(duration: 0.2)) { month = Self.startOfMonth(next) }
+            Haptics.tap()
+            monthStep = by
+            withAnimation(.spring(response: 0.36, dampingFraction: 0.86)) { month = Self.startOfMonth(next) }
         }
     }
 
@@ -1213,7 +1259,8 @@ struct EntryScreen: View {
            let draft = draft(in: store) {
             CaptureView(draft: draft, store: store, fileStore: files, highlight: highlight)
         } else {
-            ContentUnavailableView("Entry no longer exists", systemImage: "tray")
+            EmptyState("This entry isn\u{2019}t here anymore", message: "It may have been deleted. Look in Recently Deleted under More.", mood: .puzzled)
+                .frame(maxHeight: .infinity)
         }
     }
 }

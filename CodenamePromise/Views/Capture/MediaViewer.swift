@@ -50,6 +50,7 @@ struct MediaViewer: View {
                     }
                     // The filmstrip below does what the page dots did, and more.
                     .tabViewStyle(.page(indexDisplayMode: .never))
+                    .onChange(of: selection) { Haptics.tap() }
                     .ignoresSafeArea()
                 case .grid:
                     gridLayout
@@ -85,7 +86,11 @@ struct MediaViewer: View {
                     pullAxis = value.translation.height > abs(value.translation.width) ? .vertical : .horizontal
                 }
                 if pullAxis == .vertical {
-                    pull = max(value.translation.height, 0)
+                    let next = max(value.translation.height, 0)
+                    // A tick as the pull passes the point where letting go closes, and again
+                    // if it's pulled back, so you can feel which way it'll go.
+                    if (pull > 120) != (next > 120) { Haptics.tap() }
+                    pull = next
                 }
             }
             .onEnded { value in

@@ -7,9 +7,23 @@ import UIKit
 /// only reassures you if you look at it, and while dictating you are not looking at anything.
 /// A tap you can feel does the same job with your eyes closed.
 ///
-/// Deliberately sparse. Haptics stop meaning anything if everything buzzes: these fire only
-/// where something genuinely changed hands.
+/// Nearly every tap answers, at a strength that matches its weight, so the strength itself
+/// carries meaning: `tap` for small and rapid things, `picked` for choosing, `switched` for
+/// moving between places, `committed` for a deliberate change, and `thud` for the dump. Typing
+/// is left to the keyboard's own feedback.
 enum Haptics {
+    /// The lightest touch: small, frequent controls like clearing a chip, stepping a month,
+    /// or a photo settling as you swipe through them.
+    static func tap() {
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.6)
+    }
+
+    /// Moving to another place: a tab, or the journal's calendar, list and grid. Firmer than a
+    /// selection, so where you are changing is something you feel.
+    static func switched() {
+        UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.85)
+    }
+
     /// Something worked and is now durable: a recording saved, a sync landed.
     static func landed() {
         UINotificationFeedbackGenerator().notificationOccurred(.success)

@@ -41,11 +41,11 @@ struct OrganisedEntryView: View {
                     } label: {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Image(systemName: "chevron.down")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(Brand.muted)
                                 .rotationEffect(.degrees(collapsed.contains(section.id) ? -90 : 0))
                             Text(Typography.withoutEmDashes(section.heading))
-                                .font(.system(size: 20, weight: .bold))
+                                .font(.system(size: 20, weight: .semibold))
                                 .foregroundStyle(Brand.ink)
                                 .multilineTextAlignment(.leading)
                             Spacer(minLength: 0)

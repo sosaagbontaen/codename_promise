@@ -86,8 +86,9 @@ struct MacInboxSection: View {
 
         Section("Recently arrived") {
             if arrivals.isEmpty {
-                Label("Nothing yet", systemImage: "tray")
-                    .foregroundStyle(.secondary)
+                EmptyState("Nothing yet", message: "Dumps from your Mac show up here.",
+                           props: [.laptop], mascotWidth: 90)
+                    .padding(.vertical, 8)
             } else {
                 ForEach(arrivals.prefix(30)) { arrival in
                     ArrivalRow(arrival: arrival)
@@ -140,9 +141,11 @@ struct MacInboxSection: View {
                 return
             }
             lastChecked = Date()
+            let next = Self.status(after: pass, previous: status)
+            if next.isAdded && next != status { Haptics.landed() }
             withAnimation {
                 arrivals = CaptureInbox.history.arrivals(from: .mac)
-                status = Self.status(after: pass, previous: status)
+                status = next
             }
             rounds += 1
         } while status.isOnTheWay && rounds < 30
@@ -166,6 +169,11 @@ private extension MacInboxSection.Status {
         if case .onTheWay = self { return true }
         return false
     }
+
+    var isAdded: Bool {
+        if case .added = self { return true }
+        return false
+    }
 }
 
 // MARK: - Status card
@@ -181,6 +189,7 @@ private struct StatusCard: View {
         HStack(spacing: 14) {
             ZStack {
                 Circle().fill(tint.opacity(0.16))
+                    .animation(.easeInOut(duration: 0.3), value: tint)
                 symbol
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(tint)
@@ -202,7 +211,10 @@ private struct StatusCard: View {
             if status == .checking {
                 ProgressView()
             } else {
-                Button(action: refresh) {
+                Button {
+                    Haptics.tap()
+                    refresh()
+                } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 16, weight: .semibold))
                         .frame(width: 36, height: 36)
@@ -214,20 +226,22 @@ private struct StatusCard: View {
         .padding(.vertical, 6)
     }
 
-    @ViewBuilder
+    /// One image whose symbol changes, rather than one image per state, so the change is
+    /// drawn: the cloud's arrow turns into the check mark instead of one cutting to the other.
     private var symbol: some View {
+        Image(systemName: symbolName)
+            .contentTransition(.symbolEffect(.replace.downUp))
+            .symbolEffect(.pulse, options: .repeating, isActive: status.isOnTheWay)
+            .symbolEffect(.bounce, value: status.isAdded)
+    }
+
+    private var symbolName: String {
         switch status {
-        case .onTheWay:
-            Image(systemName: "icloud.and.arrow.down")
-                .symbolEffect(.pulse, options: .repeating)
-        case .idle, .checking:
-            Image(systemName: "laptopcomputer")
-        case .upToDate:
-            Image(systemName: "checkmark")
-        case .added:
-            Image(systemName: "tray.and.arrow.down.fill")
-        case .unreachable:
-            Image(systemName: "exclamationmark.triangle.fill")
+        case .onTheWay: "icloud.and.arrow.down"
+        case .idle, .checking: "laptopcomputer"
+        case .upToDate: "checkmark"
+        case .added: "tray.and.arrow.down.fill"
+        case .unreachable: "exclamationmark.triangle.fill"
         }
     }
 

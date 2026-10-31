@@ -73,7 +73,7 @@ private struct CoverVideo: View {
                 PhotoTile(thumb: item, fileStore: fileStore, maxPixel: 1600, marksVideo: false)
                 Button(action: play) {
                     Image(systemName: "play.fill")
-                        .font(.system(size: 26, weight: .bold))
+                        .font(.system(size: 26, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(width: 66, height: 66)
                         .background(.black.opacity(0.5), in: Circle())

@@ -44,10 +44,9 @@ struct InboxDigestView: View {
             List {
                 let rows = rows ?? []
                 if self.rows != nil, rows.isEmpty {
-                    ContentUnavailableView(
-                        "Nothing to show", systemImage: "tray",
-                        description: Text("The entries these went into have since been deleted.")
-                    )
+                    EmptyState("Nothing to show", message: "The entries these went into have since been deleted.", mood: .puzzled)
+                        .listRowBackground(Color.clear)
+                        .padding(.vertical, 24)
                 }
                 ForEach(rows) { row in
                     Section {

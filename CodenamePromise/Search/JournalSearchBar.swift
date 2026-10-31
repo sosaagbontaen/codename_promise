@@ -70,8 +70,12 @@ struct JournalSearchBar<Accessory: View>: View {
                 }
             }
             .frame(height: Self.rowHeight)
-            if isOpen && filter.isActive { chips }
+            if isOpen && filter.isActive {
+                chips.transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: filter)
+        .onChange(of: filter) { if isOpen { Haptics.picked() } }
         .padding(.top, 8)
         .sheet(isPresented: $pickingRange) {
             RangePicker(filter: $filter)
@@ -84,7 +88,7 @@ struct JournalSearchBar<Accessory: View>: View {
     private var field: some View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 17, weight: isOpen ? .regular : .semibold))
+                .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(isOpen ? Brand.muted : Brand.ink)
                 .frame(width: 20)
             TextField("Words, or what's in a photo", text: $query)
@@ -96,7 +100,7 @@ struct JournalSearchBar<Accessory: View>: View {
                 .opacity(contentShown ? 1 : 0)
                 .disabled(!isOpen)
             if isOpen && !query.isEmpty {
-                Button { query = "" } label: {
+                Button { Haptics.tap(); query = "" } label: {
                     Image(systemName: "xmark.circle.fill")
                 }
                 .foregroundStyle(Brand.muted)
@@ -117,6 +121,7 @@ struct JournalSearchBar<Accessory: View>: View {
     }
 
     private func open() {
+        Haptics.tap()
         withAnimation(Self.motion) { isOpen = true }
         Task { @MainActor in
             // The keyboard rises with the field rather than before it.
@@ -128,6 +133,7 @@ struct JournalSearchBar<Accessory: View>: View {
     }
 
     private func close() {
+        Haptics.tap()
         focused = false
         var instant = Transaction()
         instant.disablesAnimations = true
@@ -164,10 +170,11 @@ struct JournalSearchBar<Accessory: View>: View {
                 Button("Clear filters", systemImage: "xmark") { filter = SearchFilter() }
             }
         } label: {
-            Image(systemName: filter.isActive
-                  ? "line.3.horizontal.decrease.circle.fill"
-                  : "line.3.horizontal.decrease.circle")
-                .font(.system(size: 22, weight: .regular))
+            // Fills when a filter is on, rather than only changing colour.
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .symbolVariant(filter.isActive ? .fill : .none)
+                .contentTransition(.symbolEffect(.replace))
+                .font(.system(size: 21, weight: .semibold))
                 .foregroundStyle(filter.isActive ? Brand.violet : Brand.ink)
                 .frame(width: 34, height: 40)
         }

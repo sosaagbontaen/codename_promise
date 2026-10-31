@@ -47,15 +47,22 @@ struct SearchResultsView: View {
                     readingProgress
                 }
                 if trimmed.isEmpty {
-                    Text("Search what you wrote, words in your photos (signs, pages, screenshots), and what your photos show, like \u{201C}tree\u{201D}, \u{201C}beach\u{201D} or \u{201C}dog\u{201D}. Everything is read on this phone.")
-                        .font(Type.body(14))
-                        .foregroundStyle(Brand.muted)
-                        .padding(.top, 8)
+                    EmptyState(
+                        "Search your journal",
+                        message: "What you wrote, words in your photos, and what they show, like \u{201C}beach\u{201D} or \u{201C}dog\u{201D}. Read on this phone.",
+                        mood: .searching,
+                        props: [.magnifier],
+                        mascotWidth: 120
+                    )
+                    .padding(.top, 36)
                 } else if nothingShown {
-                    Text("Nothing found for \u{201C}\(trimmed)\u{201D}\(filter.isActive ? " with these filters" : "").")
-                        .font(Type.body(15))
-                        .foregroundStyle(Brand.muted)
-                        .padding(.top, 8)
+                    EmptyState(
+                        "Nothing for \u{201C}\(trimmed)\u{201D}",
+                        message: filter.isActive ? "Try clearing a filter, or fewer words." : "Try fewer words, or a different one.",
+                        mood: .puzzled,
+                        mascotWidth: 110
+                    )
+                    .padding(.top, 36)
                 } else {
                     if showsWriting, !results.entries.isEmpty { writingSection }
                     if showsPhotoText, !results.photoText.isEmpty {
@@ -199,7 +206,7 @@ struct SearchResultsView: View {
                             }
                         }
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PressableStyle(scale: 0.96))
                     .contextMenu {
                         Button("Open entry", systemImage: "doc.text") { onOpen(hit.draftId, nil) }
                     }

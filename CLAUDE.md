@@ -129,6 +129,16 @@ lost response must replay, not re-write. (ADR-003)
 attribute a default, and add a migration stage even if lightweight. No unique constraints —
 they'd foreclose CloudKit for no benefit. (ADR-008a, ADR-008b)
 
+## Feel
+
+- **Haptics** go through `Haptics` (Design/Haptics.swift), with strength matched to weight:
+  `tap` for small and rapid, `picked` for choosing, `switched` for changing tab or view,
+  `committed` for deliberate changes, `landed` / `failed` for outcomes, `thud` for the dump.
+- **Icons** are SF Symbols only, semibold for standalone controls (tiny badges may be bold).
+  Selected or "on" shows the `.fill` variant, not just a colour change.
+- **Empty states** use `EmptyState` with the `Mascot` (Design/Mascot.swift), not
+  `ContentUnavailableView` or a line of grey text.
+
 ## Networking
 
 `APIClient` maps every failure onto `APIError`, whose `isRetryable` is what stops the queue

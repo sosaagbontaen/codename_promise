@@ -11,17 +11,23 @@ struct HomeView: View {
     /// Shown once, on the first launch, and never again unless Settings asks for it.
     @AppStorage(Self.onboardedKey) private var hasOnboarded = false
     @State private var showingOnboarding = false
+    @State private var tab = Place.journal
+
+    enum Place: Hashable { case journal, more }
 
     static let onboardedKey = "hasSeenOnboarding"
 
     var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             JournalView()
-                .tabItem { Label("Journal", systemImage: "calendar") }
+                .tabItem { tabLabel("Journal", "book.closed", .journal) }
+                .tag(Place.journal)
             SettingsView(showsDone: false)
-                .tabItem { Label("More", systemImage: "line.3.horizontal") }
+                .tabItem { tabLabel("More", "ellipsis.circle", .more) }
+                .tag(Place.more)
         }
         .tint(Brand.violet)
+        .onChange(of: tab) { Haptics.switched() }
         // Full screen and not dismissible by swipe: it is three sentences and one button,
         // and someone who flicks it away by accident has learned none of them.
         .fullScreenCover(isPresented: $showingOnboarding) {
@@ -44,5 +50,12 @@ struct HomeView: View {
                     .tint(Brand.violet)
             }
         }
+    }
+
+    /// Outline when it's not where you are, filled when it is. The tab bar would otherwise
+    /// fill both, leaving colour as the only difference.
+    private func tabLabel(_ title: String, _ symbol: String, _ which: Place) -> some View {
+        Label(title, systemImage: tab == which ? symbol + ".fill" : symbol)
+            .environment(\.symbolVariants, .none)
     }
 }

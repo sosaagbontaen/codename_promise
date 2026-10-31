@@ -496,7 +496,7 @@ private struct AttachmentTile<Menu: View>: View {
     private var badge: some View {
         if failed {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 13, weight: .bold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white, Brand.failed)
                 .padding(6)
         } else if isCover {
